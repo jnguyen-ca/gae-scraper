@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+		<script src="/javascript/modules/frontpage.js"></script>
+		<style>
+			.sport-columns {display: inline-block; margin: 9px 0; outline: 1px solid black;}
+			.sport-column {display: table-cell; padding: 6px; vertical-align: top;}
+			.sport-column+.sport-column {border-left: 1px solid black;}
+			.sport-column h3 {margin: 9px 0; border-bottom: 1px solid black;}
+			.league-row {margin: 0 0 12px;}
+			.league-row+.league-row {border-top: 1px solid black; padding-top: 12px;}
+			.league-title {display: inline-block; vertical-align: top; width: 150px; white-space: nowrap; overflow: hidden;}
+			.league-seasons {display: inline-block; padding-left: 9px;}
+			.add-season-inputs span {display: inline-block; width: 48px;}
+			.add-season-inputs input {text-align: right; margin: 0 1px;}
+			.add-season-inputs .month-input, .add-season-inputs .day-input {width: 24px;}
+			.add-season-inputs .year-input {width: 36px;}
+		</style>
+	</head>
+    <body>
+        <form action="/scrape" method="get" onsubmit="return confirm('Are you sure?!')">
+            <input type="submit" value="Scrape!">
+        </form>
+        <br />
+        <br />
+        <form action="/display" method="post">
+            <input type="submit" value="Display!">
+            <br />
+        	[template:display_leagues]
+        </form>
+    </body>
+</html>

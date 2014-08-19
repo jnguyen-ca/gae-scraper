@@ -85,10 +85,11 @@ class Scraper(webapp.RequestHandler):
                 if sport_key not in not_elapsed_tips_by_sport:
                     not_elapsed_tips_by_sport[sport_key] = {}
                 # use cached entity if new or updated by pinnacle scrape
-                if tip_instance.key in new_or_updated_tips:
-                    not_elapsed_tips_by_sport[sport_key][tip_instance.key] = new_or_updated_tips[tip_instance.key].get()
+                key_string = tip_instance.key.urlsafe()
+                if key_string in new_or_updated_tips:
+                    not_elapsed_tips_by_sport[sport_key][key_string] = new_or_updated_tips[key_string].get()
                 else:
-                    not_elapsed_tips_by_sport[sport_key][tip_instance.key] = tip_instance
+                    not_elapsed_tips_by_sport[sport_key][key_string] = tip_instance
         
         not_elapsed_tips_by_sport = self.fill_wettpoint_tips(not_elapsed_tips_by_sport)
         not_elapsed_tips_by_sport, possible_ppd_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport)
@@ -104,7 +105,7 @@ class Scraper(webapp.RequestHandler):
                             not_archived_tips_by_sport_league[sport_key] = {}
                         if league_key not in not_archived_tips_by_sport_league[sport_key]:
                             not_archived_tips_by_sport_league[sport_key][league_key] = {}
-                        not_archived_tips_by_sport_league[sport_key][league_key][tip_instance.key] = tip_instance
+                        not_archived_tips_by_sport_league[sport_key][league_key][tip_instance.key.urlsafe()] = tip_instance
             
             archived_tips = self.fill_scores(not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league)
         except HTTPException:
@@ -181,18 +182,13 @@ class Scraper(webapp.RequestHandler):
                             scores_by_date[scoreboard_date_string].append(score_row)
                             
                     # remove the game digit before committing (only if scores get successfully scraped)    
-                    game_digit = re.search('^G(\d)\s+', tip_instance.game_team_away)
-                    if game_digit:
-                        game_digit = game_digit.group(1)
+                    doubleheader_search = re.search('^G(\d+)\s+(.+)', tip_instance.game_team_away)
+                    if doubleheader_search:
+                        game_digit = int(doubleheader_search.group(1))
+                        tip_instance.game_team_away = doubleheader_search.group(2).strip()
+                        tip_instance.game_team_home = re.search('^G\d+\s+(.+)', tip_instance.game_team_home).group(1).strip()
                     else:
                         game_digit = False
-                    
-                    if game_digit != False:
-                        tip_instance.game_team_away = re.sub('^G\d\s+', '', tip_instance.game_team_away)
-                        tip_instance.game_team_home = re.sub('^G\d\s+', '', tip_instance.game_team_home)
-#                         if tip.wettpoint_tip_team:
-#                             tip.wettpoint_tip_team = re.sub('^G\d\s+', '', tip.wettpoint_tip_team)
-                        game_digit = int(game_digit)
                     
                     if (
                         tip_instance.game_team_home not in league_team_info['keys'] 
@@ -265,7 +261,7 @@ class Scraper(webapp.RequestHandler):
                                     tip_instance.archived = True
                                     
                                     # commit
-                                    archived_tips[tip_instance.key] = tip_instance
+                                    archived_tips[tip_instance.key.urlsafe()] = tip_instance
                                     break
                                 else:
                                     if self.WARNING_MAIL is False:
@@ -341,7 +337,7 @@ class Scraper(webapp.RequestHandler):
                     # game has already begun, move on to next
                     tip_instance.elapsed = True
                     # set tip to be updated
-                    not_elapsed_tips_by_sport[sport_key][tip_instance.key] = tip_instance
+                    not_elapsed_tips_by_sport[sport_key][tip_instance.key.urlsafe()] = tip_instance
                     continue
                 elif (
                       divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0] < 20 
@@ -368,10 +364,10 @@ class Scraper(webapp.RequestHandler):
                     league_team_info = teamconstants.TEAMS[unicode(tip_instance.game_sport)][league_team_info]
                 
                 # remove the game digit to get correct team name aliases
-                game_digit = re.search('^G(\d)\s+', tip_instance.game_team_away)
-                if game_digit:
-                    tip_game_team_away = re.sub('^G\d\s+', '', tip_instance.game_team_away)
-                    tip_game_team_home = re.sub('^G\d\s+', '', tip_instance.game_team_home)
+                doubleheader_search = re.search('^G\d+\s+(.+)', tip_instance.game_team_away)
+                if doubleheader_search:
+                    tip_game_team_away = doubleheader_search.group(1).strip()
+                    tip_game_team_home = re.search('^G\d+\s+(.+)', tip_instance.game_team_home).group(1).strip()
                 else:
                     tip_game_team_away = tip_instance.game_team_away
                     tip_game_team_home = tip_instance.game_team_home
@@ -642,7 +638,7 @@ class Scraper(webapp.RequestHandler):
                             
                         break
                 
-                not_elapsed_tips_by_sport[sport_key][tip_instance.key] = tip_instance
+                not_elapsed_tips_by_sport[sport_key][tip_instance.key.urlsafe()] = tip_instance
                 
         return not_elapsed_tips_by_sport
                                     
@@ -659,7 +655,9 @@ class Scraper(webapp.RequestHandler):
         else:
             self.MAIL_BODY = self.MAIL_BODY + "\n" + ctype + " (" + line + ")"
         
-        query = TipChange.gql('WHERE tip_key = :1', str(tip_instance.key))
+        key_string = tip_instance.key.urlsafe()
+        
+        query = TipChange.gql('WHERE tip_key = :1', key_string)
         
         if query.count() == 0 and self.temp_holder is False:
             tip_change_object = TipChange()
@@ -674,7 +672,7 @@ class Scraper(webapp.RequestHandler):
             tip_change_object.type = tip_change_object.type + ctype
             
         tip_change_object.date = datetime.now()
-        tip_change_object.tip_key = str(tip_instance.key)
+        tip_change_object.tip_key = key_string
             
         tip_change_object.wettpoint_tip_stake = tip_instance.wettpoint_tip_stake
         
@@ -714,11 +712,12 @@ class Scraper(webapp.RequestHandler):
                 continue
             
             for tip_instance in not_elapsed_tips_by_sport[sport_key].values():
+                key_string = tip_instance.key.urlsafe()
                 if (tip_instance.date - datetime.now()).total_seconds() < 0:
                     # tip has started, move onto next
                     tip_instance.elapsed = True
                     # update this tip
-                    not_elapsed_tips_by_sport[sport_key][tip_instance.key] = tip_instance
+                    not_elapsed_tips_by_sport[sport_key][key_string] = tip_instance
                     continue
                 
                 if tip_instance.wettpoint_tip_stake is None:
@@ -834,19 +833,19 @@ class Scraper(webapp.RequestHandler):
                                 tip_instance.spread_no = json.dumps(hash1)
                                 tip_instance.spread_lines = json.dumps(hash2)
                             
-                            not_elapsed_tips_by_sport[sport_key][tip_instance.key] = tip_instance
+                            not_elapsed_tips_by_sport[sport_key][key_string] = tip_instance
                             break
                 else:
                     #TODO: check for a duplicate game in feed... if one is found, either email admin or delete automatically
                     # either game was taken off the board (for any number of reasons) - could be temporary
                     # or game is a duplicate (something changed that i didn't account for)
-                    logging.warning('Missing Game: Cannot find '+tip_instance.game_team_home.strip()+' or '+tip_instance.game_team_away.strip()+' for '+str(tip_instance.key))
+                    logging.warning('Missing Game: Cannot find '+tip_instance.game_team_home.strip()+' or '+tip_instance.game_team_away.strip()+' for '+key_string)
                     
                     if tip_instance.game_sport not in possible_ppd_tips_by_sport_league:
                         possible_ppd_tips_by_sport_league[tip_instance.game_sport] = {}
                     if tip_instance.game_league not in possible_ppd_tips_by_sport_league[tip_instance.game_sport]:
                         possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league] = {}
-                    possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league][tip_instance.key] = tip_instance
+                    possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league][key_string] = tip_instance
                     
         return not_elapsed_tips_by_sport, possible_ppd_tips_by_sport_league
         
@@ -972,7 +971,7 @@ class Scraper(webapp.RequestHandler):
                             
                             # pinnacle prefixes G# on team names if team has multiple games in a single day
                             # search and replace a existing tip object if an additional game gets added
-                            dh_team_string_multi = re.search('^G\d\s+(.+)', dh_team_string)
+                            dh_team_string_multi = re.search('^G\d+\s+(.+)', dh_team_string)
                             if dh_team_string_multi:
                                 dh_team_string_multi = dh_team_string_multi.group(1).strip()
                             
@@ -1152,6 +1151,6 @@ class Scraper(webapp.RequestHandler):
                     # store in datastore immediately to ensure no conflicts in this session
                     tip_instance_key = tip_instance.put()
                     # store in constant for future use and additional commit
-                    new_or_updated_tips[tip_instance.key] = tip_instance_key
+                    new_or_updated_tips[tip_instance.key.urlsafe()] = tip_instance_key
         
         return new_or_updated_tips

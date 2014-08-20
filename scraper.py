@@ -732,20 +732,27 @@ class Scraper(webapp.RequestHandler):
                 
                 if tip_instance.pinnacle_game_no in self.FEED[sport_key][tip_instance.game_league]:
                     # successful pinnacle call + game line exists
-                    game_tag = self.FEED[sport_key][tip_instance.game_league][tip_instance.pinnacle_game_no]
+                    event_tag = self.FEED[sport_key][tip_instance.game_league][tip_instance.pinnacle_game_no]
                     
-                    for period in game_tag.find('periods').find_all('period'):
+                    for period in event_tag.xpath('./periods/period'):
                         # currently only interested in full game lines
-                        if int(period.period_number.get_text()) == 0 or period.period_description.get_text() in ['Game','Match']:
+                        if (
+                            (
+                             period.find('period_number').text.isdigit() 
+                             and int(period.find('period_number').text) == 0
+                             ) 
+                            or period.find('period_description').text in ['Game','Match']
+                            ):
                             # get the total lines
-                            if period.total:
+                            period_total = period.find('total')
+                            if period_total is not None:
                                 # get actual total number
                                 if tip_instance.total_no:
                                     hash1 = json.loads(unicode(tip_instance.total_no))
                                 else:
                                     hash1 = {}
                                     
-                                hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.total.total_points.get_text()
+                                hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_total.find('total_points').text
                                 tip_instance.total_no = json.dumps(hash1)
                                 
                                 # get the total odds line
@@ -755,55 +762,68 @@ class Scraper(webapp.RequestHandler):
                                     hash1 = {}
                                 
                                 if tip_instance.wettpoint_tip_total == 'Over':
-                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.total.over_adjust.get_text()
+                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_total.find('over_adjust').text
                                 else:
-                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.total.under_adjust.get_text()
+                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_total.find('under_adjust').text
                                     
                                 tip_instance.total_lines = json.dumps(hash1)
                             # get the moneyline
-                            if period.moneyline:
+                            period_moneyline = period.find('moneyline')
+                            if period_moneyline is not None:
                                 if tip_instance.team_lines:
                                     hash1 = json.loads(unicode(tip_instance.team_lines))
                                 else:
                                     hash1 = {}
+                                
+                                period_moneyline_home = period_moneyline.find('moneyline_home')
+                                period_moneyline_visiting = period_moneyline.find('moneyline_visiting')
+                                period_moneyline_draw = period_moneyline.find('moneyline_draw')
+                                
+                                if period_moneyline_home is not None:
+                                    period_moneyline_home = period_moneyline_home.text
+                                if period_moneyline_visiting is not None:
+                                    period_moneyline_visiting = period_moneyline_visiting.text
+                                if period_moneyline_draw is not None:
+                                    period_moneyline_draw = period_moneyline_draw.text
                                 
                                 # get tip team line
                                 if tip_instance.wettpoint_tip_team != None:
                                     moneyline = ''
                                     for i in tip_instance.wettpoint_tip_team:
                                         if i == '1':
-                                            moneyline += period.moneyline.moneyline_home.get_text() + '|'
+                                            moneyline += period_moneyline_home + '|'
                                         elif i == 'X':
-                                            moneyline += period.moneyline.moneyline_draw.get_text() + '|'
+                                            moneyline += period_moneyline_draw + '|'
                                         elif i == '2':
-                                            moneyline += period.moneyline.moneyline_visiting.get_text() + '|'
+                                            moneyline += period_moneyline_visiting + '|'
                                     
                                     if (
-                                        period.moneyline.moneyline_draw 
+                                        period_moneyline_draw 
                                         and len(tip_instance.wettpoint_tip_team) < 2
                                         ):
-                                        moneyline += period.moneyline.moneyline_draw.get_text()
+                                        moneyline += period_moneyline_draw
                                         
                                     moneyline = moneyline.rstrip('|')
                                     hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = moneyline
                                 else:
                                     # if no tip team, get favourite line
                                     moneyline = ''
-                                    if float(period.moneyline.moneyline_visiting.get_text()) < float(period.moneyline.moneyline_home.get_text()):
+                                    if float(period_moneyline_visiting) < float(period_moneyline_home):
                                         tip_instance.wettpoint_tip_team = '2'
-                                        moneyline = period.moneyline.moneyline_visiting.get_text()
+                                        moneyline = period_moneyline_visiting
                                     else:
                                         tip_instance.wettpoint_tip_team = '1'
-                                        moneyline = period.moneyline.moneyline_home.get_text()
+                                        moneyline = period_moneyline_home
                                         
-                                    if period.moneyline.moneyline_draw:
-                                        moneyline += '|'+period.moneyline.moneyline_draw.get_text()
+                                    if period_moneyline_draw:
+                                        moneyline += '|'+period_moneyline_draw
                                         
                                     hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = moneyline
                                         
                                 tip_instance.team_lines = json.dumps(hash1)
                                 
-                            if period.spread:
+                            period_spread = period.find('spread')
+                            if period_spread is not None:
                                 if tip_instance.spread_no:
                                     hash1 = json.loads(unicode(tip_instance.spread_no))
                                 else:
@@ -814,21 +834,24 @@ class Scraper(webapp.RequestHandler):
                                 else:
                                     hash2 = {}
                                     
+                                period_spread_home = period_spread.find('spread_home').text
+                                period_spread_visiting = period_spread.find('spread_visiting').text
+                                    
                                 if tip_instance.wettpoint_tip_team.find('1') != -1:
-                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.spread.spread_home.get_text()
-                                    hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.spread.spread_adjust_home.get_text()
+                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_home
+                                    hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread.find('spread_adjust_home').text
                                 elif tip_instance.wettpoint_tip_team.find('2') != -1:
-                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.spread.spread_visiting.get_text()
-                                    hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.spread.spread_adjust_visiting.get_text()
+                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_visiting
+                                    hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread.find('spread_adjust_visiting').text
                                 else:
-                                    if float(period.spread.spread_visiting.get_text()) < float(period.spread.spread_home.get_text()):
+                                    if float(period_spread_visiting) < float(period_spread_home):
                                         tip_instance.wettpoint_tip_team = '2'
-                                        hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.spread.spread_visiting.get_text()
-                                        hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.spread.spread_adjust_visiting.get_text()
+                                        hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_visiting
+                                        hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread.find('spread_adjust_visiting').text
                                     else:
                                         tip_instance.wettpoint_tip_team = '1'
-                                        hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.spread.spread_home.get_text()
-                                        hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period.spread.spread_adjust_home.get_text()
+                                        hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_home
+                                        hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread.find('spread_adjust_home').text
                                     
                                 tip_instance.spread_no = json.dumps(hash1)
                                 tip_instance.spread_lines = json.dumps(hash2)
@@ -854,303 +877,293 @@ class Scraper(webapp.RequestHandler):
         """
         new_or_updated_tips = {}
         
+        # grab entire pinnacle feed
+        sport_feed = 'http://xml.'+constants.PINNACLE_FEED+'/pinnacleFeed.aspx'#?sporttype=' + keys['pinnacle']
+        
+        self.REQUEST_COUNT[constants.PINNACLE_FEED] += 1
+        if self.REQUEST_COUNT[constants.PINNACLE_FEED] > 1:
+            time.sleep(73.6)
+            
+#         xml = requests.get(sport_feed, headers=constants.HEADER)
+        # use etree for xpath search to easily filter specific leagues
+        etree_parser = etree.XMLParser(ns_clean=True,recover=True)
+        logging.info('Connecting to '+sport_feed)
+        lxml_tree = etree.parse(sport_feed, etree_parser)
+        
         # get sports we're interested in listed in constant SPORTS
-        for sport, keys in constants.SPORTS.iteritems():
-            sport_feed = constants.PINNACLE_FEED + '?sporttype=' + keys['pinnacle']
-            
-            self.REQUEST_COUNT[constants.PINNACLE_FEED] += 1
-            if self.REQUEST_COUNT[constants.PINNACLE_FEED] > 1:
-                time.sleep(73.6)
-            
-            #TODO: grab entire pinnacle feed to avoid hitting pinnacle more than once (how much bytes get transferred on each request?)
-            # scrape the pinnacle XML feed
-            xml = requests.get(sport_feed, headers=constants.HEADER)
-            soup = BeautifulSoup(xml.text, 'xml')
-            
-            # get all the game (event) tags
-            all_games = soup.find_all('event')
-            
-            # store all relevant game tags for future use
-            self.FEED[sport] = {}
-            
-            # iterate over all the games
-            for game_tag in all_games:
-                # convert game datetime string to standard GMT datettime object
-                date_GMT = datetime.strptime(unicode(game_tag.find('event_datetimeGMT').string), '%Y-%m-%d %H:%M')
-                # get teams
-                participants = game_tag.find_all('participant')
+        for sport_key, sport_values in constants.SPORTS.iteritems():
+            self.FEED[sport_key] = {}
+            for league_key, league_values in constants.LEAGUES[sport_key].iteritems():
+                # keep all tag information so don't have to scrape again if we need more information later
+                self.FEED[sport_key][league_key] = {}
                 
-                # game already elapsed, move on to next
-                if (date_GMT - datetime.now()).total_seconds() < 0:
-                    continue
-                
-                # store team information in tip object - first initialization of tip object
-                tip_instance = False
-                # get both teams information
-                for participant_tag in participants:
-                    # create tip object variable if not yet done, otherwise work on existing tip object created by opponent
-                    if not tip_instance:
-                        # get the league string so we can find universal sport key
-                        pinnacle_league = unicode(game_tag.find('league').string)
-                        league = False
-                        
-                        # unfinished constant (the sport has no leagues specified)?!
-                        if not sport in constants.LEAGUES:
-                            logging.warning(str(sport)+' has no leagues?!')
-                            break
-                        
-                        # is this a league we're interested in (i.e. exists in LEAGUES constant)?
-                        for sport_key, sport_leagues in constants.LEAGUES[sport].iteritems():
-                            # find the universal sport key for future reference
-                            pinnacle_league_key = sport_leagues['pinnacle']
-                            
-                            # single league can have multiple league names (ex. conferences)
-                            if isinstance(pinnacle_league_key, list):
-                                if pinnacle_league in pinnacle_league_key:
-                                    league = sport_key
-                            else:
-                                if pinnacle_league == pinnacle_league_key:
-                                    league = sport_key
-                        
-                        if league is False:
-                            # not a league we're interested in, move onto next game tag
-                            break
+                pinnacle_league_key = league_values['pinnacle']
+                league_xpath = None
+                # single league can have multiple league names (ex. conferences)
+                if isinstance(pinnacle_league_key, list):
+                    for pinnacle_league_value in pinnacle_league_key.values():
+                        if league_xpath is None:
+                            league_xpath = "league='"+pinnacle_league_value+"'"
                         else:
-                            # keep all tag information so don't have to scrape again if we need more information later
-                            if not league in self.FEED[sport]:
-                                self.FEED[sport][league] = {}
-                            
-                            # pinnacle game numbers should be unique for each league
-                            if game_tag.find('gamenumber').string in self.FEED[sport][league]:
-                                for period in game_tag.find('periods').find_all('period'):
-                                    # currently only interested in full game lines
-                                    if (
-                                        int(period.period_number.get_text()) == 0 
-                                        or period.period_description.get_text() in ['Game','Match']
-                                        ):
-                                        raise Exception('Multiple matching game numbers in same league listed at the same time! ' + game_tag.find('gamenumber').string)
-                                break
-                            else:
-                                for period in game_tag.find('periods').find_all('period'):
-                                    # currently only interested in full game lines
-                                    if (
-                                        int(period.period_number.get_text()) == 0 
-                                        or period.period_description.get_text() in ['Game','Match']
-                                        ):
-#                                         sys.stderr.write("Add game: "+game_tag.find('gamenumber').string+" for "+unicode(participant_tag.find('participant_name').string))
+                            league_xpath += " OR league='"+pinnacle_league_value+"'"
+                else:
+                    league_xpath = "league='"+pinnacle_league_key+"'"
+                    
+                # get all the game (event) tags for this league (not live games)
+                all_games = lxml_tree.xpath("//event[sporttype='"+sport_values['pinnacle']+"' and ("+league_xpath+") and IsLive='No']")
+                
+                for event_tag in all_games:
+                    # convert game datetime string to standard GMT datettime object
+                    date_GMT = datetime.strptime(unicode(event_tag.find('event_datetimeGMT').text), '%Y-%m-%d %H:%M')
+                    event_game_number = unicode(event_tag.find('gamenumber').text)
+                    
+                    # get teams
+                    participants = event_tag.xpath('./participants/participant')
+                    
+                    # game already elapsed, move on to next
+                    if (date_GMT - datetime.now()).total_seconds() < 0:
+                        continue
+                    
+                    # store team information in tip object - first initialization of tip object
+                    tip_instance = False
+                    # get both teams information
+                    for participant_tag in participants:
+                        participant_name = unicode(participant_tag.find('participant_name').text)
+                        participant_side = participant_tag.find('visiting_home_draw').text
+                        participant_rot_num = int(participant_tag.find('rotnum').text)
+                        
+                        # create tip object variable if not yet done, otherwise work on existing tip object created by opponent
+                        if not tip_instance:
+                            for period in event_tag.xpath('./periods/period'):
+                                # currently only interested in full game lines
+                                if (
+                                    (
+                                     period.find('period_number').text.isdigit() 
+                                     and int(period.find('period_number').text) == 0
+                                     ) 
+                                    or period.find('period_description').text in ['Game','Match']
+                                    ):
+                                    # pinnacle game numbers should be unique for each league
+                                    if event_game_number in self.FEED[sport_key][league_key]:
+                                        raise Exception('Multiple matching game numbers in same league listed at the same time! ' + event_game_number)
+                                    else:
+#                                         sys.stderr.write("Add game: "+event_tag.find('gamenumber').string+" for "+participant_name))
 #                                         sys.stderr.write("\n")
-                                        self.FEED[sport][league][game_tag.find('gamenumber').string] = game_tag
-                                        break
-                                if game_tag.find('gamenumber').string not in self.FEED[sport][league]:
+                                        self.FEED[sport_key][league_key][event_game_number] = event_tag
                                     break
-                        
-                        # skip test cases
-                        if re.match('^TEST\d', unicode(participant_tag.find('participant_name').string)):
-                            break
-                        # also skip grand salami cases
-                        elif (
-                              unicode(participant_tag.find('participant_name').string).split(' ')[0].lower() == 'away' 
-                              and participant_tag.find('visiting_home_draw').string == 'Visiting'
-                              ):
-                            break
-                        elif (
-                              unicode(participant_tag.find('participant_name').string).split(' ')[0].lower() == 'home' 
-                              and participant_tag.find('visiting_home_draw').string == 'Home'
-                              ):
-                            break
-                        
-                        dh_team_string = unicode(participant_tag.find('participant_name').string)
-                        if (
-                            sport in teamconstants.TEAMS 
-                            and league in teamconstants.TEAMS[sport]
-                            ):
-                            league_team_info = teamconstants.TEAMS[sport][league]
-                            if isinstance(league_team_info, basestring):
-                                # reference to another league information
-                                league_team_info = teamconstants.TEAMS[sport][league_team_info]
                             
-                            # pinnacle prefixes G# on team names if team has multiple games in a single day
-                            # search and replace a existing tip object if an additional game gets added
-                            dh_team_string_multi = re.search('^G\d+\s+(.+)', dh_team_string)
-                            if dh_team_string_multi:
-                                dh_team_string_multi = dh_team_string_multi.group(1).strip()
+                            # not a full game tag, skip
+                            if event_game_number not in self.FEED[sport_key][league_key]:
+                                break
                             
-                            # ensure team string exists in team constant, otherwise email admin
+                            # skip test cases
+                            if re.match('^TEST\d', participant_name):
+                                break
+                            # also skip grand salami cases
+                            elif (
+                                  participant_name.split(' ')[0].lower() == 'away' 
+                                  and participant_side == 'Visiting'
+                                  ):
+                                break
+                            elif (
+                                  participant_name.split(' ')[0].lower() == 'home' 
+                                  and participant_side == 'Home'
+                                  ):
+                                break
+                            
+                            dh_team_string = participant_name
+                            dh_team_string_multi = False
                             if (
-                                not dh_team_string in league_team_info['keys'] 
-                                and (
-                                     dh_team_string_multi 
-                                     and not dh_team_string_multi in league_team_info['keys']
-                                     )
+                                sport_key in teamconstants.TEAMS 
+                                and league_key in teamconstants.TEAMS[sport_key]
                                 ):
-                                if self.WARNING_MAIL is False:
-                                    self.WARNING_MAIL = ''
+                                league_team_info = teamconstants.TEAMS[sport_key][league_key]
+                                if isinstance(league_team_info, basestring):
+                                    # reference to another league information
+                                    league_team_info = teamconstants.TEAMS[sport_key][league_team_info]
+                                
+                                # pinnacle prefixes G# on team names if team has multiple games in a single day
+                                # search and replace a existing tip object if an additional game gets added
+                                dh_team_string_multi = re.search('^G\d+\s+(.+)', dh_team_string)
+                                if dh_team_string_multi:
+                                    dh_team_string_multi = dh_team_string_multi.group(1).strip()
+                                
+                                # ensure team string exists in team constant, otherwise email admin
+                                if (
+                                    not dh_team_string in league_team_info['keys'] 
+                                    and (
+                                         dh_team_string_multi 
+                                         and not dh_team_string_multi in league_team_info['keys']
+                                         )
+                                    ):
+                                    if self.WARNING_MAIL is False:
+                                        self.WARNING_MAIL = ''
+                                    else:
+                                        self.WARNING_MAIL += "\n"
+                                    self.WARNING_MAIL += str(dh_team_string) + ' for ' + str(league_key) + ', ' + str(sport_key) + ' does not exist!' + "\n"
+                            # if team information hasn't been filled out for this league, can still store it but raise a warning
+                            else:
+                                logging.warning(str(league_key)+', '+str(sport_key)+' has no team information!')
+                            
+                            # away or home team?
+                            if participant_side == 'Visiting':
+                                # do a search of the datastore to see if current tip object already created based on game number, sport, league, and team name
+                                query = Tip.gql('WHERE elapsed != True AND pinnacle_game_no = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4', 
+                                                event_game_number, 
+                                                sport_key,
+                                                league_key,
+                                                dh_team_string
+                                            )
+                                
+                                # safety measure to prevent count() function from doing multiple queries
+                                query_count = query.count()
+                                
+                                # if tip object does not yet exist, create it
+                                if query_count == 0:
+                                    # do a search for doubleheaders - game number would have changed so search for same time
+                                    if dh_team_string_multi:
+                                        query = Tip.gql('WHERE elapsed != True AND date = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4', 
+                                                        date_GMT,
+                                                        sport_key,
+                                                        league_key,
+                                                        dh_team_string_multi
+                                                    )
+                                        
+                                        # safety measure to prevent count() function from doing multiple queries
+                                        query_count = query.count()
+                                    
+                                    if query_count == 0:
+                                        # no tip object exists yet, create new one
+                                        tip_instance = Tip()
+                                        tip_instance.rot_away = participant_rot_num
+                                        tip_instance.game_team_away = participant_name
+                                    else:
+                                        # should be only one result if it exists
+                                        if query_count > 1:
+                                            raise Exception('Multiple matching datastore Tip objects to fill_games query!')
+                                        
+                                        # tip object exists, grab it
+                                        tip_instance = query.get()
+                                        
+                                        # if any information is different (ex. time change) update it
+                                        if (
+                                            tip_instance.pinnacle_game_no != event_game_number 
+                                            or tip_instance.game_team_away != participant_name 
+                                            or tip_instance.rot_away != participant_rot_num
+                                            ):
+                                            tip_instance.rot_away = participant_rot_num
+                                            tip_instance.game_team_away = participant_name
+                                        # otherwise no need to update it because all data has already been stored so move onto next game tag
+                                        else:
+                                            tip_instance = False
+                                            break
                                 else:
-                                    self.WARNING_MAIL += "\n"
-                                self.WARNING_MAIL += str(dh_team_string) + ' for ' + str(league) + ', ' + str(sport) + ' does not exist!' + "\n"
-                        # if team information hasn't been filled out for this league, can still store it but raise a warning
+                                    # should be only one result if it exists
+                                    if query_count > 1:
+                                        raise Exception('Multiple matching datastore Tip objects to fill_games query!')
+                                    
+                                    # tip object exists, grab it
+                                    tip_instance = query.get()
+                                    
+                                    # if any information is different (ex. time change) update it
+                                    if (
+                                        tip_instance.date != date_GMT 
+                                        or tip_instance.rot_away != participant_rot_num
+                                        ):
+                                        tip_instance.rot_away = participant_rot_num
+                                    # otherwise no need to update it because all data has already been stored so move onto next game tag
+                                    else:
+                                        tip_instance = False
+                                        break
+                            elif participant_side == 'Home':
+                                # do a search of the datastore to see if current tip object already created based on game number, sport, league, and team name
+                                query = Tip.gql('WHERE elapsed != True AND pinnacle_game_no = :1 AND game_sport = :2 AND game_league = :3 AND game_team_home = :4', 
+                                                event_game_number,
+                                                sport_key,
+                                                league_key,
+                                                dh_team_string
+                                            )
+                                
+                                # safety measure to prevent count() function from doing multiple queries
+                                query_count = query.count()
+                                
+                                # if tip object does not yet exist, create it
+                                if query_count == 0:
+                                    # do a search for doubleheaders - game number would have changed so search for same time
+                                    if dh_team_string_multi:
+                                        query = Tip.gql('WHERE elapsed != True AND date = :1 AND game_sport = :2 AND game_league = :3 AND game_team_home = :4', 
+                                                        date_GMT,
+                                                        sport_key,
+                                                        league_key,
+                                                        dh_team_string_multi
+                                                    )
+                                        
+                                        # safety measure to prevent count() function from doing multiple queries
+                                        query_count = query.count()
+                                    
+                                    if query_count == 0:
+                                        # no tip object exists yet, create new one
+                                        tip_instance = Tip()
+                                        tip_instance.rot_home = participant_rot_num
+                                        tip_instance.game_team_home = participant_name
+                                    else:
+                                        # should be only one result if it exists
+                                        if query_count > 1:
+                                            raise Exception('Multiple matching datastore Tip objects to fill_games query!')
+                                        
+                                        # tip object exists, grab it
+                                        tip_instance = query.get()
+                                        
+                                        # if any information is different (ex. time change) update it
+                                        if (
+                                            tip_instance.pinnacle_game_no != event_game_number 
+                                            or tip_instance.game_team_home != participant_name 
+                                            or tip_instance.rot_home != participant_rot_num
+                                            ):
+                                            tip_instance.rot_home = participant_rot_num
+                                            tip_instance.game_team_home = participant_name
+                                        # otherwise no need to update it because all data has already been stored so move onto next game tag
+                                        else:
+                                            tip_instance = False
+                                            break
+                                else:
+                                    # should be only one result if it exists
+                                    if query_count > 1:
+                                        raise Exception('Multiple matching datastore Tip objects to fill_games query!')
+                                    
+                                    # tip object exists, grab it
+                                    tip_instance = query.get()
+                                    
+                                    # if any information is different (ex. time change) update it
+                                    if (
+                                        tip_instance.date != date_GMT 
+                                        or tip_instance.rot_home != participant_rot_num
+                                        ):
+                                        tip_instance.rot_home = participant_rot_num
+                                    # otherwise no need to update it because all data has already been stored so move onto next game tag
+                                    else:
+                                        tip_instance = False
+                                        break
+                            
+                            # add basic information to tip object
+                            tip_instance.date = date_GMT
+                            tip_instance.game_sport = sport_key
+                            tip_instance.game_league = league_key
+                            tip_instance.pinnacle_game_no = event_game_number
                         else:
-                            logging.warning(str(league)+', '+str(sport)+' has no team information!')
-                        
-                        # away or home team?
-                        if participant_tag.find('visiting_home_draw').string == 'Visiting':
-                            # do a search of the datastore to see if current tip object already created based on game number, sport, league, and team name
-                            query = Tip.gql('WHERE elapsed != True AND pinnacle_game_no = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4', 
-                                            unicode(game_tag.find('gamenumber').string), 
-                                            sport,
-                                            league,
-                                            dh_team_string
-                                        )
-                            
-                            # safety measure to prevent count() function from doing multiple queries
-                            query_count = query.count()
-                            
-                            # if tip object does not yet exist, create it
-                            if query_count == 0:
-                                # do a search for doubleheaders - game number would have changed so search for same time
-                                if dh_team_string_multi:
-                                    query = Tip.gql('WHERE elapsed != True AND date = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4', 
-                                                    date_GMT,
-                                                    sport,
-                                                    league,
-                                                    dh_team_string_multi
-                                                )
-                                    
-                                    # safety measure to prevent count() function from doing multiple queries
-                                    query_count = query.count()
-                                
-                                if query_count == 0:
-                                    # no tip object exists yet, create new one
-                                    tip_instance = Tip()
-                                    tip_instance.rot_away = int(unicode(participant_tag.find('rotnum').string))
-                                    tip_instance.game_team_away = unicode(participant_tag.find('participant_name').string)
-                                else:
-                                    # should be only one result if it exists
-                                    if query_count > 1:
-                                        raise Exception('Multiple matching datastore Tip objects to fill_games query!')
-                                    
-                                    # tip object exists, grab it
-                                    tip_instance = query.get()
-                                    
-                                    # if any information is different (ex. time change) update it
-                                    if (
-                                        tip_instance.pinnacle_game_no != unicode(game_tag.find('gamenumber').string) 
-                                        or tip_instance.game_team_away != unicode(participant_tag.find('participant_name').string) 
-                                        or tip_instance.rot_away != int(unicode(participant_tag.find('rotnum').string))
-                                        ):
-                                        tip_instance.rot_away = int(unicode(participant_tag.find('rotnum').string))
-                                        tip_instance.game_team_away = unicode(participant_tag.find('participant_name').string)
-                                    # otherwise no need to update it because all data has already been stored so move onto next game tag
-                                    else:
-                                        tip_instance = False
-                                        break
-                            else:
-                                # should be only one result if it exists
-                                if query_count > 1:
-                                    raise Exception('Multiple matching datastore Tip objects to fill_games query!')
-                                
-                                # tip object exists, grab it
-                                tip_instance = query.get()
-                                
-                                # if any information is different (ex. time change) update it
-                                if (
-                                    tip_instance.date != date_GMT 
-                                    or tip_instance.rot_away != int(unicode(participant_tag.find('rotnum').string))
-                                    ):
-                                    tip_instance.rot_away = int(unicode(participant_tag.find('rotnum').string))
-                                # otherwise no need to update it because all data has already been stored so move onto next game tag
-                                else:
-                                    tip_instance = False
-                                    break
-                        elif participant_tag.find('visiting_home_draw').string == 'Home':
-                            # do a search of the datastore to see if current tip object already created based on game number, sport, league, and team name
-                            query = Tip.gql('WHERE elapsed != True AND pinnacle_game_no = :1 AND game_sport = :2 AND game_league = :3 AND game_team_home = :4', 
-                                            unicode(game_tag.find('gamenumber').string),
-                                            sport,
-                                            league,
-                                            dh_team_string
-                                        )
-                            
-                            # safety measure to prevent count() function from doing multiple queries
-                            query_count = query.count()
-                            
-                            # if tip object does not yet exist, create it
-                            if query_count == 0:
-                                # do a search for doubleheaders - game number would have changed so search for same time
-                                if dh_team_string_multi:
-                                    query = Tip.gql('WHERE elapsed != True AND date = :1 AND game_sport = :2 AND game_league = :3 AND game_team_home = :4', 
-                                                    date_GMT,
-                                                    sport,
-                                                    league,
-                                                    dh_team_string_multi
-                                                )
-                                    
-                                    # safety measure to prevent count() function from doing multiple queries
-                                    query_count = query.count()
-                                
-                                if query_count == 0:
-                                    # no tip object exists yet, create new one
-                                    tip_instance = Tip()
-                                    tip_instance.rot_home = int(unicode(participant_tag.find('rotnum').string))
-                                    tip_instance.game_team_home = unicode(participant_tag.find('participant_name').string)
-                                else:
-                                    # should be only one result if it exists
-                                    if query_count > 1:
-                                        raise Exception('Multiple matching datastore Tip objects to fill_games query!')
-                                    
-                                    # tip object exists, grab it
-                                    tip_instance = query.get()
-                                    
-                                    # if any information is different (ex. time change) update it
-                                    if (
-                                        tip_instance.pinnacle_game_no != unicode(game_tag.find('gamenumber').string) 
-                                        or tip_instance.game_team_home != unicode(participant_tag.find('participant_name').string) 
-                                        or tip_instance.rot_home != int(unicode(participant_tag.find('rotnum').string))
-                                        ):
-                                        tip_instance.rot_home = int(unicode(participant_tag.find('rotnum').string))
-                                        tip_instance.game_team_home = unicode(participant_tag.find('participant_name').string)
-                                    # otherwise no need to update it because all data has already been stored so move onto next game tag
-                                    else:
-                                        tip_instance = False
-                                        break
-                            else:
-                                # should be only one result if it exists
-                                if query_count > 1:
-                                    raise Exception('Multiple matching datastore Tip objects to fill_games query!')
-                                
-                                # tip object exists, grab it
-                                tip_instance = query.get()
-                                
-                                # if any information is different (ex. time change) update it
-                                if (
-                                    tip_instance.date != date_GMT 
-                                    or tip_instance.rot_home != int(unicode(participant_tag.find('rotnum').string))
-                                    ):
-                                    tip_instance.rot_home = int(unicode(participant_tag.find('rotnum').string))
-                                # otherwise no need to update it because all data has already been stored so move onto next game tag
-                                else:
-                                    tip_instance = False
-                                    break
-                        
-                        # add basic information to tip object
-                        tip_instance.date = date_GMT
-                        tip_instance.game_sport = sport
-                        tip_instance.game_league = league
-                        tip_instance.pinnacle_game_no = unicode(game_tag.find('gamenumber').string)
-                    else:
-                        # tip object already created (or set to be updated) by opponent
-                        if participant_tag.find('visiting_home_draw').string == 'Visiting':
-                            tip_instance.rot_away = int(unicode(participant_tag.find('rotnum').string))
-                            tip_instance.game_team_away = unicode(participant_tag.find('participant_name').string)
-                        elif participant_tag.find('visiting_home_draw').string == 'Home':
-                            tip_instance.rot_home = int(unicode(participant_tag.find('rotnum').string))
-                            tip_instance.game_team_home = unicode(participant_tag.find('participant_name').string)
-                
-                # if tip object is new or needs to be updated, do so now    
-                if tip_instance != False:
-                    # store in datastore immediately to ensure no conflicts in this session
-                    tip_instance_key = tip_instance.put()
-                    # store in constant for future use and additional commit
-                    new_or_updated_tips[tip_instance.key.urlsafe()] = tip_instance_key
+                            # tip object already created (or set to be updated) by opponent
+                            if participant_side == 'Visiting':
+                                tip_instance.rot_away = participant_rot_num
+                                tip_instance.game_team_away = participant_name
+                            elif participant_side == 'Home':
+                                tip_instance.rot_home = participant_rot_num
+                                tip_instance.game_team_home = participant_name
+                    
+                    # if tip object is new or needs to be updated, do so now    
+                    if tip_instance != False:
+                        # store in datastore immediately to ensure no conflicts in this session
+                        tip_instance_key = tip_instance.put()
+                        # store in constant for future use and additional commit
+                        new_or_updated_tips[tip_instance.key.urlsafe()] = tip_instance_key
         
         return new_or_updated_tips

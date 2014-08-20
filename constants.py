@@ -17,7 +17,7 @@ LEAGUES = {
 }
 
 # use pinnacle sports xml feed as our official game list feed
-PINNACLE_FEED = 'http://xml.pinnaclesports.com/pinnacleFeed.aspx'
+PINNACLE_FEED = 'pinnaclesports.com'
 WETTPOINT_FEED = 'wettpoint.com'
 # TSN_FEED = 'http://www.tsn.ca/'
 SCOREBOARD_FEED = 'http://www.xscores.com'

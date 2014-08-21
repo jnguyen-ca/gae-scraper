@@ -1,3 +1,6 @@
+#usr/bin/python
+# -*- coding: utf-8 -*-
+
 TEAMS = {
 # keys are pinnacle team names
 # values are corresponding aliases
@@ -100,6 +103,38 @@ TEAMS = {
                         '100985'                : ['Chivas USA'],
                         '76604'                 : ['Los Angeles Galaxy'],
                         '148697'                : ['Seattle Sounders'],
+            },
+        },
+        'Bundesliga' : {
+            'keys' : {
+                      'Bayern Munchen'          : '809',
+                      'Borussia Dortmund'       : '810',
+                      'Schalke 04'              : '821',
+                      'Bayer Leverkusen'        : '808',
+                      'VfL Wolfsburg'           : '824',
+                      'Borussia Monchengladbach': '811',
+                      'FSV Mainz 05'            : '1900',
+                      'Augsburg'                : '16732',
+                      'TSG Hoffenheim'          : '16740',
+                      'Hannover 96'             : '1895',
+                      'Hertha Berlin'           : '819',
+                      'Werder Bremen'           : '823',
+                      'Eintracht Frankfurt'     : '1888',
+                      'SC Freiburg'             : '816',
+                      'VfB Stuttgart'           : '822',
+                      'Hamburger SV'            : '817',
+                      'Koln'                    : '813',
+                      'SC Paderborn 07'         : '16722',
+            },
+            'values' : {
+                        '809'                   : ['Bayern München', 'BAYERN MUNICH'],
+                        '821'                   : ['FC SCHALKE 04'],
+                        '811'                   : ['Borussia Mönchengladbach', 'BOR. MONCHENGLADBACH'],
+                        '1900'                  : ['FSV Mainz'],
+                        '16732'                 : ['FC Augsburg'],
+                        '16740'                 : ['TSG 1899 Hoffenheim', '1899 HOFFENHEIM'],
+                        '816'                   : ['Sport-Club Freiburg'],
+                        '813'                   : ['FC Köln', 'FC KOLN'],
             },
         },
     },

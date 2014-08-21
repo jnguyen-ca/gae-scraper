@@ -3,6 +3,16 @@ indexes:
 - kind: Tip
   properties:
   - name: game_league
+  - name: date
+
+- kind: Tip
+  properties:
+  - name: game_sport
+  - name: date
+
+- kind: Tip
+  properties:
+  - name: game_league
   - name: archived
   - name: date
   

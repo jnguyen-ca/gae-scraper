@@ -161,6 +161,7 @@ class Scraper(webapp.RequestHandler):
         archived_tips = {}
         for sport_key, sport_leagues in constants.LEAGUES.iteritems():
             scores_by_date = {}
+            score_row_key_indices = {}
             for league_key, values in sport_leagues.iteritems():
                 if 'scoreboard' not in values:
                     continue
@@ -199,10 +200,31 @@ class Scraper(webapp.RequestHandler):
                         soup = BeautifulSoup(feed_html.text)
                         
                         scores_rows = False
-                        # get the results table
-                        scores_rows = soup.find('tbody', {'id' : 'scoretable'}).find('tr', {'id' : 'finHeader'}).find_next_siblings('tr')
                         
+                        # get the results table
+                        score_header = soup.find('tbody', {'id' : 'scoretable'}).find('tr', {'id' : 'finHeader'})
+                        if len(score_row_key_indices) < 5:
+                            score_header_columns = score_header.find_all('td', recursive=False)
+                            index_offset = 0
+                            for index, score_header_column in enumerate(score_header_columns):
+                                if score_header_column.has_attr('colspan'):
+                                    index_offset += int(score_header_column['colspan']) - 1
+                                score_header_column_text = score_header_column.get_text().strip()
+                                if score_header_column_text in ['K/O', 'League', 'Stat', 'Home', 'Away']:
+                                    score_row_key_indices[score_header_column_text] = index + index_offset
+                                    
+                                if len(score_row_key_indices) == 5:
+                                    break
+                        
+                        if len(score_row_key_indices) < 5:
+                            logging.warning(sport_key+' score header indices not adding up!')
+                            break
+                        
+                        scores_rows = score_header.find_next_siblings('tr')
                         for score_row in scores_rows:
+                            if not score_row.has_attr('id'):
+                                continue
+                            
                             scores_by_date[scoreboard_date_string].append(score_row)
                             
                     # remove the game digit before committing (only if scores get successfully scraped)    
@@ -226,41 +248,49 @@ class Scraper(webapp.RequestHandler):
                     for score_row in score_date_rows:
                         row_columns = score_row.find_all('td', recursive=False)
                         
-                        if len(row_columns) < 8:
-                            continue
-                        
                         # should be the correct league
-                        row_league = row_columns[3].find('span', {'class' : 'league'})
-                        if row_league is None:
-                            continue
-                        
+                        row_league = row_columns[score_row_key_indices['League']].get_text().strip()
                         if isinstance(league, list):
-                            if row_league.get_text().strip() not in league:
+                            if row_league not in league:
                                 continue
                         else:
-                            if row_league.get_text().strip() != league:
+                            if row_league != league:
                                 continue
                         
-                        row_game_time = datetime.strptime(scoreboard_game_time.strftime('%m-%d-%Y') + ' ' + row_columns[0].get_text().replace('(','').replace(')','').strip(), '%m-%d-%Y %H:%M')
-                        row_home_team = row_columns[5].get_text().strip()
-                        row_away_team = row_columns[7].get_text().strip()
+                        row_game_time = datetime.strptime(scoreboard_game_time.strftime('%m-%d-%Y') + ' ' + row_columns[score_row_key_indices['K/O']].get_text().replace('(','').replace(')','').strip(), '%m-%d-%Y %H:%M')
+                        row_home_team = row_columns[score_row_key_indices['Home']].get_text().strip()
+                        row_away_team = row_columns[score_row_key_indices['Away']].get_text().strip()
                         
                         # row should have same time (30 minute error window) and team names
                         time_difference = row_game_time - scoreboard_game_time
                         if abs(divmod(time_difference.total_seconds(), 60)[0]) <= 15:
                             if row_away_team.strip().upper() in (name.upper() for name in team_away_aliases):
                                 if row_home_team.strip().upper() in (name.upper() for name in team_home_aliases):
-                                    row_game_status = row_columns[1].get_text().strip()
+                                    row_game_status = row_columns[score_row_key_indices['Stat']].get_text().strip()
                                     
                                     if row_game_status == 'Fin':
-                                        row_game_scores = score_row.find_all('span', {'class' : 'scorersB'})
+                                        row_game_bolds = score_row.find_all('b')
+                                        row_last_bold = row_game_bolds[-1].get_text().strip()
                                         
                                         # should have both sides' scores
-                                        if len(row_game_scores) != 2:
-                                            break
+                                        if '-' not in row_last_bold:
+                                            if score_row_key_indices['Home'] < score_row_key_indices['Away']:
+                                                row_home_score = row_game_bolds[-2].get_text().strip()
+                                                row_away_score = row_last_bold
+                                            else:
+                                                row_home_score = row_last_bold
+                                                row_away_score = row_game_bolds[-2].get_text().strip()
+                                        else:
+                                            row_scores = row_last_bold.split('-')
+                                            if score_row_key_indices['Home'] < score_row_key_indices['Away']:
+                                                row_home_score = row_scores[0].strip()
+                                                row_away_score = row_scores[1].strip()
+                                            else:
+                                                row_home_score = row_scores[1].strip()
+                                                row_away_score = row_scores[0].strip()
                                         
-                                        tip_instance.score_home = row_game_scores[0].get_text().strip()
-                                        tip_instance.score_away = row_game_scores[1].get_text().strip()
+                                        tip_instance.score_home = row_home_score
+                                        tip_instance.score_away = row_away_score
                                     elif row_game_status != 'Abd' and row_game_status != 'Post' and row_game_status != 'Canc':
                                         break
                                     

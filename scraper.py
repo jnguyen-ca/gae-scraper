@@ -122,7 +122,7 @@ class Scraper(webapp.RequestHandler):
                 key_string = tip_instance.key.urlsafe()
                 if key_string in new_or_updated_tips:
                     not_elapsed_tips_by_sport[sport_key][key_string] = new_or_updated_tips[key_string].get()
-                elif unicode(tip_instance.game_league) in constants.SPORTS[sport_key]:
+                elif unicode(tip_instance.game_league) in constants.LEAGUES[sport_key]:
                     not_elapsed_tips_by_sport[sport_key][key_string] = tip_instance
         
         not_elapsed_tips_by_sport = self.fill_wettpoint_tips(not_elapsed_tips_by_sport)
@@ -927,7 +927,8 @@ class Scraper(webapp.RequestHandler):
         # use etree for xpath search to easily filter specific leagues
         etree_parser = etree.XMLParser(ns_clean=True,recover=True)
         logging.info('Connecting to '+sport_feed)
-        lxml_tree = etree.parse(sport_feed, etree_parser)
+        pinnacle_xml = urlfetch.fetch(sport_feed)
+        lxml_tree = etree.fromstring(pinnacle_xml.content, etree_parser)
         
         #TODO: unicode function really necessary?
         # get sports we're interested in listed in constant SPORTS

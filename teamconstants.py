@@ -1,5 +1,6 @@
 #usr/bin/python
 # -*- coding: utf-8 -*-
+from __future__ import unicode_literals
 
 TEAMS = {
 # keys are pinnacle team names
@@ -127,14 +128,14 @@ TEAMS = {
                       'SC Paderborn 07'         : '16722',
             },
             'values' : {
-                        '809'                   : ['Bayern München', 'BAYERN MUNICH'],
+                        '809'                   : ['Bayern MÃ¼nchen', 'BAYERN MUNICH'],
                         '821'                   : ['FC SCHALKE 04'],
-                        '811'                   : ['Borussia Mönchengladbach', 'BOR. MONCHENGLADBACH'],
+                        '811'                   : ['Borussia MÃ¶nchengladbach', 'BOR. MONCHENGLADBACH'],
                         '1900'                  : ['FSV Mainz'],
                         '16732'                 : ['FC Augsburg'],
                         '16740'                 : ['TSG 1899 Hoffenheim', '1899 HOFFENHEIM'],
                         '816'                   : ['Sport-Club Freiburg'],
-                        '813'                   : ['FC Köln', 'FC KOLN'],
+                        '813'                   : ['FC KÃ¶ln', 'FC KOLN'],
             },
         },
     },

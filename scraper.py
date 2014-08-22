@@ -119,12 +119,12 @@ class Scraper(webapp.RequestHandler):
                 if sport_key not in not_elapsed_tips_by_sport:
                     not_elapsed_tips_by_sport[sport_key] = {}
                 # use cached entity if new or updated by pinnacle scrape
-                key_string = tip_instance.key.urlsafe()
+                key_string = unicode(tip_instance.key.urlsafe())
                 if key_string in new_or_updated_tips:
                     not_elapsed_tips_by_sport[sport_key][key_string] = new_or_updated_tips[key_string].get()
-                elif unicode(tip_instance.game_league) in constants.LEAGUES[sport_key]:
+                elif tip_instance.game_league in constants.LEAGUES[sport_key]:
                     not_elapsed_tips_by_sport[sport_key][key_string] = tip_instance
-        
+                    
         not_elapsed_tips_by_sport = self.fill_wettpoint_tips(not_elapsed_tips_by_sport)
         not_elapsed_tips_by_sport, possible_ppd_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport)
         
@@ -139,7 +139,7 @@ class Scraper(webapp.RequestHandler):
                             not_archived_tips_by_sport_league[sport_key] = {}
                         if league_key not in not_archived_tips_by_sport_league[sport_key]:
                             not_archived_tips_by_sport_league[sport_key][league_key] = {}
-                        not_archived_tips_by_sport_league[sport_key][league_key][tip_instance.key.urlsafe()] = tip_instance
+                        not_archived_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
             
             archived_tips = self.fill_scores(not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league)
         except HTTPException:
@@ -149,11 +149,11 @@ class Scraper(webapp.RequestHandler):
         for not_elapsed_tips in not_elapsed_tips_by_sport.values():
             for tip_instance_key, tip_instance in not_elapsed_tips.iteritems():
                 if tip_instance_key in update_tips:
-                    raise Exception(str(tip_instance_key)+' appears more than once in not_elapsed_tips?!')
+                    raise Exception(tip_instance_key+' appears more than once in not_elapsed_tips?!')
                 update_tips[tip_instance_key] = tip_instance
         for tip_instance_key, tip_instance in archived_tips.iteritems():
             if tip_instance_key in update_tips:
-                raise Exception(str(tip_instance_key)+' duplicate located in archived_tips?!')
+                raise Exception(tip_instance_key+' duplicate located in archived_tips?!')
             update_tips[tip_instance_key] = tip_instance
         return update_tips
         
@@ -297,20 +297,20 @@ class Scraper(webapp.RequestHandler):
                                     tip_instance.archived = True
                                     
                                     # commit
-                                    archived_tips[tip_instance.key.urlsafe()] = tip_instance
+                                    archived_tips[unicode(tip_instance.key.urlsafe())] = tip_instance
                                     break
                                 else:
                                     if self.WARNING_MAIL is False:
                                         self.WARNING_MAIL = ''
                                     else:
                                         self.WARNING_MAIL += "\n"
-                                    self.WARNING_MAIL += 'Probable ' + str(row_home_team) + ' SCOREBOARD NAMES for ' + str(league_key) + ', ' + str(sport_key) + ' MISMATCH!' + "\n"
+                                    self.WARNING_MAIL += 'Probable ' + str(row_home_team) + ' SCOREBOARD NAMES for ' + league_key + ', ' + sport_key + ' MISMATCH!' + "\n"
                             elif row_home_team.strip().upper() in (name.upper() for name in team_home_aliases):
                                 if self.WARNING_MAIL is False:
                                     self.WARNING_MAIL = ''
                                 else:
                                     self.WARNING_MAIL += "\n"
-                                self.WARNING_MAIL += 'Probable ' + str(row_away_team) + ' SCOREBOARD NAMES for ' + str(league_key) + ', ' + str(sport_key) + ' MISMATCH!' + "\n"
+                                self.WARNING_MAIL += 'Probable ' + str(row_away_team) + ' SCOREBOARD NAMES for ' + league_key + ', ' + sport_key + ' MISMATCH!' + "\n"
                             
                     # if tip is not archived and it's over a day old... something is probably wrong
                     if (
@@ -371,7 +371,7 @@ class Scraper(webapp.RequestHandler):
                     # game has already begun, move on to next
                     tip_instance.elapsed = True
                     # set tip to be updated
-                    not_elapsed_tips_by_sport[sport_key][tip_instance.key.urlsafe()] = tip_instance
+                    not_elapsed_tips_by_sport[sport_key][unicode(tip_instance.key.urlsafe())] = tip_instance
                     continue
                 elif (
                       divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0] < 20 
@@ -379,13 +379,13 @@ class Scraper(webapp.RequestHandler):
                       ):
                     # tip has already been filled out and table updated past tip time, move on to next to avoid resetting tip to 0
                     continue
-                elif not 'wettpoint' in constants.LEAGUES[unicode(tip_instance.game_sport)][unicode(tip_instance.game_league)]:
+                elif not 'wettpoint' in constants.LEAGUES[tip_instance.game_sport][tip_instance.game_league]:
                     # constant missing league identifier?
-                    logging.warning('no wettpoint scraping for '+str(unicode(tip_instance.game_league)))
+                    logging.warning('no wettpoint scraping for '+tip_instance.game_league)
                     continue
                 
-                team_home_aliases = get_team_aliases(unicode(tip_instance.game_sport), unicode(tip_instance.game_league), tip_instance.game_team_home)[0]
-                team_away_aliases = get_team_aliases(unicode(tip_instance.game_sport), unicode(tip_instance.game_league), tip_instance.game_team_away)[0]
+                team_home_aliases = get_team_aliases(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home)[0]
+                team_away_aliases = get_team_aliases(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_away)[0]
 
 # REMOVE ?                
 #                 last_game_time = re.sub('[^0-9\.\s:]', '', tip_rows[-1].find_all('td')[6].get_text())
@@ -442,7 +442,7 @@ class Scraper(webapp.RequestHandler):
                     correct_league = False
                     
                     # is it the league of the tip object?
-                    wettpoint_league_key = constants.LEAGUES[unicode(tip_instance.game_sport)][unicode(tip_instance.game_league)]['wettpoint']
+                    wettpoint_league_key = constants.LEAGUES[tip_instance.game_sport][tip_instance.game_league]['wettpoint']
                     if isinstance(wettpoint_league_key, list):
                         if league_name.strip() in wettpoint_league_key:
                             correct_league = True
@@ -536,13 +536,13 @@ class Scraper(webapp.RequestHandler):
                                 self.WARNING_MAIL = ''
                             else:
                                 self.WARNING_MAIL += "\n"
-                            self.WARNING_MAIL += 'Probable ' + str(away_team) + ' WETTPOINT NAMES for ' + str(unicode(tip_instance.game_league)) + ', ' + str(unicode(tip_instance.game_sport)) + ' MISMATCH!' + "\n"
+                            self.WARNING_MAIL += 'Probable ' + away_team + ' WETTPOINT NAMES for ' + tip_instance.game_league + ', ' + tip_instance.game_sport + ' MISMATCH!' + "\n"
                         elif away_team.strip().upper() in (name.upper() for name in team_away_aliases):
                             if self.WARNING_MAIL is False:
                                 self.WARNING_MAIL = ''
                             else:
                                 self.WARNING_MAIL += "\n"
-                            self.WARNING_MAIL += 'Probable ' + str(home_team) + ' WETTPOINT NAMES for ' + str(unicode(tip_instance.game_league)) + ', ' + str(unicode(tip_instance.game_sport)) + ' MISMATCH!' + "\n"
+                            self.WARNING_MAIL += 'Probable ' + home_team + ' WETTPOINT NAMES for ' + tip_instance.game_league + ', ' + tip_instance.game_sport + ' MISMATCH!' + "\n"
                     # tip has passed this object (i.e. no tip upcoming for this event therefore tip stake = 0)
                     elif divmod(date_difference.total_seconds(), 60)[0] >= 15:
                         if (
@@ -563,7 +563,7 @@ class Scraper(webapp.RequestHandler):
                             and divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0] <= 180 
                             and (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) <= 5
                             ):
-                            h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(sport, unicode(tip_instance.game_league), tip_instance.game_team_home, tip_instance.game_team_away)
+                            h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away)
                         
                         if (
                             tip_instance.wettpoint_tip_total is not None 
@@ -582,7 +582,7 @@ class Scraper(webapp.RequestHandler):
                                 self.WARNING_MAIL = ''
                             else:
                                 self.WARNING_MAIL += "\n"
-                            self.WARNING_MAIL += 'No tip stake, but tip team exists! Now we panic... ' + str(away_team) + ' @ ' + str(home_team) + ' for ' + str(unicode(tip_instance.game_league)) + "\n"
+                            self.WARNING_MAIL += 'No tip stake, but tip team exists! Now we panic... ' + away_team + ' @ ' + home_team + ' for ' + tip_instance.game_league + "\n"
 #                             if tip.wettpoint_tip_team is not None and h2h_team is not False and tip.wettpoint_tip_team != h2h_team:
 #                                 tip = self.create_tip_change_object(tip, 'team', 'site_team', not tip_change_created)
 #                                 tip_change_created = True
@@ -600,15 +600,15 @@ class Scraper(webapp.RequestHandler):
                             
                         break
                 
-                not_elapsed_tips_by_sport[sport_key][tip_instance.key.urlsafe()] = tip_instance
+                not_elapsed_tips_by_sport[sport_key][unicode(tip_instance.key.urlsafe())] = tip_instance
                 
         return not_elapsed_tips_by_sport
     
-    def get_wettpoint_h2h(self, sport, league, team_home, team_away):
-        team_home_aliases, team_home_id = get_team_aliases(sport, league, team_home)
-        team_away_aliases, team_away_id = get_team_aliases(sport, league, team_away)
+    def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away):
+        team_home_aliases, team_home_id = get_team_aliases(sport_key, league_key, team_home)
+        team_away_aliases, team_away_id = get_team_aliases(sport_key, league_key, team_away)
         
-        sport = constants.SPORTS[sport]['wettpoint']
+        sport = constants.SPORTS[sport_key]['wettpoint']
         
         h2h_total, h2h_team, h2h_stake = False, False, False
         
@@ -653,12 +653,12 @@ class Scraper(webapp.RequestHandler):
                 self.WARNING_MAIL = ''
             else:
                 self.WARNING_MAIL += "\n"
-            self.WARNING_MAIL += 'Probable '+team_away+'('+team_away_id+') @ '+team_home+'('+team_home_id+') wettpoint H2H ids for ' + league + ' MISMATCH!' + "\n"
+            self.WARNING_MAIL += 'Probable '+team_away+'('+team_away_id+') @ '+team_home+'('+team_home_id+') wettpoint H2H ids for ' + league_key + ' MISMATCH!' + "\n"
         
         return h2h_total, h2h_team, h2h_stake
     
     def add_wettpoint_h2h_details(self, tip_instance):
-        h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(unicode(tip_instance.game_sport), unicode(tip_instance.game_league), tip_instance.game_team_home, tip_instance.game_team_away)
+        h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away)
         
         if h2h_stake is not False:
             h2h_stake = (10.0 - h2h_stake) / 10.0
@@ -694,7 +694,7 @@ class Scraper(webapp.RequestHandler):
         else:
             self.MAIL_BODY = self.MAIL_BODY + "\n" + ctype + " (" + line + ")"
         
-        key_string = tip_instance.key.urlsafe()
+        key_string = unicode(tip_instance.key.urlsafe())
         
         query = TipChange.gql('WHERE tip_key = :1', key_string)
         
@@ -751,7 +751,7 @@ class Scraper(webapp.RequestHandler):
                 continue
             
             for tip_instance in not_elapsed_tips_by_sport[sport_key].values():
-                key_string = tip_instance.key.urlsafe()
+                key_string = unicode(tip_instance.key.urlsafe())
                 if (tip_instance.date - datetime.now()).total_seconds() < 0:
                     # tip has started, move onto next
                     tip_instance.elapsed = True
@@ -780,37 +780,37 @@ class Scraper(webapp.RequestHandler):
                              period.find('period_number').text.isdigit() 
                              and int(period.find('period_number').text) == 0
                              ) 
-                            or period.find('period_description').text in ['Game','Match']
+                            or unicode(period.find('period_description').text) in ['Game','Match']
                             ):
                             # get the total lines
                             period_total = period.find('total')
                             if period_total is not None:
                                 # get actual total number
                                 if tip_instance.total_no:
-                                    hash1 = json.loads(unicode(tip_instance.total_no))
+                                    hash1 = json.loads(tip_instance.total_no)
                                 else:
                                     hash1 = {}
                                     
-                                hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_total.find('total_points').text
+                                hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_total.find('total_points').text)
                                 tip_instance.total_no = json.dumps(hash1)
                                 
                                 # get the total odds line
                                 if tip_instance.total_lines:
-                                    hash1 = json.loads(unicode(tip_instance.total_lines))
+                                    hash1 = json.loads(tip_instance.total_lines)
                                 else:
                                     hash1 = {}
                                 
                                 if tip_instance.wettpoint_tip_total == 'Over':
-                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_total.find('over_adjust').text
+                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_total.find('over_adjust').text)
                                 else:
-                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_total.find('under_adjust').text
+                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_total.find('under_adjust').text)
                                     
                                 tip_instance.total_lines = json.dumps(hash1)
                             # get the moneyline
                             period_moneyline = period.find('moneyline')
                             if period_moneyline is not None:
                                 if tip_instance.team_lines:
-                                    hash1 = json.loads(unicode(tip_instance.team_lines))
+                                    hash1 = json.loads(tip_instance.team_lines)
                                 else:
                                     hash1 = {}
                                 
@@ -819,11 +819,11 @@ class Scraper(webapp.RequestHandler):
                                 period_moneyline_draw = period_moneyline.find('moneyline_draw')
                                 
                                 if period_moneyline_home is not None:
-                                    period_moneyline_home = period_moneyline_home.text
+                                    period_moneyline_home = unicode(period_moneyline_home.text)
                                 if period_moneyline_visiting is not None:
-                                    period_moneyline_visiting = period_moneyline_visiting.text
+                                    period_moneyline_visiting = unicode(period_moneyline_visiting.text)
                                 if period_moneyline_draw is not None:
-                                    period_moneyline_draw = period_moneyline_draw.text
+                                    period_moneyline_draw = unicode(period_moneyline_draw.text)
                                 
                                 # get tip team line
                                 if tip_instance.wettpoint_tip_team != None:
@@ -864,33 +864,33 @@ class Scraper(webapp.RequestHandler):
                             period_spread = period.find('spread')
                             if period_spread is not None:
                                 if tip_instance.spread_no:
-                                    hash1 = json.loads(unicode(tip_instance.spread_no))
+                                    hash1 = json.loads(tip_instance.spread_no)
                                 else:
                                     hash1 = {}
                                     
                                 if tip_instance.spread_lines:
-                                    hash2 = json.loads(unicode(tip_instance.spread_lines))
+                                    hash2 = json.loads(tip_instance.spread_lines)
                                 else:
                                     hash2 = {}
                                     
-                                period_spread_home = period_spread.find('spread_home').text
-                                period_spread_visiting = period_spread.find('spread_visiting').text
+                                period_spread_home = unicode(period_spread.find('spread_home').text)
+                                period_spread_visiting = unicode(period_spread.find('spread_visiting').text)
                                     
                                 if tip_instance.wettpoint_tip_team.find('1') != -1:
                                     hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_home
-                                    hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread.find('spread_adjust_home').text
+                                    hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_home').text)
                                 elif tip_instance.wettpoint_tip_team.find('2') != -1:
                                     hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_visiting
-                                    hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread.find('spread_adjust_visiting').text
+                                    hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_visiting').text)
                                 else:
                                     if float(period_spread_visiting) < float(period_spread_home):
                                         tip_instance.wettpoint_tip_team = '2'
                                         hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_visiting
-                                        hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread.find('spread_adjust_visiting').text
+                                        hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_visiting').text)
                                     else:
                                         tip_instance.wettpoint_tip_team = '1'
                                         hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_home
-                                        hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread.find('spread_adjust_home').text
+                                        hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_home').text)
                                     
                                 tip_instance.spread_no = json.dumps(hash1)
                                 tip_instance.spread_lines = json.dumps(hash2)
@@ -930,7 +930,6 @@ class Scraper(webapp.RequestHandler):
         pinnacle_xml = urlfetch.fetch(sport_feed)
         lxml_tree = etree.fromstring(pinnacle_xml.content, etree_parser)
         
-        #TODO: unicode function really necessary?
         # get sports we're interested in listed in constant SPORTS
         for sport_key, sport_values in constants.SPORTS.iteritems():
             self.FEED[sport_key] = {}
@@ -955,7 +954,7 @@ class Scraper(webapp.RequestHandler):
                 
                 for event_tag in all_games:
                     # convert game datetime string to standard GMT datettime object
-                    date_GMT = datetime.strptime(unicode(event_tag.find('event_datetimeGMT').text), '%Y-%m-%d %H:%M')
+                    date_GMT = datetime.strptime(event_tag.find('event_datetimeGMT').text, '%Y-%m-%d %H:%M')
                     event_game_number = unicode(event_tag.find('gamenumber').text)
                     
                     # get teams
@@ -970,7 +969,7 @@ class Scraper(webapp.RequestHandler):
                     # get both teams information
                     for participant_tag in participants:
                         participant_name = unicode(participant_tag.find('participant_name').text)
-                        participant_side = participant_tag.find('visiting_home_draw').text
+                        participant_side = unicode(participant_tag.find('visiting_home_draw').text)
                         participant_rot_num = int(participant_tag.find('rotnum').text)
                         
                         # create tip object variable if not yet done, otherwise work on existing tip object created by opponent
@@ -982,7 +981,7 @@ class Scraper(webapp.RequestHandler):
                                      period.find('period_number').text.isdigit() 
                                      and int(period.find('period_number').text) == 0
                                      ) 
-                                    or period.find('period_description').text in ['Game','Match']
+                                    or unicode(period.find('period_description').text) in ['Game','Match']
                                     ):
                                     # pinnacle game numbers should be unique for each league
                                     if event_game_number in self.FEED[sport_key][league_key]:
@@ -1041,10 +1040,10 @@ class Scraper(webapp.RequestHandler):
                                         self.WARNING_MAIL = ''
                                     else:
                                         self.WARNING_MAIL += "\n"
-                                    self.WARNING_MAIL += str(dh_team_string) + ' for ' + str(league_key) + ', ' + str(sport_key) + ' does not exist!' + "\n"
+                                    self.WARNING_MAIL += dh_team_string + ' for ' + league_key + ', ' + sport_key + ' does not exist!' + "\n"
                             # if team information hasn't been filled out for this league, can still store it but raise a warning
                             else:
-                                logging.warning(str(league_key)+', '+str(sport_key)+' has no team information!')
+                                logging.warning(league_key+', '+sport_key+' has no team information!')
                             
                             # away or home team?
                             if participant_side == 'Visiting':
@@ -1205,6 +1204,6 @@ class Scraper(webapp.RequestHandler):
                         # store in datastore immediately to ensure no conflicts in this session
                         tip_instance_key = tip_instance.put()
                         # store in constant for future use and additional commit
-                        new_or_updated_tips[tip_instance.key.urlsafe()] = tip_instance_key
+                        new_or_updated_tips[unicode(tip_instance.key.urlsafe())] = tip_instance_key
         
         return new_or_updated_tips

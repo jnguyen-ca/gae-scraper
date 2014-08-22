@@ -24,9 +24,9 @@ class AwaitAction(webapp.RequestHandler):
         if not session_cookie:
             session = DisplaySession.gql('WHERE user = :1', users.get_current_user()).get()
             if not session is None:
-                session_leagues = json.loads(unicode(session.leagues))
+                session_leagues = json.loads(session.leagues)
 #                 self.response.set_cookie('DisplaySessionCookie', unicode(session.leagues), expires=(datetime.datetime.now() + datetime.timedelta(days=1)), overwrite=True)
-                memcache.set('DisplaySessionCookie', unicode(session.leagues))
+                memcache.set('DisplaySessionCookie', session.leagues)
         else:
             session_leagues = json.loads(session_cookie)
             

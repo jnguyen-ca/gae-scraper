@@ -21,6 +21,7 @@ from lxml import etree
 import re
 import json
 import time
+import random
 import logging
 import requests
 import constants
@@ -99,7 +100,7 @@ class Scraper(webapp.RequestHandler):
             logging_info += x + ' : ' + str(self.REQUEST_COUNT[x]) + '; '
             self.response.out.write(x + ' : ' + str(self.REQUEST_COUNT[x]))
             
-            if int(self.REQUEST_COUNT[x]) > 10:
+            if int(self.REQUEST_COUNT[x]) > 20:
                 mail.send_mail('BlackCanine@gmail.com', 'BlackCanine@gmail.com', 'Scrape Abuse WARNING', x + ' being hit: ' + str(self.REQUEST_COUNT[x]))
             
             self.response.out.write('<br />')
@@ -197,9 +198,9 @@ class Scraper(webapp.RequestHandler):
                         
                         self.REQUEST_COUNT[constants.SCOREBOARD_FEED] += 1
                         if self.REQUEST_COUNT[constants.SCOREBOARD_FEED] > 1:
-                            time.sleep(15.2)
+                            time.sleep(random.uniform(8.2, 15.5))
                         
-                        feed_html = requests.get(feed_url, headers=constants.HEADER)
+                        feed_html = requests.get(feed_url, headers=constants.get_header())
                         soup = BeautifulSoup(feed_html.text)
                         
                         scores_rows = False
@@ -341,9 +342,9 @@ class Scraper(webapp.RequestHandler):
             
             self.REQUEST_COUNT[constants.WETTPOINT_FEED] += 1
             if self.REQUEST_COUNT[constants.WETTPOINT_FEED] > 1:
-                time.sleep(29.3)
+                time.sleep(random.uniform(9.9,15.1))
             
-            html = requests.get(feed, headers=constants.HEADER)
+            html = requests.get(feed, headers=constants.get_header())
             soup = BeautifulSoup(html.text)
             
             # get the tip table for this sport
@@ -502,7 +503,6 @@ class Scraper(webapp.RequestHandler):
                                     sport != 'baseball' 
                                     and tip_instance.wettpoint_tip_stake % 1 == 0 
                                     and matchup_finalized 
-                                    and (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) <= 5
                                     ):
                                     tip_instance.wettpoint_tip_stake = self.add_wettpoint_h2h_details(tip_instance)
                                 
@@ -554,41 +554,42 @@ class Scraper(webapp.RequestHandler):
                              or tip_instance.wettpoint_tip_stake == 0.0
                              )
                         ):
-                        h2h_total, h2h_team, h2h_stake = False, False, False
-                        if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) <= 5:
-                            h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away)
-                        
-                            if h2h_total is not False:
-                                if (
-                                    tip_instance.wettpoint_tip_total is not None 
-                                    and tip_instance.wettpoint_tip_total != h2h_total
-                                    ):
-                                    tip_instance.total_no = None
-                                    tip_instance.total_lines = None
-                                tip_instance.wettpoint_tip_total = h2h_total
-                                
-                            if h2h_team is not False:
-                                if (
-                                    tip_instance.wettpoint_tip_team is not None 
-                                    and tip_instance.wettpoint_tip_team != h2h_total
-                                    ):
-                                    tip_instance.team_lines = None
-                                    tip_instance.spread_no = None
-                                    tip_instance.spread_lines = None
-                                tip_instance.wettpoint_tip_team = h2h_team
-                           
-                            if h2h_stake is not False and tip_instance.wettpoint_tip_stake == 0.0:
-                                h2h_stake = (10.0 - h2h_stake) / 10.0
+                        nolimit = False
+                        if minutes_until_start < 30:
+                            nolimit = True
+                        h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
+                    
+                        if h2h_total is not False:
+                            if (
+                                tip_instance.wettpoint_tip_total is not None 
+                                and tip_instance.wettpoint_tip_total != h2h_total
+                                ):
+                                tip_instance.total_no = None
+                                tip_instance.total_lines = None
+                            tip_instance.wettpoint_tip_total = h2h_total
+                            
+                        if h2h_team is not False:
+                            if (
+                                tip_instance.wettpoint_tip_team is not None 
+                                and tip_instance.wettpoint_tip_team != h2h_total
+                                ):
+                                tip_instance.team_lines = None
+                                tip_instance.spread_no = None
+                                tip_instance.spread_lines = None
+                            tip_instance.wettpoint_tip_team = h2h_team
+                       
+                        if h2h_stake is not False and tip_instance.wettpoint_tip_stake == 0.0:
+                            h2h_stake = (10.0 - h2h_stake) / 10.0
+                            tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
+                        elif (
+                              h2h_stake is not False 
+                              and minutes_until_start < 30 
+                              and abs(last_minutes_past_start) <= 15
+                              ):
+                            if h2h_total is not False and h2h_team is not False:
+                                tip_instance.wettpoint_tip_stake = round(10.0 - h2h_stake)
+                            else:
                                 tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
-                            elif (
-                                  h2h_stake is not False 
-                                  and minutes_until_start < 30 
-                                  and abs(last_minutes_past_start) <= 15
-                                  ):
-                                if h2h_total is not False and h2h_team is not False:
-                                    tip_instance.wettpoint_tip_stake = round(10.0 - h2h_stake)
-                                else:
-                                    tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
                             
                     # change object created, put in datastore
                     if self.temp_holder != False:
@@ -611,7 +612,11 @@ class Scraper(webapp.RequestHandler):
             
         return True
     
-    def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away):
+    def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away, **kwargs):
+        if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
+            if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) > 5:
+                return False, False, False
+        
         team_home_aliases, team_home_id = get_team_aliases(sport_key, league_key, team_home)
         team_away_aliases, team_away_id = get_team_aliases(sport_key, league_key, team_away)
         
@@ -622,11 +627,13 @@ class Scraper(webapp.RequestHandler):
         # wettpoint h2h link is home team - away team
         h2h_link = 'http://'+sport+'.'+constants.WETTPOINT_FEED+'/h2h/'+team_home_id+'-'+team_away_id+'.html'
         
-        self.REQUEST_COUNT[constants.WETTPOINT_FEED] += 1
+        if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
+            self.REQUEST_COUNT[constants.WETTPOINT_FEED] += 1
         if self.REQUEST_COUNT[constants.WETTPOINT_FEED] > 1:
-            time.sleep(16.87)
+            time.sleep(random.uniform(16.87,30.9))
         
 #         h2h_html = requests.get(h2h_link, headers=constants.HEADER)
+        logging.info('Connecting to '+h2h_link)
         h2h_html = urlfetch.fetch(h2h_link, headers={ "Accept-Encoding" : "identity" })
         h2h_soup = BeautifulSoup(h2h_html.content).find('div', {'class' : 'inhalt2'})
         
@@ -653,8 +660,10 @@ class Scraper(webapp.RequestHandler):
             h2h_stake_text = h2h_header.find_next_sibling(text=re.compile('Risikofaktor'))
             if h2h_stake_text:
                 h2h_stake_text = h2h_stake_text.find_next_sibling('b').get_text().strip()
-                if h2h_stake_text.isdigit():
+                try:
                     h2h_stake = float(h2h_stake_text)
+                except ValueError:
+                    h2h_stake = False
         else:
             if self.WARNING_MAIL is False:
                 self.WARNING_MAIL = ''

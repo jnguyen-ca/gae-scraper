@@ -342,7 +342,7 @@ class Scraper(webapp.RequestHandler):
             
             self.REQUEST_COUNT[constants.WETTPOINT_FEED] += 1
             if self.REQUEST_COUNT[constants.WETTPOINT_FEED] > 1:
-                time.sleep(random.uniform(9.9,15.1))
+                time.sleep(random.uniform(9.9,30.1))
             
             html = requests.get(feed, headers=constants.get_header())
             soup = BeautifulSoup(html.text)
@@ -905,12 +905,13 @@ class Scraper(webapp.RequestHandler):
                                     period_spread_home = unicode(period_spread.find('spread_home').text)
                                     period_spread_visiting = unicode(period_spread.find('spread_visiting').text)
                                         
-                                    if tip_instance.wettpoint_tip_team.find('1') != -1:
-                                        hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_home
-                                        hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_home').text)
-                                    elif tip_instance.wettpoint_tip_team.find('2') != -1:
-                                        hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_visiting
-                                        hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_visiting').text)
+                                    if tip_instance.wettpoint_tip_team is not None:
+                                        if tip_instance.wettpoint_tip_team.find('1') != -1 or tip_instance.wettpoint_tip_team == 'X':
+                                            hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_home
+                                            hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_home').text)
+                                        elif tip_instance.wettpoint_tip_team.find('2') != -1:
+                                            hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_visiting
+                                            hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_visiting').text)
                                     else:
                                         if float(period_spread_visiting) < float(period_spread_home):
                                             tip_instance.wettpoint_tip_team = '2'
@@ -1060,9 +1061,9 @@ class Scraper(webapp.RequestHandler):
                                 # ensure team string exists in team constant, otherwise email admin
                                 if (
                                     not dh_team_string in league_team_info['keys'] 
-                                    and (
+                                    and not (
                                          dh_team_string_multi 
-                                         and not dh_team_string_multi in league_team_info['keys']
+                                         and dh_team_string_multi in league_team_info['keys']
                                          )
                                     ):
                                     if self.WARNING_MAIL is False:

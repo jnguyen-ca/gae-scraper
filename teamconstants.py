@@ -139,4 +139,39 @@ TEAMS = {
             },
         },
     },
+    'Handball' : {
+        'Handball Bundesliga' : {
+            'keys' : {
+                      'SG Flensburg-Handewitt'  : '6608',
+                      'Frisch auf Goppingen'    : '6614',
+                      'VfL Gummersbach'         : '6621',
+                      'HSV Hamburg'             : '23447',
+                      'THW Kiel'                : '6607',
+                      'Rhein-Neckar Lowen'      : '158007',
+                      'TBV Lemgo'               : '6606',
+                      'TuS N-Lubbecke'          : '23448',
+                      'SC Magdeburg'            : '6609',
+                      'MT Melsungen'            : '106062',
+                      'HSG Wetzlar'             : '6617',
+                      'Fuchse Berlin'           : '158008',
+                      'TSV Hannover-Burgdorf'   : '207688',
+                      'HBW Balingen-Weilstetten': '132814',
+                      'SG BBM Bietigheim'       : '215171',
+                      'TSG Friesenheim'         : '215159',
+                      'Bergischer HC'           : '215165',
+                      'HC Erlangen'             : '215169',
+                      
+                      'GWD Minden'              : '6613',
+#                       'TSV GWD Minden'          : '', # pinnacle has duplicate team
+            },
+            'values' : {
+                        '6614'                  : ['FA Göppingen'],
+                        '158007'                : ['Rhein-Neckar Löwen'],
+                        '23448'                 : ['TuS N-Lübbecke'],
+                        '158008'                : ['Füchse Berlin'],
+                        '132814'                : ['HBW Balingen/Weilstetten'],
+                        '6613'                  : ['TSV GWD Minden'],
+            },
+        },
+    },
 }

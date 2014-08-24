@@ -6,12 +6,13 @@ import random
 HEADER = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:31.0) Gecko/20100101 Firefox/31.0', 'Accept-Encoding' : 'gzip, deflate'}
 
 SPORTS = {
-  'Baseball' : {'pinnacle' : 'Baseball', 'wettpoint' : 'baseball', 'scoreboard' : 'baseball'},
-'Soccer' : {'pinnacle' : 'Soccer', 'wettpoint' : 'fussball', 'scoreboard' : 'soccer'},
+'Baseball'  : {'pinnacle' : 'Baseball', 'wettpoint' : 'baseball', 'scoreboard' : 'baseball'},
+'Soccer'    : {'pinnacle' : 'Soccer', 'wettpoint' : 'fussball', 'scoreboard' : 'soccer'},
+'Handball'  : {'pinnacle' : 'Handball', 'wettpoint' : 'handball', }
 }
 
 LEAGUES = {
-   'Baseball' : { 
+   'Baseball' : {
         'MLB Spring Training' : {'pinnacle' : 'MLB Pre Seas', 'wettpoint' : 'MLB Pre Season', 'scoreboard' : 'MLB'},
         'MLB Regular Season' : {'pinnacle' : 'MLB', 'wettpoint' : 'MLB', 'scoreboard' : 'MLB'},
 #         'NPB Regular Season' : {'pinnacle' : ['Japan CL', 'Japan PL']},
@@ -19,6 +20,9 @@ LEAGUES = {
     'Soccer' : {
 #         'MLS Regular Season' : {'pinnacle' : 'USA (MLS)', 'wettpoint' : 'Major League Soccer MLS', 'scoreboard' : 'MLS'},
         'Bundesliga' : {'pinnacle' : 'Bundesliga', 'wettpoint' : '1. Bundesliga', 'scoreboard' : 'BL'},
+    },
+    'Handball' : {
+        'Handball Bundesliga' : {'pinnacle' : 'GerBundes 3', 'wettpoint' : '1. Bundesliga', },
     },
 }
 

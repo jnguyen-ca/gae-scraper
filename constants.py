@@ -8,7 +8,7 @@ HEADER = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:31.0) Gecko/2010
 SPORTS = {
 'Baseball'  : {'pinnacle' : 'Baseball', 'wettpoint' : 'baseball', 'scoreboard' : 'baseball'},
 'Soccer'    : {'pinnacle' : 'Soccer', 'wettpoint' : 'fussball', 'scoreboard' : 'soccer'},
-'Handball'  : {'pinnacle' : 'Handball', 'wettpoint' : 'handball', }
+'Handball'  : {'pinnacle' : 'Handball', 'wettpoint' : 'handball', 'scoreboard' : 'handball'}
 }
 
 LEAGUES = {
@@ -22,7 +22,7 @@ LEAGUES = {
         'Bundesliga' : {'pinnacle' : 'Bundesliga', 'wettpoint' : '1. Bundesliga', 'scoreboard' : 'BL'},
     },
     'Handball' : {
-        'Handball Bundesliga' : {'pinnacle' : 'GerBundes 3', 'wettpoint' : '1. Bundesliga', },
+        'Handball Bundesliga' : {'pinnacle' : 'GerBundes 3', 'wettpoint' : '1. Bundesliga', 'scoreboard' : 'Germany Bundesliga'},
     },
 }
 
@@ -30,7 +30,8 @@ LEAGUES = {
 PINNACLE_FEED = 'pinnaclesports.com'
 WETTPOINT_FEED = 'wettpoint.com'
 # TSN_FEED = 'http://www.tsn.ca/'
-SCOREBOARD_FEED = 'http://www.xscores.com'
+XSCORES_FEED = 'xscores.com'
+BACKUP_SCORES_FEED = 'whatsthescore.com'
 
 def get_header():
     header = {}

@@ -16,6 +16,7 @@ from httplib import HTTPException
 from datetime import datetime, timedelta
 from timeit import itertools
 from bs4 import BeautifulSoup
+from bs4.element import Tag as bs4_Tag
 from lxml import etree
 
 import re
@@ -64,9 +65,12 @@ def get_team_aliases(sport, league, team_name):
 class Scraper(webapp.RequestHandler):
     def get(self):
         self.FEED = {}
-        self.REQUEST_COUNT = {constants.PINNACLE_FEED : 0, constants.WETTPOINT_FEED: 0, constants.SCOREBOARD_FEED : 0}
+        self.REQUEST_COUNT = {constants.PINNACLE_FEED : 0, constants.WETTPOINT_FEED: 0, constants.XSCORES_FEED : 0, constants.BACKUP_SCORES_FEED : 0}
         #sys.stderr.write("ARRRRGHH")
         #sys.stderr.write("\n")
+        #reload(sys)
+        #sys.setdefaultencoding('utf-8')
+        #sys.stderr = codecs.getwriter('utf8')(sys.stderr)
         
         self.WARNING_MAIL = False
         self.MAIL_BODY = False
@@ -183,6 +187,11 @@ class Scraper(webapp.RequestHandler):
                     all_tip_check_scores += possible_ppd_tips_by_sport_league[sport_key][league_key].values()
                 
                 league = values['scoreboard']
+                
+                if sport_key == 'Handball':
+                    archived_tips, scores_by_date = self.fill_handball_scores(archived_tips, scores_by_date, all_tip_check_scores, sport_key, league_key)
+                    continue
+                
                 # go through all non-archived tips that have already begun
                 for tip_instance in all_tip_check_scores:
                     scoreboard_game_time = tip_instance.date + timedelta(hours = 3)
@@ -190,20 +199,21 @@ class Scraper(webapp.RequestHandler):
                     # have we gotten the scoreboard for this day before
                     # only get it if we don't already have it
                     scoreboard_date_string = scoreboard_game_time.strftime('%d-%m')
+                    
                     if not scoreboard_date_string in scores_by_date:
                         scores_by_date[scoreboard_date_string] = []
                         
                         logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
-                        feed_url = constants.SCOREBOARD_FEED + '/' + constants.SPORTS[sport_key]['scoreboard'] + '/finished_games/' + scoreboard_date_string
-                        
-                        self.REQUEST_COUNT[constants.SCOREBOARD_FEED] += 1
-                        if self.REQUEST_COUNT[constants.SCOREBOARD_FEED] > 1:
+                        feed_url = 'http://www.'+constants.XSCORES_FEED+'/'+constants.SPORTS[sport_key]['scoreboard']+'/finished_games/'+scoreboard_date_string
+                    
+                        self.REQUEST_COUNT[constants.XSCORES_FEED] += 1
+                        if self.REQUEST_COUNT[constants.XSCORES_FEED] > 1:
                             time.sleep(random.uniform(8.2, 15.5))
                         
                         feed_html = requests.get(feed_url, headers=constants.get_header())
                         soup = BeautifulSoup(feed_html.text)
                         
-                        scores_rows = False
+                        scores_rows = None
                         
                         # get the results table
                         score_header = soup.find('tbody', {'id' : 'scoretable'}).find('tr', {'id' : 'finHeader'})
@@ -245,7 +255,7 @@ class Scraper(webapp.RequestHandler):
                     team_away_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_away)[0]
                         
                     # should now have the scoreboard for this date, if not something went wrong    
-                    score_date_rows = False
+                    score_date_rows = None
                     if scoreboard_date_string in scores_by_date:
                         score_date_rows = scores_by_date[scoreboard_date_string]
                           
@@ -329,6 +339,97 @@ class Scraper(webapp.RequestHandler):
                         self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date - timedelta(hours = 6)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
                         
         return archived_tips
+    
+    def fill_handball_scores(self, archived_tips, scores_by_date, all_tip_check_scores_by_league, sport_key, league_key):
+        for tip_instance in all_tip_check_scores_by_league:
+            scoreboard_game_time = tip_instance.date + timedelta(hours = 2)
+            scoreboard_date_string = scoreboard_game_time.strftime('%d-%m-%Y')
+                
+            if not scoreboard_date_string in scores_by_date:
+                scores_by_date[scoreboard_date_string] = []
+                
+                logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
+                feed_url = 'http://www.'+constants.BACKUP_SCORES_FEED+'/'+constants.SPORTS[sport_key]['scoreboard']+'/'+scoreboard_date_string+'-games.html'
+            
+                self.REQUEST_COUNT[constants.BACKUP_SCORES_FEED] += 1
+                if self.REQUEST_COUNT[constants.BACKUP_SCORES_FEED] > 1:
+                    time.sleep(random.uniform(8.2, 15.5))
+                
+                feed_html = requests.get(feed_url, headers=constants.get_header())
+                feed_html.encoding = 'utf-8'
+                soup = BeautifulSoup(feed_html.text)
+                
+                score_tables = soup.find_all('table', {'class' : 'matches-listing'})
+                scores_by_date[scoreboard_date_string] = score_tables
+            else:
+                score_tables = scores_by_date[scoreboard_date_string]
+                
+            # remove the game digit before committing (only if scores get successfully scraped)    
+            doubleheader_search = re.search('^G(\d+)\s+(.+)', tip_instance.game_team_away)
+            if doubleheader_search:
+                tip_instance.game_team_away = doubleheader_search.group(2).strip()
+                tip_instance.game_team_home = re.search('^G\d+\s+(.+)', tip_instance.game_team_home).group(1).strip()
+            
+            # get all team aliases
+            team_home_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_home)[0]
+            team_away_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_away)[0]
+            
+            scores_rows = None
+            for score_table in score_tables:
+                table_league_name = score_table.find('thead').find('span', {'class' : 'league-name'}).find('h3').find(text=True, recursive=False)
+                if table_league_name is None:
+                    table_league_name = score_table.find('thead').find('a', {'class' : 'league-name'}).find(text=True, recursive=False)
+                
+                table_league_name = table_league_name.strip()
+                
+                if table_league_name == constants.LEAGUES[sport_key][league_key]['scoreboard']:
+                    scores_rows = score_table.select('tr.with-score.is-not-live')
+                    break
+            
+            for score_row in scores_rows:
+                if score_row.find('td', {'class' : 'event-status'}).get_text().strip() != 'FT':
+                    continue
+                
+                row_game_time = datetime.strptime(scoreboard_date_string + ' ' + score_row.find('td', {'class' : 'event-time'}).get_text().replace('(','').replace(')','').strip(), '%d-%m-%Y %H:%M')
+
+                for column_team_child in score_row.find('td', {'class' : 'event-home-team'}).children:
+                    if isinstance(column_team_child, bs4_Tag) and column_team_child.has_attr('title'):
+                        row_home_team = column_team_child['title'].strip()
+                        break
+                        
+                for column_team_child in score_row.find('td', {'class' : 'event-away-team'}).children:
+                    if isinstance(column_team_child, bs4_Tag) and column_team_child.has_attr('title'):
+                        row_away_team = column_team_child['title'].strip()
+                        break
+                
+                # row should have same time (30 minute error window) and team names
+                time_difference = row_game_time - scoreboard_game_time
+                if abs(divmod(time_difference.total_seconds(), 60)[0]) <= 15:
+                    if row_away_team.strip().upper() in (name.upper() for name in team_away_aliases):
+                        if row_home_team.strip().upper() in (name.upper() for name in team_home_aliases):
+                            
+                            tip_instance.score_home = score_row.find('td', {'class' : 'event-score-runningscore'}).find('span', {'class' : 'home-runningscore'}).get_text().strip()
+                            tip_instance.score_away = score_row.find('td', {'class' : 'event-score-runningscore'}).find('span', {'class' : 'away-runningscore'}).get_text().strip()
+                            
+                            tip_instance.archived = True
+                            
+                            # commit
+                            archived_tips[unicode(tip_instance.key.urlsafe())] = tip_instance
+                            break
+        
+            # if tip is not archived and it's over a day old... something is probably wrong
+            if (
+                tip_instance.archived != True 
+                and (datetime.now() - tip_instance.date).total_seconds() > 86400
+                ):
+                if self.PPD_MAIL_BODY is False:
+                    self.PPD_MAIL_BODY = ''
+                else:
+                    self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + "\n\n"
+                    
+                self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date - timedelta(hours = 6)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
+        
+        return archived_tips, scores_by_date
 
     def fill_wettpoint_tips(self, not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league):
         # go through all our sports

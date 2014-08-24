@@ -385,18 +385,20 @@ class Scraper(webapp.RequestHandler):
                     team_home_aliases = get_team_aliases(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home)[0]
                     team_away_aliases = get_team_aliases(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_away)[0]
                     
-                    matchup_finalized = self.matchup_data_finalized([tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, same_league_games)
+                    matchup_finalized = False
+                    if minutes_until_start <= 180:
+                        matchup_finalized = self.matchup_data_finalized([tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, same_league_games)
                     
-                    last_game_time = re.sub('[^0-9\.\s:]', '', tip_rows[-1].find_all('td')[6].get_text())
-                    # format the tip time to a standard
-                    if not re.match('\d{2}\.\d{2}\.\d{4}', last_game_time):
-                        wettpoint_current_time = datetime.utcnow() + timedelta(hours = 2)
-                        wettpoint_current_date = wettpoint_current_time.strftime('%d.%m.%Y')
-                         
-                        last_game_time = wettpoint_current_date + ' ' + last_game_time
-                         
-                    last_game_time = datetime.strptime(last_game_time, '%d.%m.%Y %H:%M') - timedelta(hours = 2)
-                    last_minutes_past_start = divmod((last_game_time - tip_instance.date).total_seconds(), 60)[0]
+#                     last_game_time = re.sub('[^0-9\.\s:]', '', tip_rows[-1].find_all('td')[6].get_text())
+#                     # format the tip time to a standard
+#                     if not re.match('\d{2}\.\d{2}\.\d{4}', last_game_time):
+#                         wettpoint_current_time = datetime.utcnow() + timedelta(hours = 2)
+#                         wettpoint_current_date = wettpoint_current_time.strftime('%d.%m.%Y')
+#                          
+#                         last_game_time = wettpoint_current_date + ' ' + last_game_time
+#                          
+#                     last_game_time = datetime.strptime(last_game_time, '%d.%m.%Y %H:%M') - timedelta(hours = 2)
+#                     last_minutes_past_start = divmod((last_game_time - tip_instance.date).total_seconds(), 60)[0]
                     
                     # has the wettpoint tip been changed
                     tip_change_created = False
@@ -548,14 +550,19 @@ class Scraper(webapp.RequestHandler):
                         and (
                              (
                               tip_instance.wettpoint_tip_stake is None 
-                              and tip_instance.wettpoint_tip_team is None 
-                              and tip_instance.wettpoint_tip_total is None
+                              and (
+                                   minutes_until_start <= (45 + 5) 
+                                   or (
+                                      tip_instance.wettpoint_tip_team is None 
+                                      and tip_instance.wettpoint_tip_total is None
+                                      )
+                                   )
                               ) 
                              or tip_instance.wettpoint_tip_stake == 0.0
                              )
                         ):
                         nolimit = False
-                        if minutes_until_start < 30:
+                        if minutes_until_start <= (45 + 5):
                             nolimit = True
                         h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
                     
@@ -581,15 +588,15 @@ class Scraper(webapp.RequestHandler):
                         if h2h_stake is not False and tip_instance.wettpoint_tip_stake == 0.0:
                             h2h_stake = (10.0 - h2h_stake) / 10.0
                             tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
-                        elif (
-                              h2h_stake is not False 
-                              and minutes_until_start < 30 
-                              and abs(last_minutes_past_start) <= 15
-                              ):
-                            if h2h_total is not False and h2h_team is not False:
-                                tip_instance.wettpoint_tip_stake = round(10.0 - h2h_stake)
+                        elif minutes_until_start <= (45 + 5):
+#                               and abs(last_minutes_past_start) <= 15
+                            if h2h_stake is not False:
+                                if h2h_total is not False and h2h_team is not False:
+                                    tip_instance.wettpoint_tip_stake = round(10.0 - h2h_stake)
+                                else:
+                                    tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
                             else:
-                                tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
+                                tip_instance.wettpoint_tip_stake = 0.0
                             
                     # change object created, put in datastore
                     if self.temp_holder != False:
@@ -633,7 +640,7 @@ class Scraper(webapp.RequestHandler):
             time.sleep(random.uniform(16.87,30.9))
         
 #         h2h_html = requests.get(h2h_link, headers=constants.HEADER)
-        logging.info('Connecting to '+h2h_link)
+        logging.debug('Connecting to '+h2h_link)
         h2h_html = urlfetch.fetch(h2h_link, headers={ "Accept-Encoding" : "identity" })
         h2h_soup = BeautifulSoup(h2h_html.content).find('div', {'class' : 'inhalt2'})
         
@@ -948,7 +955,7 @@ class Scraper(webapp.RequestHandler):
 #         xml = requests.get(sport_feed, headers=constants.HEADER)
         # use etree for xpath search to easily filter specific leagues
         etree_parser = etree.XMLParser(ns_clean=True,recover=True)
-        logging.info('Connecting to '+sport_feed)
+        logging.debug('Connecting to '+sport_feed)
         pinnacle_xml = urlfetch.fetch(sport_feed)
         lxml_tree = etree.fromstring(pinnacle_xml.content, etree_parser)
         

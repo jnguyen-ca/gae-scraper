@@ -128,7 +128,7 @@ class Scraper(webapp.RequestHandler):
                         sport_wettpoint_memcache['tip_changed'] is True 
                         or divmod((datetime.utcnow() - datetime.strptime(sport_wettpoint_memcache['time_updated'], '%d.%m.%Y %H:%M')).total_seconds(), 60)[0] > 120
                         ):
-                        logging.debug('Checking '+sport_key+' due to expiration or last change')
+                        logging.debug('Checking '+sport_key+' due to expiration ('+datetime.utcnow().strftime('%d.%m.%Y %H:%M')+') or last change')
                         wettpoint_check_tables_sport.append(sport_key)
                 elif sport_key not in wettpoint_tables_memcache:
                     wettpoint_check_tables_sport.append(sport_key)
@@ -169,7 +169,7 @@ class Scraper(webapp.RequestHandler):
                             first_event_UTC_time = datetime.strptime(wettpoint_tables_memcache[sport_key]['first_event_time'], '%d.%m.%Y %H:%M') - timedelta(hours=2)
                             
                             if ((first_event_UTC_time - timedelta(minutes=15)) - datetime.utcnow()).total_seconds() <= 0:
-                                logging.debug('Checking '+sport_key+' for updated table')
+                                logging.debug('Checking '+sport_key+' for updated table (UTC: '+first_event_UTC_time.strftime('%d.%m.%Y %H:%M')+')')
                                 wettpoint_check_tables_sport.append(sport_key)
                         else:
                             wettpoint_check_tables_sport.append(sport_key)

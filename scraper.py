@@ -664,7 +664,10 @@ class Scraper(webapp.RequestHandler):
                                 if (
                                     sport != 'baseball' 
                                     and tip_instance.wettpoint_tip_stake % 1 == 0 
-                                    and matchup_finalized 
+                                    and (
+                                         matchup_finalized 
+                                         or tip_stake_changed is True 
+                                         )
                                     ):
                                     tip_stake_changed = True
                                     tip_instance.wettpoint_tip_stake = self.add_wettpoint_h2h_details(tip_instance)
@@ -705,7 +708,7 @@ class Scraper(webapp.RequestHandler):
                         and (
                              matchup_finalized 
                              or tip_stake_changed is True
-                             )
+                             ) 
                         and (
                              (
                               tip_instance.wettpoint_tip_stake is None 
@@ -720,8 +723,11 @@ class Scraper(webapp.RequestHandler):
                              or (
                                  tip_instance.wettpoint_tip_stake == 0.0 
                                  and (
-                                      tip_instance.wettpoint_tip_team is None 
-                                      and tip_instance.wettpoint_tip_total is None
+                                      tip_stake_changed is True 
+                                      or (
+                                          tip_instance.wettpoint_tip_team is None 
+                                          and tip_instance.wettpoint_tip_total is None
+                                          )
                                       )
                                  )
                              )

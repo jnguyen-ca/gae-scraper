@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, 'libs')
 
 from google.appengine.ext import webapp, ndb
-from google.appengine.api import mail, urlfetch
+from google.appengine.api import mail, urlfetch, memcache
 
 from models import Tip, TipChange
 
@@ -116,6 +116,26 @@ class Scraper(webapp.RequestHandler):
     def fill_games(self, new_or_updated_tips):
         """Now with all the games stored as incomplete Tip objects, fill out the lines and stuff
         """
+        wettpoint_check_tables_sport = []
+        wettpoint_tables_memcache = memcache.get('lastWettpointTablesInfo')
+        
+        if wettpoint_tables_memcache:
+            for sport_key in constants.SPORTS:
+                if sport_key not in wettpoint_check_tables_sport and sport_key in wettpoint_tables_memcache:
+                    sport_wettpoint_memcache = wettpoint_tables_memcache[sport_key]
+                    
+                    if (
+                        sport_wettpoint_memcache['tip_changed'] is True 
+                        or divmod((datetime.utcnow() - datetime.strptime(sport_wettpoint_memcache['time_updated'], '%d.%m.%Y %H:%M')).total_seconds(), 60)[0] > 120
+                        ):
+                        wettpoint_check_tables_sport.append(sport_key)
+                elif sport_key not in wettpoint_tables_memcache:
+                    wettpoint_check_tables_sport.append(sport_key)
+        else:
+            for sport_key in constants.SPORTS:
+                if sport_key not in wettpoint_check_tables_sport:
+                    wettpoint_check_tables_sport.append(sport_key)
+        
         # get all non-elapsed datastore entities so we can store current lines and wettpoint data
         not_elapsed_tips_by_sport_league = {}
         for sport_key in constants.SPORTS:
@@ -128,9 +148,23 @@ class Scraper(webapp.RequestHandler):
                 # use cached entity if new or updated by pinnacle scrape
                 key_string = unicode(tip_instance.key.urlsafe())
                 if key_string in new_or_updated_tips:
-                    not_elapsed_tips_by_sport_league[sport_key][tip_instance.game_league][key_string] = new_or_updated_tips[key_string].get()
+                    tip_instance = new_or_updated_tips[key_string].get()
+                    not_elapsed_tips_by_sport_league[sport_key][tip_instance.game_league][key_string] = tip_instance
                 else:
                     not_elapsed_tips_by_sport_league[sport_key][tip_instance.game_league][key_string] = tip_instance
+                    
+                if sport_key not in wettpoint_check_tables_sport:
+                    minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
+                    if minutes_until_start <= 180:
+                        wettpoint_check_tables_sport.append(sport_key)
+                    elif tip_instance.wettpoint_tip_stake is None:
+                        if wettpoint_tables_memcache and sport_key in wettpoint_tables_memcache:
+                            first_event_UTC_time = datetime.strptime(wettpoint_tables_memcache[sport_key]['first_event_time'], '%d.%m.%Y %H:%M') - timedelta(hours=2)
+                            
+                            if ((first_event_UTC_time - timedelta(minutes=15)) - datetime.utcnow()).total_seconds() <= 0:
+                                wettpoint_check_tables_sport.append(sport_key)
+                        else:
+                            wettpoint_check_tables_sport.append(sport_key)
                     
         not_archived_tips_by_sport_league = {}
         for sport_key, sport_leagues in constants.LEAGUES.iteritems():
@@ -143,7 +177,11 @@ class Scraper(webapp.RequestHandler):
                         not_archived_tips_by_sport_league[sport_key][league_key] = {}
                     not_archived_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
                     
-        not_elapsed_tips_by_sport_league = self.fill_wettpoint_tips(not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league)
+        for index, sport_key in enumerate(wettpoint_check_tables_sport):
+            if sport_key not in not_elapsed_tips_by_sport_league:
+                del wettpoint_check_tables_sport[index]
+        
+        not_elapsed_tips_by_sport_league = self.fill_wettpoint_tips(not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league, wettpoint_check_tables_sport)
         not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport_league)
         
         archived_tips = {}
@@ -431,10 +469,16 @@ class Scraper(webapp.RequestHandler):
         
         return archived_tips, scores_by_date
 
-    def fill_wettpoint_tips(self, not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league):
+    def fill_wettpoint_tips(self, not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league, wettpoint_check_tables_sport):
+        wettpoint_tables_memcache = memcache.get('lastWettpointTablesInfo')
+        if not wettpoint_tables_memcache:
+            wettpoint_tables_memcache = {}
+        
+        wettpoint_current_time = datetime.utcnow() + timedelta(hours = 2)
+        wettpoint_current_date = wettpoint_current_time.strftime('%d.%m.%Y')
         # go through all our sports
         for sport_key in constants.SPORTS:
-            if sport_key not in not_elapsed_tips_by_sport_league:
+            if sport_key not in not_elapsed_tips_by_sport_league or sport_key not in wettpoint_check_tables_sport:
                 continue
             
             # get wettpoint tip table page for particular sport
@@ -452,6 +496,13 @@ class Scraper(webapp.RequestHandler):
             tables = soup.find_all('table', {'class' : 'gen'})
             tip_table = tables[1]
             tip_rows = tip_table.find_all('tr')
+            
+            first_event_time = re.sub('[^0-9\.\s:]', '', tip_rows[2].find_all('td')[6].get_text())
+            # format the tip time to a standard
+            if not re.match('\d{2}\.\d{2}\.\d{4}', first_event_time):
+                first_event_time = wettpoint_current_date + ' ' + first_event_time
+            
+            wettpoint_tables_memcache[sport_key] = {'first_event_time' : first_event_time, 'time_updated' : datetime.utcnow().strftime('%d.%m.%Y %H:%M'), 'tip_changed' : False}
             
             for league_key in constants.LEAGUES[sport_key]:
                 if league_key not in not_elapsed_tips_by_sport_league[sport_key]:
@@ -515,9 +566,6 @@ class Scraper(webapp.RequestHandler):
                         
                         # format the tip time to a standard
                         if not re.match('\d{2}\.\d{2}\.\d{4}', game_time):
-                            wettpoint_current_time = datetime.utcnow() + timedelta(hours = 2)
-                            wettpoint_current_date = wettpoint_current_time.strftime('%d.%m.%Y')
-                            
                             game_time = wettpoint_current_date + ' ' + game_time
                         
                         # set game time to UTC    
@@ -598,8 +646,10 @@ class Scraper(webapp.RequestHandler):
                                     tip_instance = self.create_tip_change_object(tip_instance, 'stake', 'stake_chart', not tip_change_created)
                                     tip_change_created = True
                                     
+                                    wettpoint_tables_memcache[sport_key]['tip_changed'] = True
                                     tip_instance.wettpoint_tip_stake = tip_stake
                                 elif tip_instance.wettpoint_tip_stake is None:
+                                    wettpoint_tables_memcache[sport_key]['tip_changed'] = True
                                     tip_instance.wettpoint_tip_stake = tip_stake
                                 
                                 if (
@@ -607,6 +657,7 @@ class Scraper(webapp.RequestHandler):
                                     and tip_instance.wettpoint_tip_stake % 1 == 0 
                                     and matchup_finalized 
                                     ):
+                                    wettpoint_tables_memcache[sport_key]['tip_changed'] = True
                                     tip_instance.wettpoint_tip_stake = self.add_wettpoint_h2h_details(tip_instance)
                                 
                                 break
@@ -630,18 +681,13 @@ class Scraper(webapp.RequestHandler):
                                 tip_instance.wettpoint_tip_stake is not None 
                                 and tip_instance.wettpoint_tip_stake >= 1.0
                                 ):
-                                tip_instance = self.create_tip_change_object(tip_instance, 'team', 'stake_all', not tip_change_created)
-                                tip_instance.wettpoint_tip_team = self.temp_holder.wettpoint_tip_team
-                                tip_instance.team_lines = self.temp_holder.team_lines
-                                tip_instance.spread_no = self.temp_holder.spread_no
-                                tip_instance.spread_lines = self.temp_holder.spread_lines
-                                tip_instance = self.create_tip_change_object(tip_instance, 'total', 'stake_all', not tip_change_created)
-                                tip_instance.wettpoint_tip_total = self.temp_holder.wettpoint_tip_total
-                                tip_instance.total_no = self.temp_holder.total_no
-                                tip_instance.total_lines = self.temp_holder.total_lines
-                                tip_instance = self.create_tip_change_object(tip_instance, 'stake', 'stake_all', not tip_change_created)
+                                tip_instance = self.create_tip_change_object(tip_instance, 'team', 'stake_team_all', not tip_change_created)
                                 tip_change_created = True
-                                
+                                tip_instance = self.create_tip_change_object(tip_instance, 'total', 'stake_total_all', not tip_change_created)
+                                tip_instance = self.create_tip_change_object(tip_instance, 'stake', 'stake_all', not tip_change_created)
+                            
+                            if tip_instance.wettpoint_tip_stake != 0.0:
+                                wettpoint_tables_memcache[sport_key]['tip_changed'] = True
                             tip_instance.wettpoint_tip_stake = 0.0
                             break
                     
@@ -658,8 +704,14 @@ class Scraper(webapp.RequestHandler):
                                       and tip_instance.wettpoint_tip_total is None
                                       )
                                    )
-                              ) 
-                             or tip_instance.wettpoint_tip_stake == 0.0
+                             )
+                             or (
+                                 tip_instance.wettpoint_tip_stake == 0.0 
+                                 and (
+                                      tip_instance.wettpoint_tip_team is None 
+                                      and tip_instance.wettpoint_tip_total is None
+                                      )
+                                 )
                              )
                         ):
                         nolimit = False
@@ -689,6 +741,7 @@ class Scraper(webapp.RequestHandler):
                         if h2h_stake is not False and tip_instance.wettpoint_tip_stake == 0.0:
                             h2h_stake = (10.0 - h2h_stake) / 10.0
                             tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
+                            wettpoint_tables_memcache[sport_key]['tip_changed'] = True
                         elif minutes_until_start <= (45 + 5):
 #                               and abs(last_minutes_past_start) <= 15
                             if h2h_stake is not False:
@@ -699,12 +752,15 @@ class Scraper(webapp.RequestHandler):
                             else:
                                 tip_instance.wettpoint_tip_stake = 0.0
                             
+                            wettpoint_tables_memcache[sport_key]['tip_changed'] = True
+                            
                     # change object created, put in datastore
                     if self.temp_holder != False:
                         self.temp_holder.put()
                     
                     not_elapsed_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
-                
+        
+        memcache.set('lastWettpointTablesInfo', wettpoint_tables_memcache)        
         return not_elapsed_tips_by_sport_league
     
     def matchup_data_finalized(self, team_list, matchup_date, possible_earlier_games):

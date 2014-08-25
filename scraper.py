@@ -698,9 +698,10 @@ class Scraper(webapp.RequestHandler):
                                 tip_instance = self.create_tip_change_object(tip_instance, 'total', 'stake_total_all', not tip_change_created)
                                 tip_instance = self.create_tip_change_object(tip_instance, 'stake', 'stake_all', not tip_change_created)
                             
-                            if tip_instance.wettpoint_tip_stake != 0.0:
+                            if tip_instance.wettpoint_tip_stake is None or tip_instance.wettpoint_tip_stake >= 1.0:
                                 tip_stake_changed = True
-                            tip_instance.wettpoint_tip_stake = 0.0
+                                tip_instance.wettpoint_tip_stake = 0.0
+                                
                             break
                     
                     if (

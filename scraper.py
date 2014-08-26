@@ -824,7 +824,7 @@ class Scraper(webapp.RequestHandler):
         h2h_soup = BeautifulSoup(h2h_html.content).find('div', {'class' : 'inhalt2'})
         
         # ensure teams are correct and we got the right link
-        team_links = h2h_soup.find('table').find_all('tr')[1].find_all('a')
+        team_links = h2h_soup.find('table').find_all('tr')[-1].find_all('a')
         if (
             team_links[0].get_text().strip().upper() in (name.upper() for name in team_home_aliases) 
             and team_links[1].get_text().strip().upper() in (name.upper() for name in team_away_aliases)

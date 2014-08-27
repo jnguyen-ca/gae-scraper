@@ -124,11 +124,14 @@ class Scraper(webapp.RequestHandler):
                 if sport_key not in wettpoint_check_tables_sport and sport_key in wettpoint_tables_memcache:
                     sport_wettpoint_memcache = wettpoint_tables_memcache[sport_key]
                     
+                    sport_updated = sport_wettpoint_memcache['time_updated']
+                    sport_minutes_between_checks = sport_wettpoint_memcache['minutes_between_checks']
+                    
                     if (
                         sport_wettpoint_memcache['tip_changed'] is True 
-                        or divmod((datetime.utcnow() - datetime.strptime(sport_wettpoint_memcache['time_updated'], '%d.%m.%Y %H:%M')).total_seconds(), 60)[0] > 120
+                        or divmod((datetime.utcnow() - datetime.strptime(sport_updated, '%d.%m.%Y %H:%M')).total_seconds(), 60)[0] > sport_minutes_between_checks 
                         ):
-                        logging.debug('Checking '+sport_key+' due to expiration ('+datetime.utcnow().strftime('%d.%m.%Y %H:%M')+') or last change')
+                        logging.debug('Checking '+sport_key+' due to expiration ('+str(sport_minutes_between_checks)+'min since '+sport_updated+') or last change')
                         wettpoint_check_tables_sport.append(sport_key)
                 elif sport_key not in wettpoint_tables_memcache:
                     wettpoint_check_tables_sport.append(sport_key)
@@ -776,7 +779,23 @@ class Scraper(webapp.RequestHandler):
                     # change object created, put in datastore
                     if self.temp_holder != False:
                         self.temp_holder.put()
-                        
+                    
+                    minutes_for_next_check = minutes_until_start / 3
+                    if (
+                        'minutes_between_checks' not in wettpoint_tables_memcache[sport_key] 
+                        or minutes_for_next_check < wettpoint_tables_memcache[sport_key]['minutes_between_checks']
+                        ):
+                        if minutes_for_next_check < 120:
+                            wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = 120
+                        else:
+                            wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = minutes_for_next_check
+                    elif (
+                          'minutes_between_checks' in wettpoint_tables_memcache[sport_key] 
+                          and minutes_for_next_check >= wettpoint_tables_memcache[sport_key]['minutes_between_checks'] 
+                          and wettpoint_tables_memcache[sport_key]['minutes_between_checks'] == 120
+                          ):
+                        wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = minutes_for_next_check
+                    
                     if tip_stake_changed is True:
                         wettpoint_tables_memcache[sport_key]['tip_changed'] = True
                     

@@ -53,6 +53,7 @@ def get_team_aliases(sport, league, team_name):
         return team_aliases, None
     
     # get all team aliases
+    team_id = None
     if team_name in league_team_info['keys']:
         team_id = league_team_info['keys'][team_name]
         if team_id in league_team_info['values']:
@@ -825,6 +826,9 @@ class Scraper(webapp.RequestHandler):
         
         team_home_aliases, team_home_id = get_team_aliases(sport_key, league_key, team_home)
         team_away_aliases, team_away_id = get_team_aliases(sport_key, league_key, team_away)
+        
+        if team_home_id is None or team_away_id is None:
+            return False, False, False
         
         sport = constants.SPORTS[sport_key]['wettpoint']
         

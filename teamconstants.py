@@ -160,9 +160,7 @@ TEAMS = {
                       'TSG Friesenheim'         : '215159',
                       'Bergischer HC'           : '215165',
                       'HC Erlangen'             : '215169',
-                      
-                      'GWD Minden'              : '6613',
-#                       'TSV GWD Minden'          : '', # pinnacle has duplicate team
+                      'TSV GWD Minden'          : '6613',
             },
             'values' : {
                         '6608'                  : ['Flensburg-Handewitt'],
@@ -178,7 +176,7 @@ TEAMS = {
                         '158008'                : ['Füchse Berlin'],
                         '132814'                : ['HBW Balingen/Weilstetten', 'Balingen-Weilsteten'],
                         '215159'                : ['TSG Lu.-Friesenheim'],
-                        '6613'                  : ['TSV GWD Minden', 'Minden-Hannover'],
+                        '6613'                  : ['GWD Minden', 'Minden-Hannover'],
             },
         },
     },

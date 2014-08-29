@@ -22,7 +22,7 @@ LEAGUES = {
         'Bundesliga' : {'pinnacle' : 'Bundesliga', 'wettpoint' : '1. Bundesliga', 'scoreboard' : 'BL'},
     },
     'Handball' : {
-        'Handball Bundesliga' : {'pinnacle' : 'GerBundes 3', 'wettpoint' : '1. Bundesliga', 'scoreboard' : 'Germany Bundesliga'},
+        'Handball Bundesliga' : {'pinnacle' : 'GerBundes 3', 'wettpoint' : '1. Bundesliga', 'scoreboard' : 'germany/bundesliga-1/'},
     },
 }
 
@@ -31,7 +31,7 @@ PINNACLE_FEED = 'pinnaclesports.com'
 WETTPOINT_FEED = 'wettpoint.com'
 # TSN_FEED = 'http://www.tsn.ca/'
 XSCORES_FEED = 'xscores.com'
-BACKUP_SCORES_FEED = 'whatsthescore.com'
+BACKUP_SCORES_FEED = 'scorespro.com'
 
 def get_header():
     header = {}

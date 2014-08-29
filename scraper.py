@@ -392,14 +392,14 @@ class Scraper(webapp.RequestHandler):
     
     def fill_handball_scores(self, archived_tips, scores_by_date, all_tip_check_scores_by_league, sport_key, league_key):
         for tip_instance in all_tip_check_scores_by_league:
-            scoreboard_game_time = tip_instance.date + timedelta(hours = 2)
-            scoreboard_date_string = scoreboard_game_time.strftime('%d-%m-%Y')
+            scoreboard_game_time = tip_instance.date + timedelta(hours = 1)
+            scoreboard_date_string = scoreboard_game_time.strftime('%a %d %b %Y')
                 
-            if not scoreboard_date_string in scores_by_date:
-                scores_by_date[scoreboard_date_string] = []
+            if not tip_instance.game_league in scores_by_date:
+                scores_by_date[tip_instance.game_league] = []
                 
                 logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
-                feed_url = 'http://www.'+constants.BACKUP_SCORES_FEED+'/'+constants.SPORTS[sport_key]['scoreboard']+'/'+scoreboard_date_string+'-games.html'
+                feed_url = 'http://www.'+constants.BACKUP_SCORES_FEED+'/'+constants.SPORTS[sport_key]['scoreboard']+'/'+constants.LEAGUES[sport_key][league_key]['scoreboard']
             
                 self.REQUEST_COUNT[constants.BACKUP_SCORES_FEED] += 1
                 if self.REQUEST_COUNT[constants.BACKUP_SCORES_FEED] > 1:
@@ -409,10 +409,17 @@ class Scraper(webapp.RequestHandler):
                 feed_html.encoding = 'utf-8'
                 soup = BeautifulSoup(feed_html.text)
                 
-                score_tables = soup.find_all('table', {'class' : 'matches-listing'})
-                scores_by_date[scoreboard_date_string] = score_tables
+                results_table = soup.find('div', {'id' : 'national'}).find('table')
+                score_tables = []
+                for results_table_row in results_table.next_siblings:
+                    if isinstance(results_table_row, bs4_Tag) and results_table_row.name == 'div':
+                        score_tables.append(results_table_row)
+                    elif isinstance(results_table_row, bs4_Tag) and results_table_row.name == 'table':
+                        break
+                
+                scores_by_date[tip_instance.game_league] = score_tables
             else:
-                score_tables = scores_by_date[scoreboard_date_string]
+                score_tables = scores_by_date[tip_instance.game_league]
                 
             # remove the game digit before committing (only if scores get successfully scraped)    
             doubleheader_search = re.search('^G(\d+)\s+(.+)', tip_instance.game_team_away)
@@ -424,33 +431,31 @@ class Scraper(webapp.RequestHandler):
             team_home_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_home)[0]
             team_away_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_away)[0]
             
-            scores_rows = None
-            for score_table in score_tables:
-                table_league_name = score_table.find('thead').find('span', {'class' : 'league-name'}).find('h3').find(text=True, recursive=False)
-                if table_league_name is None:
-                    table_league_name = score_table.find('thead').find('a', {'class' : 'league-name'}).find(text=True, recursive=False)
-                
-                table_league_name = table_league_name.strip()
-                
-                if table_league_name == constants.LEAGUES[sport_key][league_key]['scoreboard']:
-                    scores_rows = score_table.select('tr.with-score.is-not-live')
-                    break
+            scores_rows = []
+            correct_date = False
+            for score_table_row in score_tables:
+                row_date = score_table_row.find('li', {'class' : 'ncet_date'})
+                if row_date:
+                    if correct_date is False:
+                        if row_date.get_text().strip() == scoreboard_date_string:
+                            correct_date = True
+                    else:
+                        break
+                elif correct_date is True:
+                    if score_table_row.find('table'):
+                        scores_rows = score_table_row.find_all('table', recursive=False)
+                        break
             
             for score_row in scores_rows:
-                if score_row.find('td', {'class' : 'event-status'}).get_text().strip() != 'FT':
+                if score_row.find('td', {'class' : 'status'}).get_text().strip() != 'FT':
                     continue
                 
-                row_game_time = datetime.strptime(scoreboard_date_string + ' ' + score_row.find('td', {'class' : 'event-time'}).get_text().replace('(','').replace(')','').strip(), '%d-%m-%Y %H:%M')
-
-                for column_team_child in score_row.find('td', {'class' : 'event-home-team'}).children:
-                    if isinstance(column_team_child, bs4_Tag) and column_team_child.has_attr('title'):
-                        row_home_team = column_team_child['title'].strip()
-                        break
-                        
-                for column_team_child in score_row.find('td', {'class' : 'event-away-team'}).children:
-                    if isinstance(column_team_child, bs4_Tag) and column_team_child.has_attr('title'):
-                        row_away_team = column_team_child['title'].strip()
-                        break
+                row_game_time = datetime.strptime(scoreboard_date_string + ' ' + score_row.find('td', {'class' : 'datetime'}).get_text().replace('(','').replace(')','').strip(), '%a %d %b %Y %H:%M')
+                
+                row_teams = score_row.find_all('tr')
+                
+                row_home_team = row_teams[0].find('td', {'class' : 'hometeam'}).get_text().strip()
+                row_away_team = row_teams[1].find('td', {'class' : 'awayteam'}).get_text().strip()
                 
                 # row should have same time (30 minute error window) and team names
                 time_difference = row_game_time - scoreboard_game_time
@@ -458,8 +463,8 @@ class Scraper(webapp.RequestHandler):
                     if row_away_team.strip().upper() in (name.upper() for name in team_away_aliases):
                         if row_home_team.strip().upper() in (name.upper() for name in team_home_aliases):
                             
-                            tip_instance.score_home = score_row.find('td', {'class' : 'event-score-runningscore'}).find('span', {'class' : 'home-runningscore'}).get_text().strip()
-                            tip_instance.score_away = score_row.find('td', {'class' : 'event-score-runningscore'}).find('span', {'class' : 'away-runningscore'}).get_text().strip()
+                            tip_instance.score_home = row_teams[0].find('td', {'class' : 'ts_setB'}).get_text().strip()
+                            tip_instance.score_away = row_teams[1].find('td', {'class' : 'ts_setB'}).get_text().strip()
                             
                             tip_instance.archived = True
                             

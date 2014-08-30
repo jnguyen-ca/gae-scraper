@@ -128,11 +128,14 @@ class Scraper(webapp.RequestHandler):
                     sport_updated = sport_wettpoint_memcache['time_updated']
                     sport_minutes_between_checks = sport_wettpoint_memcache['minutes_between_checks']
                     
-                    if (
-                        sport_wettpoint_memcache['tip_changed'] is True 
-                        or divmod((datetime.utcnow() - datetime.strptime(sport_updated, '%d.%m.%Y %H:%M')).total_seconds(), 60)[0] > sport_minutes_between_checks 
-                        ):
-                        logging.debug('Checking '+sport_key+' due to expiration ('+str(sport_minutes_between_checks)+'min since '+sport_updated+') or last change')
+                    if sport_wettpoint_memcache['tip_changed'] is True:
+                        logging.debug('Checking '+sport_key+' due to last change')
+                        wettpoint_check_tables_sport.append(sport_key)
+                    elif sport_wettpoint_memcache['h2h_limit_reached'] is True:
+                        logging.debug('Checking '+sport_key+' due to H2H limit reached')
+                        wettpoint_check_tables_sport.append(sport_key)
+                    elif divmod((datetime.utcnow() - datetime.strptime(sport_updated, '%d.%m.%Y %H:%M')).total_seconds(), 60)[0] > sport_minutes_between_checks:
+                        logging.debug('Checking '+sport_key+' due to expiration ('+str(sport_minutes_between_checks)+'min since '+sport_updated+')')
                         wettpoint_check_tables_sport.append(sport_key)
                 elif sport_key not in wettpoint_tables_memcache:
                     wettpoint_check_tables_sport.append(sport_key)
@@ -487,9 +490,9 @@ class Scraper(webapp.RequestHandler):
         return archived_tips, scores_by_date
 
     def fill_wettpoint_tips(self, not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league, wettpoint_check_tables_sport):
-        wettpoint_tables_memcache = memcache.get('lastWettpointTablesInfo')
-        if not wettpoint_tables_memcache:
-            wettpoint_tables_memcache = {}
+        self.wettpoint_tables_memcache = memcache.get('lastWettpointTablesInfo')
+        if not self.wettpoint_tables_memcache:
+            self.wettpoint_tables_memcache = {}
         
         wettpoint_current_time = datetime.utcnow() + timedelta(hours = 2)
         wettpoint_current_date = wettpoint_current_time.strftime('%d.%m.%Y')
@@ -519,11 +522,12 @@ class Scraper(webapp.RequestHandler):
             if not re.match('\d{2}\.\d{2}\.\d{4}', first_event_time):
                 first_event_time = wettpoint_current_date + ' ' + first_event_time
             
-            wettpoint_tables_memcache[sport_key] = {
+            self.wettpoint_tables_memcache[sport_key] = {
                                                     'first_event_time' : first_event_time,
                                                     'time_updated' : datetime.utcnow().strftime('%d.%m.%Y %H:%M'),
                                                     'tip_changed' : False,
                                                     'minutes_between_checks' : 120,
+                                                    'h2h_limit_reached' : False,
                                                     }
             
             for league_key in constants.LEAGUES[sport_key]:
@@ -795,23 +799,23 @@ class Scraper(webapp.RequestHandler):
                         self.temp_holder.put()
                     
                     minutes_for_next_check = minutes_until_start / 3
-                    if minutes_for_next_check < wettpoint_tables_memcache[sport_key]['minutes_between_checks']:
+                    if minutes_for_next_check < self.wettpoint_tables_memcache[sport_key]['minutes_between_checks']:
                         if minutes_for_next_check < 120:
-                            wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = 120
+                            self.wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = 120
                         else:
-                            wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = minutes_for_next_check
+                            self.wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = minutes_for_next_check
                     elif (
-                          minutes_for_next_check >= wettpoint_tables_memcache[sport_key]['minutes_between_checks'] 
-                          and wettpoint_tables_memcache[sport_key]['minutes_between_checks'] == 120
+                          minutes_for_next_check >= self.wettpoint_tables_memcache[sport_key]['minutes_between_checks'] 
+                          and self.wettpoint_tables_memcache[sport_key]['minutes_between_checks'] == 120
                           ):
-                        wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = minutes_for_next_check
+                        self.wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = minutes_for_next_check
                     
                     if tip_stake_changed is True:
-                        wettpoint_tables_memcache[sport_key]['tip_changed'] = True
+                        self.wettpoint_tables_memcache[sport_key]['tip_changed'] = True
                     
                     not_elapsed_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
         
-        memcache.set('lastWettpointTablesInfo', wettpoint_tables_memcache)        
+        memcache.set('lastWettpointTablesInfo', self.wettpoint_tables_memcache)
         return not_elapsed_tips_by_sport_league
     
     def matchup_data_finalized(self, team_list, matchup_date, possible_earlier_games):
@@ -830,6 +834,8 @@ class Scraper(webapp.RequestHandler):
     def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away, **kwargs):
         if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
             if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) > 5:
+                if sport_key in self.wettpoint_tables_memcache:
+                    self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] = True
                 return False, False, False
         
         team_home_aliases, team_home_id = get_team_aliases(sport_key, league_key, team_home)

@@ -530,11 +530,6 @@ class Scraper(webapp.RequestHandler):
                 if league_key not in not_elapsed_tips_by_sport_league[sport_key]:
                     continue
                 
-                same_league_games = []
-                same_league_games += not_elapsed_tips_by_sport_league[sport_key][league_key].values()
-                if sport_key in not_archived_tips_by_sport_league and league_key in not_archived_tips_by_sport_league[sport_key]:
-                    same_league_games += not_archived_tips_by_sport_league[sport_key][league_key].values()
-                
                 # now let's fill out those tips!
                 for tip_instance in not_elapsed_tips_by_sport_league[sport_key][league_key].values():
                     tip_stake_changed = False
@@ -561,8 +556,9 @@ class Scraper(webapp.RequestHandler):
                     team_away_aliases = get_team_aliases(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_away)[0]
                     
                     matchup_finalized = False
-                    if minutes_until_start <= 180:
-                        matchup_finalized = self.matchup_data_finalized([tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, same_league_games)
+                    if minutes_until_start <= 720:
+                        if sport_key not in not_archived_tips_by_sport_league or league_key not in not_archived_tips_by_sport_league[sport_key] or len(not_archived_tips_by_sport_league[sport_key][league_key]) < 1:
+                            matchup_finalized = self.matchup_data_finalized([tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, not_elapsed_tips_by_sport_league[sport_key][league_key].values())
                     
 #                     last_game_time = re.sub('[^0-9\.\s:]', '', tip_rows[-1].find_all('td')[6].get_text())
 #                     # format the tip time to a standard
@@ -739,6 +735,7 @@ class Scraper(webapp.RequestHandler):
                                  tip_instance.wettpoint_tip_stake == 0.0 
                                  and (
                                       tip_stake_changed is True 
+                                      or minutes_until_start <= (45 + 5) 
                                       or (
                                           tip_instance.wettpoint_tip_team is None 
                                           and tip_instance.wettpoint_tip_total is None
@@ -772,20 +769,26 @@ class Scraper(webapp.RequestHandler):
                             tip_instance.wettpoint_tip_team = h2h_team
                        
                         if h2h_stake is not False and tip_instance.wettpoint_tip_stake == 0.0:
-                            h2h_stake = (10.0 - h2h_stake) / 10.0
-                            tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
-                            tip_stake_changed = True
+                            if h2h_team is not False:
+                                tip_stake_changed = False
+                                if minutes_until_start <= (45 + 5):
+                                    tip_instance.wettpoint_tip_stake = round(10.0 - h2h_stake)
+                                else:
+                                    tip_instance.wettpoint_tip_stake = None
+                            else:
+                                h2h_stake = (10.0 - h2h_stake) / 10.0
+                                tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
+                                tip_stake_changed = True
                         elif minutes_until_start <= (45 + 5):
+                            tip_stake_changed = False
 #                               and abs(last_minutes_past_start) <= 15
                             if h2h_stake is not False:
-                                if h2h_total is not False and h2h_team is not False:
+                                if h2h_team is not False:
                                     tip_instance.wettpoint_tip_stake = round(10.0 - h2h_stake)
                                 else:
                                     tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
                             else:
                                 tip_instance.wettpoint_tip_stake = 0.0
-                            
-                            tip_stake_changed = True
                             
                     # change object created, put in datastore
                     if self.temp_holder != False:

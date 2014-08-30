@@ -176,7 +176,7 @@ TEAMS = {
                         '158008'                : ['Füchse Berlin'],
                         '132814'                : ['HBW Balingen/Weilstetten', 'Balingen-Weilsteten', 'Balingen/Weilstetten'],
                         '215171'                : ['BBM Bietigheim'],
-                        '215159'                : ['TSG Lu.-Friesenheim'],
+                        '215159'                : ['TSG Lu.-Friesenheim', 'TSG Ludwigshafen-Friesenheim'],
                         '215169'                : ['Erlangen'],
                         '6613'                  : ['GWD Minden', 'Minden-Hannover', 'Minden'],
             },

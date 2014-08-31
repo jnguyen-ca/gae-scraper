@@ -993,12 +993,12 @@ class Scraper(webapp.RequestHandler):
                     continue
                 for tip_instance in not_elapsed_tips_by_sport_league[sport_key][league_key].values():
                     key_string = unicode(tip_instance.key.urlsafe())
-                    if (tip_instance.date - datetime.now()).total_seconds() < 0:
-                        # tip has started, move onto next
-                        tip_instance.elapsed = True
-                        # update this tip
-                        not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
-                        continue
+#                     if (tip_instance.date - datetime.now()).total_seconds() < 0:
+#                         # tip has started, move onto next
+#                         tip_instance.elapsed = True
+#                         # update this tip
+#                         not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
+#                         continue
                     
                     if (
                         tip_instance.wettpoint_tip_stake is None 

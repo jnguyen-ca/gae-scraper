@@ -256,7 +256,7 @@ class Scraper(webapp.RequestHandler):
                     if not scoreboard_date_string in scores_by_date:
                         scores_by_date[scoreboard_date_string] = []
                         
-                        logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
+#                         logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
                         feed_url = 'http://www.'+constants.XSCORES_FEED+'/'+constants.SPORTS[sport_key]['scoreboard']+'/finished_games/'+scoreboard_date_string
                     
                         self.REQUEST_COUNT[constants.XSCORES_FEED] += 1
@@ -401,7 +401,7 @@ class Scraper(webapp.RequestHandler):
             if not tip_instance.game_league in scores_by_date:
                 scores_by_date[tip_instance.game_league] = []
                 
-                logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
+#                 logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
                 feed_url = 'http://www.'+constants.BACKUP_SCORES_FEED+'/'+constants.SPORTS[sport_key]['scoreboard']+'/'+constants.LEAGUES[sport_key][league_key]['scoreboard']
             
                 self.REQUEST_COUNT[constants.BACKUP_SCORES_FEED] += 1
@@ -831,14 +831,12 @@ class Scraper(webapp.RequestHandler):
     
     def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away, **kwargs):
         if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
-            logging.debug('Upcoming connection counts towards limit of '+str(self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)))
+            logging.debug('Upcoming connection counts towards limit. Standing at '+str(self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)))
             if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) > 5:
                 logging.debug('wettpoint limit H2H reached')
                 if sport_key in self.wettpoint_tables_memcache:
                     self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] = True
                 return False, False, False
-        else:
-            logging.debug('A nolimit request')
         
         team_home_aliases, team_home_id = get_team_aliases(sport_key, league_key, team_home)
         team_away_aliases, team_away_id = get_team_aliases(sport_key, league_key, team_away)
@@ -859,7 +857,7 @@ class Scraper(webapp.RequestHandler):
             time.sleep(random.uniform(16.87,30.9))
         
 #         h2h_html = requests.get(h2h_link, headers=constants.HEADER)
-        logging.debug('Connecting to '+h2h_link)
+        logging.info('Connecting to '+h2h_link)
         h2h_html = urlfetch.fetch(h2h_link, headers={ "Accept-Encoding" : "identity" })
         h2h_soup = BeautifulSoup(h2h_html.content).find('div', {'class' : 'inhalt2'})
         
@@ -910,7 +908,7 @@ class Scraper(webapp.RequestHandler):
             mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TOTAL DISCREPANCY' + "\n"
         if h2h_team is not False and h2h_team != tip_instance.wettpoint_tip_team:
             mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TEAM DISCREPANCY' + "\n"
-        if h2h_stake is not False and round(h2h_stake) != tip_instance.wettpoint_tip_stake:
+        if h2h_stake is not False and round(h2h_stake * 10) != tip_instance.wettpoint_tip_stake:
             mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' STAKE DISCREPANCY' + "\n"
         if len(mail_warning) > 0:
             if self.WARNING_MAIL is False:
@@ -1175,7 +1173,7 @@ class Scraper(webapp.RequestHandler):
 #         xml = requests.get(sport_feed, headers=constants.HEADER)
         # use etree for xpath search to easily filter specific leagues
         etree_parser = etree.XMLParser(ns_clean=True,recover=True)
-        logging.debug('Connecting to '+sport_feed)
+        logging.info('Connecting to '+sport_feed)
         pinnacle_xml = urlfetch.fetch(sport_feed)
         lxml_tree = etree.fromstring(pinnacle_xml.content, etree_parser)
         

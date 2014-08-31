@@ -712,9 +712,13 @@ class Scraper(webapp.RequestHandler):
                                 tip_instance = self.create_tip_change_object(tip_instance, 'total', 'stake_total_all', not tip_change_created)
                                 tip_instance = self.create_tip_change_object(tip_instance, 'stake', 'stake_all', not tip_change_created)
                             
-                            if tip_instance.wettpoint_tip_stake is None or tip_instance.wettpoint_tip_stake >= 1.0:
+                            if tip_instance.wettpoint_tip_stake >= 1.0:
                                 tip_stake_changed = True
                                 tip_instance.wettpoint_tip_stake = 0.0
+                            elif tip_instance.wettpoint_tip_stake is None:
+                                if tip_instance.wettpoint_tip_team is None and tip_instance.wettpoint_tip_total is None:
+                                    tip_stake_changed = True
+                                    tip_instance.wettpoint_tip_stake = 0.0
                                 
                             break
                     
@@ -725,27 +729,15 @@ class Scraper(webapp.RequestHandler):
                              or tip_stake_changed is True
                              ) 
                         and (
-                             (
-                              tip_instance.wettpoint_tip_stake is None 
-                              and (
-                                   minutes_until_start <= (45 + 5) 
-                                   or (
-                                      tip_instance.wettpoint_tip_team is None 
-                                      and tip_instance.wettpoint_tip_total is None
-                                      )
-                                   )
+                             tip_instance.wettpoint_tip_stake is None 
+                             or tip_instance.wettpoint_tip_stake == 0.0 
                              )
+                        and (
+                             minutes_until_start <= (45 + 5) 
                              or (
-                                 tip_instance.wettpoint_tip_stake == 0.0 
-                                 and (
-                                      tip_stake_changed is True 
-                                      or minutes_until_start <= (45 + 5) 
-                                      or (
-                                          tip_instance.wettpoint_tip_team is None 
-                                          and tip_instance.wettpoint_tip_total is None
-                                          )
-                                      )
-                                 )
+                                tip_instance.wettpoint_tip_team is None 
+                                and tip_instance.wettpoint_tip_total is None
+                                )
                              )
                         ):
                         nolimit = False
@@ -765,7 +757,7 @@ class Scraper(webapp.RequestHandler):
                         if h2h_team is not False:
                             if (
                                 tip_instance.wettpoint_tip_team is not None 
-                                and tip_instance.wettpoint_tip_team != h2h_total
+                                and tip_instance.wettpoint_tip_team != h2h_team
                                 ):
                                 tip_instance.team_lines = None
                                 tip_instance.spread_no = None
@@ -834,6 +826,7 @@ class Scraper(webapp.RequestHandler):
     def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away, **kwargs):
         if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
             if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) > 5:
+                logging.debug('wettpoint limit H2H reached')
                 if sport_key in self.wettpoint_tables_memcache:
                     self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] = True
                 return False, False, False

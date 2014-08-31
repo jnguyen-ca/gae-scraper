@@ -4,11 +4,13 @@ indexes:
   properties:
   - name: game_league
   - name: date
+    direction: desc
 
 - kind: Tip
   properties:
   - name: game_sport
   - name: date
+    direction: desc
 
 - kind: Tip
   properties:

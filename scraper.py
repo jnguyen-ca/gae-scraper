@@ -725,14 +725,20 @@ class Scraper(webapp.RequestHandler):
                     if (
                         sport_key not in constants.SPORTS_H2H_EXCLUDE 
                         and (
+                             # 1. finalized -> within 12 hours, no running games, no games with either team in an earlier date
+                             # 2. just got changed (into 0.0)
+                             # 3. is about to start (and is either not filled out (None) or has no table info (0.0))
                              matchup_finalized 
-                             or tip_stake_changed is True
+                             or tip_stake_changed is True 
+                             or minutes_until_start <= (45 + 5) 
                              ) 
                         and (
                              tip_instance.wettpoint_tip_stake is None 
                              or tip_instance.wettpoint_tip_stake == 0.0 
                              )
                         and (
+                             # 1. about to start so fill with H2H stake rounded (if team provided)
+                             # 2. first time doing a H2H scrape
                              minutes_until_start <= (45 + 5) 
                              or (
                                 tip_instance.wettpoint_tip_team is None 
@@ -825,11 +831,14 @@ class Scraper(webapp.RequestHandler):
     
     def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away, **kwargs):
         if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
+            logging.debug('Upcoming connection counts towards limit of '+str(self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)))
             if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) > 5:
                 logging.debug('wettpoint limit H2H reached')
                 if sport_key in self.wettpoint_tables_memcache:
                     self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] = True
                 return False, False, False
+        else:
+            logging.debug('A nolimit request')
         
         team_home_aliases, team_home_id = get_team_aliases(sport_key, league_key, team_home)
         team_away_aliases, team_away_id = get_team_aliases(sport_key, league_key, team_away)

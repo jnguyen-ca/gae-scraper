@@ -539,19 +539,18 @@ class Scraper(webapp.RequestHandler):
                     tip_stake_changed = False
                     minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
                     
-                    if minutes_until_start < 0:
-                        # game has already begun, move on to next
-                        tip_instance.elapsed = True
-                        # set tip to be updated
-                        not_elapsed_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
-                        continue
-                    elif (
-                          minutes_until_start < 20 
-                          and tip_instance.wettpoint_tip_stake is not None
-                          ):
-                        # tip has already been filled out and table updated past tip time, move on to next to avoid resetting tip to 0
-                        continue
-                    elif not 'wettpoint' in constants.LEAGUES[tip_instance.game_sport][tip_instance.game_league]:
+                    if tip_instance.wettpoint_tip_stake is not None:
+                        if minutes_until_start < 0:
+                            # game has already begun, move on to next
+                            tip_instance.elapsed = True
+                            # set tip to be updated
+                            not_elapsed_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
+                            continue
+                        elif minutes_until_start < 20:
+                            # tip has already been filled out and table updated past tip time, move on to next to avoid resetting tip to 0
+                            continue
+                    
+                    if not 'wettpoint' in constants.LEAGUES[tip_instance.game_sport][tip_instance.game_league]:
                         # constant missing league identifier?
                         logging.warning('no wettpoint scraping for '+tip_instance.game_league)
                         continue

@@ -676,7 +676,7 @@ class Scraper(webapp.RequestHandler):
                                     tip_instance.wettpoint_tip_stake = tip_stake
                                 
                                 if (
-                                    sport != 'baseball' 
+                                    sport_key not in constants.SPORTS_H2H_EXCLUDE 
                                     and tip_instance.wettpoint_tip_stake % 1 == 0 
                                     and (
                                          matchup_finalized 
@@ -723,7 +723,7 @@ class Scraper(webapp.RequestHandler):
                             break
                     
                     if (
-                        sport != 'baseball' 
+                        sport_key not in constants.SPORTS_H2H_EXCLUDE 
                         and (
                              matchup_finalized 
                              or tip_stake_changed is True
@@ -1248,6 +1248,9 @@ class Scraper(webapp.RequestHandler):
                         continue
                     # also skip grand salami cases
                     elif participant_name_visiting.split(' ')[0].lower() == 'away' and participant_name_home.split(' ')[0].lower() == 'home':
+                        continue
+                    # also skip pinnacle being stupid
+                    elif participant_name_visiting == '2nd Half Wagering' or participant_name_home == '2nd Half Wagering':
                         continue
                     
                     if (

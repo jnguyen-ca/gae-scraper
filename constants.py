@@ -5,10 +5,15 @@ import random
 
 HEADER = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:31.0) Gecko/20100101 Firefox/31.0', 'Accept-Encoding' : 'gzip, deflate'}
 
+SPORTS_H2H_EXCLUDE = ['Baseball', 'Football']
+
 SPORTS = {
 'Baseball'  : {'pinnacle' : 'Baseball', 'wettpoint' : 'baseball', 'scoreboard' : 'baseball'},
 'Soccer'    : {'pinnacle' : 'Soccer', 'wettpoint' : 'fussball', 'scoreboard' : 'soccer'},
-'Handball'  : {'pinnacle' : 'Handball', 'wettpoint' : 'handball', 'scoreboard' : 'handball'}
+'Handball'  : {'pinnacle' : 'Handball', 'wettpoint' : 'handball', 'scoreboard' : 'handball'},
+# 'Hockey'    : {'pinnacle' : 'Hockey', 'wettpoint' : 'eishockey', 'scoreboard' : 'hockey'},
+'Football'  : {'pinnacle' : 'Football', 'wettpoint' : 'football', 'scoreboard' : 'americanfootball'},
+# 'Basketball': {'pinnacle' : 'Basketball', 'wettpoint' : 'basketball', 'scoreboard' : 'basketball'},
 }
 
 LEAGUES = {
@@ -20,10 +25,24 @@ LEAGUES = {
     'Soccer' : {
 #         'MLS Regular Season' : {'pinnacle' : 'USA (MLS)', 'wettpoint' : 'Major League Soccer MLS', 'scoreboard' : 'MLS'},
         'Bundesliga' : {'pinnacle' : 'Bundesliga', 'wettpoint' : '1. Bundesliga', 'scoreboard' : 'BL'},
+        'Premier League' : {'pinnacle' : 'Eng. Premier', 'wettpoint' : 'Premier League', 'scoreboard' : 'PR'},
+        'La Liga' : {'pinnacle' : 'La Liga', 'wettpoint' : 'Primera Division', 'scoreboard' : 'PD'},
+        'Serie A' : {'pinnacle' : 'Serie A', 'wettpoint' : 'Serie A', 'scoreboard' : 'A'},
     },
     'Handball' : {
         'Handball Bundesliga' : {'pinnacle' : 'GerBundes 3', 'wettpoint' : '1. Bundesliga', 'scoreboard' : 'germany/bundesliga-1/'},
     },
+    'Football' : {
+        'NFL' : {'pinnacle' : 'NFL', 'wettpoint' : 'NFL', 'scoreboard' : 'NFL'},
+    },
+#     'Hockey' : {
+#         'NHL' : {},
+#         'KHL' : {},
+#     },
+#     'Basketball' : {
+#         'NBA' : {},
+#         'NCAAB' : {},
+#     },
 }
 
 # use pinnacle sports xml feed as our official game list feed

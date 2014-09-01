@@ -874,7 +874,7 @@ class Scraper(webapp.RequestHandler):
             ):
             h2h_header = h2h_soup.find_all('h3', recursive=False)[1]
             
-            h2h_total_text = h2h_header.find_next_sibling(text=re.compile('Over / Under'))
+            h2h_total_text = h2h_header.find_next_sibling(text=re.compile('Over\s?/\s?Under'))
             if h2h_total_text:
                 h2h_total_text = h2h_total_text.find_next_sibling('b').get_text().strip()
                 if 'UNDER' in h2h_total_text:

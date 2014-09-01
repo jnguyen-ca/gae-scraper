@@ -209,16 +209,19 @@ TEAMS = {
             },
         },
         'Serie A' : {
-############# INCOMPLETE #################
             'keys' : {
                       'AC Milan'            : '728',
+                      'AS Roma'             : '732',
                       'Atalanta'            : '719',
                       'Cagliari'            : '1049',
                       'Cesena'              : '83359',
+                      'Chievo'              : '722',
                       'Empoli'              : '1055',
+                      'Fiorentina'          : '723',
                       'Genoa'               : '1057',
                       'Hellas Verona'       : '736',
                       'Inter Milan'         : '724',
+                      'Juventus'            : '725',
                       'Lazio'               : '726',
                       'Napoli'              : '1058',
                       'Palermo'             : '1056',
@@ -229,6 +232,7 @@ TEAMS = {
                       'Udinese'             : '734',
             },
             'values' : {
+                        '732'   : ['ROMA'],
                         '724'   : ['Inter'],
                         '736'   : ['VERONA'],
             },

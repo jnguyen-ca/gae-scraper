@@ -150,24 +150,28 @@ class Scraper(webapp.RequestHandler):
         for sport_key in constants.SPORTS:
             query = Tip.gql('WHERE elapsed != True AND game_sport = :1', sport_key)
             for tip_instance in query:
+                minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
+                
                 if sport_key not in not_elapsed_tips_by_sport_league:
                     not_elapsed_tips_by_sport_league[sport_key] = {}
                 if tip_instance.game_league not in not_elapsed_tips_by_sport_league[sport_key]:
                     not_elapsed_tips_by_sport_league[sport_key][tip_instance.game_league] = {}
+                    
                 # use cached entity if new or updated by pinnacle scrape
                 key_string = unicode(tip_instance.key.urlsafe())
                 if key_string in new_or_updated_tips:
                     tip_instance = new_or_updated_tips[key_string].get()
-                    not_elapsed_tips_by_sport_league[sport_key][tip_instance.game_league][key_string] = tip_instance
                     
                     if sport_key not in wettpoint_check_tables_sport:
                         logging.debug('Checking '+sport_key+' due to new tip')
                         wettpoint_check_tables_sport.append(sport_key)
-                else:
-                    not_elapsed_tips_by_sport_league[sport_key][tip_instance.game_league][key_string] = tip_instance
+                
+                if minutes_until_start < 0:
+                    tip_instance.elapsed = True
+                  
+                not_elapsed_tips_by_sport_league[sport_key][tip_instance.game_league][key_string] = tip_instance
                     
                 if sport_key not in wettpoint_check_tables_sport:
-                    minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
                     if minutes_until_start <= 180:
                         logging.debug('Checking '+sport_key+' starting within 3 hours')
                         wettpoint_check_tables_sport.append(sport_key)
@@ -540,11 +544,13 @@ class Scraper(webapp.RequestHandler):
                     minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
                     
                     if tip_instance.wettpoint_tip_stake is not None:
-                        if minutes_until_start < 0:
-                            # game has already begun, move on to next
-                            tip_instance.elapsed = True
-                            # set tip to be updated
-                            not_elapsed_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
+#                         if minutes_until_start < 0:
+#                             # game has already begun, move on to next
+#                             tip_instance.elapsed = True
+#                             # set tip to be updated
+#                             not_elapsed_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
+#                             continue
+                        if tip_instance.elapsed is True:
                             continue
                         elif minutes_until_start < 20:
                             # tip has already been filled out and table updated past tip time, move on to next to avoid resetting tip to 0
@@ -999,6 +1005,8 @@ class Scraper(webapp.RequestHandler):
 #                         # update this tip
 #                         not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
 #                         continue
+                    if tip_instance.elapsed is True:
+                        continue
                     
                     if (
                         tip_instance.wettpoint_tip_stake is None 

@@ -67,6 +67,7 @@ class Scraper(webapp.RequestHandler):
     def get(self):
         self.FEED = {}
         self.REQUEST_COUNT = {constants.PINNACLE_FEED : 0, constants.WETTPOINT_FEED: 0, constants.XSCORES_FEED : 0, constants.BACKUP_SCORES_FEED : 0}
+        self.EXECUTION_LOGS = {}
         #sys.stderr.write("ARRRRGHH")
         #sys.stderr.write("\n")
         #reload(sys)
@@ -80,16 +81,22 @@ class Scraper(webapp.RequestHandler):
         urlfetch.set_default_fetch_deadline(30)
         logging.getLogger('requests').setLevel(logging.WARNING) # disable requests library info and debug messages (to replace with my own)
         
+        find_games_start_time = time.time()
+        
         new_or_updated_tips = {}
         try:
             new_or_updated_tips = self.find_games()
         except HTTPException:
             logging.warning('Pinnacle XML feed down')
             
+        self.EXECUTION_LOGS['find_games'] = time.time() - find_games_start_time
+            
         update_tips = self.fill_games(new_or_updated_tips)
         #self.response.out.write(self.print_items())
          
         self.commit_tips(update_tips)
+        
+        self.EXECUTION_LOGS['update_tips'] = time.time() - self.EXECUTION_LOGS['update_tips']
         
         if self.WARNING_MAIL != False:
             mail.send_mail('BlackCanine@gmail.com', 'BlackCanine@gmail.com', 'WARNING Notice', self.WARNING_MAIL)
@@ -111,6 +118,11 @@ class Scraper(webapp.RequestHandler):
             
             self.response.out.write('<br />')
         logging.info(logging_info)
+        
+        logging_info = ''
+        for x in self.EXECUTION_LOGS:
+            logging_info += x + ' : ' + str(self.EXECUTION_LOGS[x]) + '; '
+        logging.info(logging_info)
     
     def commit_tips(self, update_tips):
         ndb.put_multi(update_tips.values())
@@ -118,6 +130,8 @@ class Scraper(webapp.RequestHandler):
     def fill_games(self, new_or_updated_tips):
         """Now with all the games stored as incomplete Tip objects, fill out the lines and stuff
         """
+        query_and_sort_tips_start_time = time.time()
+        
         wettpoint_check_tables_sport = []
         wettpoint_tables_memcache = memcache.get('lastWettpointTablesInfo')
         
@@ -201,14 +215,27 @@ class Scraper(webapp.RequestHandler):
             if sport_key not in not_elapsed_tips_by_sport_league:
                 del wettpoint_check_tables_sport[index]
         
+        self.EXECUTION_LOGS['query_and_sort_tips'] = time.time() - query_and_sort_tips_start_time
+        
+        fill_wettpoint_tips_start_time = time.time()
         not_elapsed_tips_by_sport_league = self.fill_wettpoint_tips(not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league, wettpoint_check_tables_sport)
+        self.EXECUTION_LOGS['fill_wettpoint_tips'] = time.time() - fill_wettpoint_tips_start_time
+        
+        fill_lines_start_time = time.time()
         not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport_league)
+        self.EXECUTION_LOGS['fill_lines'] = time.time() - fill_lines_start_time
+        
+        fill_scores_start_time = time.time()
         
         archived_tips = {}
         try:
             archived_tips = self.fill_scores(not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league)
         except HTTPException:
             logging.warning('Scoreboard feed down')
+            
+        self.EXECUTION_LOGS['fill_scores'] = time.time() - fill_scores_start_time
+        
+        self.EXECUTION_LOGS['update_tips'] = time.time()
             
         update_tips = {}
         for not_elapsed_tips_by_league in not_elapsed_tips_by_sport_league.values():

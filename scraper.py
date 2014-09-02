@@ -78,6 +78,7 @@ class Scraper(webapp.RequestHandler):
         self.PPD_MAIL_BODY = False
         
         urlfetch.set_default_fetch_deadline(30)
+        logging.getLogger('requests').setLevel(logging.WARNING) # disable requests library info and debug messages (to replace with my own)
         
         new_or_updated_tips = {}
         try:
@@ -267,6 +268,7 @@ class Scraper(webapp.RequestHandler):
                         if self.REQUEST_COUNT[constants.XSCORES_FEED] > 1:
                             time.sleep(random.uniform(8.2, 15.5))
                         
+                        logging.info('REQUESTING '+feed_url)
                         feed_html = requests.get(feed_url, headers=constants.get_header())
                         soup = BeautifulSoup(feed_html.text)
                         
@@ -412,6 +414,7 @@ class Scraper(webapp.RequestHandler):
                 if self.REQUEST_COUNT[constants.BACKUP_SCORES_FEED] > 1:
                     time.sleep(random.uniform(8.2, 15.5))
                 
+                logging.info('REQUESTING '+feed_url)
                 feed_html = requests.get(feed_url, headers=constants.get_header())
                 feed_html.encoding = 'utf-8'
                 soup = BeautifulSoup(feed_html.text)
@@ -513,6 +516,7 @@ class Scraper(webapp.RequestHandler):
             if self.REQUEST_COUNT[constants.WETTPOINT_FEED] > 1:
                 time.sleep(random.uniform(9.9,30.1))
             
+            logging.info('REQUESTING '+feed)
             html = requests.get(feed, headers=constants.get_header())
             soup = BeautifulSoup(html.text)
             
@@ -862,7 +866,7 @@ class Scraper(webapp.RequestHandler):
             time.sleep(random.uniform(16.87,30.9))
         
 #         h2h_html = requests.get(h2h_link, headers=constants.HEADER)
-        logging.info('Connecting to '+h2h_link)
+        logging.info('FETCHING REQUEST '+h2h_link)
         h2h_html = urlfetch.fetch(h2h_link, headers={ "Accept-Encoding" : "identity" })
         h2h_soup = BeautifulSoup(h2h_html.content).find('div', {'class' : 'inhalt2'})
         
@@ -1180,7 +1184,7 @@ class Scraper(webapp.RequestHandler):
 #         xml = requests.get(sport_feed, headers=constants.HEADER)
         # use etree for xpath search to easily filter specific leagues
         etree_parser = etree.XMLParser(ns_clean=True,recover=True)
-        logging.info('Connecting to '+sport_feed)
+        logging.info('FETCHING REQUEST '+sport_feed)
         pinnacle_xml = urlfetch.fetch(sport_feed)
         lxml_tree = etree.fromstring(pinnacle_xml.content, etree_parser)
         

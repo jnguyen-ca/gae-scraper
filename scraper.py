@@ -827,6 +827,8 @@ class Scraper(webapp.RequestHandler):
                                     tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
                             else:
                                 tip_instance.wettpoint_tip_stake = 0.0
+                        elif self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] is True:
+                            tip_instance.wettpoint_tip_stake = None
                             
                     # change object created, put in datastore
                     if self.temp_holder != False:

@@ -364,8 +364,8 @@ class Scraper(webapp.RequestHandler):
                         # row should have same time (30 minute error window) and team names
                         time_difference = row_game_time - scoreboard_game_time
                         if abs(divmod(time_difference.total_seconds(), 60)[0]) <= 15:
-                            if row_away_team.strip().upper() in (name.upper() for name in team_away_aliases):
-                                if row_home_team.strip().upper() in (name.upper() for name in team_home_aliases):
+                            if row_away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
+                                if row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
                                     row_game_status = row_columns[score_row_key_indices['Stat']].get_text().strip()
                                     
                                     if row_game_status == 'Fin':
@@ -405,7 +405,7 @@ class Scraper(webapp.RequestHandler):
                                     else:
                                         self.WARNING_MAIL += "\n"
                                     self.WARNING_MAIL += 'Probable ' + str(row_home_team) + ' SCOREBOARD NAMES for ' + league_key + ', ' + sport_key + ' MISMATCH!' + "\n"
-                            elif row_home_team.strip().upper() in (name.upper() for name in team_home_aliases):
+                            elif row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
                                 if self.WARNING_MAIL is False:
                                     self.WARNING_MAIL = ''
                                 else:
@@ -497,8 +497,8 @@ class Scraper(webapp.RequestHandler):
                 # row should have same time (30 minute error window) and team names
                 time_difference = row_game_time - scoreboard_game_time
                 if abs(divmod(time_difference.total_seconds(), 60)[0]) <= 15:
-                    if row_away_team.strip().upper() in (name.upper() for name in team_away_aliases):
-                        if row_home_team.strip().upper() in (name.upper() for name in team_home_aliases):
+                    if row_away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
+                        if row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
                             
                             tip_instance.score_home = row_teams[0].find('td', {'class' : 'ts_setB'}).get_text().strip()
                             tip_instance.score_away = row_teams[1].find('td', {'class' : 'ts_setB'}).get_text().strip()
@@ -654,8 +654,8 @@ class Scraper(webapp.RequestHandler):
                             
                             # finally, are the teams correct?
                             if (
-                                away_team.strip().upper() in (name.upper() for name in team_away_aliases) 
-                                and home_team.strip().upper() in (name.upper() for name in team_home_aliases)
+                                away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases) 
+                                and home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases)
                                 ):
                                 # so now we know that this wettpoint tip (probably) refers to this tip object... yay!
                                 tip_team = columns[1].get_text().strip()
@@ -725,13 +725,13 @@ class Scraper(webapp.RequestHandler):
                                 break
                             # one of the team names matches but the other doesn't, send admin mail to check team names
                             # could either be 1) team name missing or 2) wettpoint has wrong game listed
-                            elif home_team.strip().upper() in (name.upper() for name in team_home_aliases):
+                            elif home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
                                 if self.WARNING_MAIL is False:
                                     self.WARNING_MAIL = ''
                                 else:
                                     self.WARNING_MAIL += "\n"
                                 self.WARNING_MAIL += 'Probable ' + away_team + ' WETTPOINT NAMES for ' + tip_instance.game_league + ', ' + tip_instance.game_sport + ' MISMATCH!' + "\n"
-                            elif away_team.strip().upper() in (name.upper() for name in team_away_aliases):
+                            elif away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
                                 if self.WARNING_MAIL is False:
                                     self.WARNING_MAIL = ''
                                 else:
@@ -902,8 +902,8 @@ class Scraper(webapp.RequestHandler):
         # ensure teams are correct and we got the right link
         team_links = h2h_soup.find('table').find_all('tr')[-1].find_all('a')
         if (
-            team_links[0].get_text().strip().upper() in (name.upper() for name in team_home_aliases) 
-            and team_links[1].get_text().strip().upper() in (name.upper() for name in team_away_aliases)
+            team_links[0].get_text().strip().upper() in (name_alias.upper() for name_alias in team_home_aliases) 
+            and team_links[1].get_text().strip().upper() in (name_alias.upper() for name_alias in team_away_aliases)
             ):
             h2h_header = h2h_soup.find_all('h3', recursive=False)[1]
             
@@ -1340,30 +1340,30 @@ class Scraper(webapp.RequestHandler):
                                 
                                 team_name_exists = False
                                 for value_team_id, possible_team_aliases in league_team_info['values'].iteritems():
-                                    if participant_name_multi and participant_name_multi in possible_team_aliases:
+                                    if participant_name_multi and participant_name_multi.upper() in (name_alias.upper() for name_alias in possible_team_aliases):
                                         for datastore_name, key_team_id in league_team_info['keys'].iteritems():
                                             if value_team_id == key_team_id:
                                                 team_name_exists = True
                                                 
-                                                if participant_name.upper() == participant_name_visiting.upper():
+                                                if participant_name == participant_name_visiting:
                                                     logging.warning('(3) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+participant_game_string + datastore_name+')')
                                                     participant_name_multi_visiting = datastore_name
                                                     participant_name_visiting = participant_game_string + datastore_name
-                                                elif participant_name.upper() == participant_name_home.upper():
+                                                elif participant_name == participant_name_home:
                                                     logging.warning('(4) Changing pinnacle name ('+participant_name_home+') to datastore ('+participant_game_string + datastore_name+')')
                                                     participant_name_multi_home = datastore_name
                                                     participant_name_home = participant_game_string + datastore_name
                                                 break
                                         break
-                                    elif participant_name in possible_team_aliases:
+                                    elif participant_name.upper() in (name_alias.upper() for name_alias in possible_team_aliases):
                                         for datastore_name, key_team_id in league_team_info['keys'].iteritems():
                                             if value_team_id == key_team_id:
                                                 team_name_exists = True
                                                 
-                                                if participant_name.upper() == participant_name_visiting.upper():
+                                                if participant_name == participant_name_visiting:
                                                     logging.warning('(1) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+datastore_name+')')
                                                     participant_name_visiting = datastore_name
-                                                elif participant_name.upper() == participant_name_home.upper():
+                                                elif participant_name == participant_name_home:
                                                     logging.warning('(2) Changing pinnacle name ('+participant_name_home+') to datastore ('+datastore_name+')')
                                                     participant_name_home = datastore_name
                                                 break

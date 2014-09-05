@@ -1345,11 +1345,11 @@ class Scraper(webapp.RequestHandler):
                                             if value_team_id == key_team_id:
                                                 team_name_exists = True
                                                 
-                                                if participant_name == participant_name_visiting:
+                                                if participant_name.upper() == participant_name_visiting.upper():
                                                     logging.warning('(3) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+participant_game_string + datastore_name+')')
                                                     participant_name_multi_visiting = datastore_name
                                                     participant_name_visiting = participant_game_string + datastore_name
-                                                elif participant_name == participant_name_home:
+                                                elif participant_name.upper() == participant_name_home.upper():
                                                     logging.warning('(4) Changing pinnacle name ('+participant_name_home+') to datastore ('+participant_game_string + datastore_name+')')
                                                     participant_name_multi_home = datastore_name
                                                     participant_name_home = participant_game_string + datastore_name
@@ -1360,10 +1360,10 @@ class Scraper(webapp.RequestHandler):
                                             if value_team_id == key_team_id:
                                                 team_name_exists = True
                                                 
-                                                if participant_name == participant_name_visiting:
+                                                if participant_name.upper() == participant_name_visiting.upper():
                                                     logging.warning('(1) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+datastore_name+')')
                                                     participant_name_visiting = datastore_name
-                                                elif participant_name == participant_name_home:
+                                                elif participant_name.upper() == participant_name_home.upper():
                                                     logging.warning('(2) Changing pinnacle name ('+participant_name_home+') to datastore ('+datastore_name+')')
                                                     participant_name_home = datastore_name
                                                 break

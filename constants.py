@@ -11,7 +11,7 @@ SPORTS = {
 'Baseball'  : {'pinnacle' : 'Baseball', 'wettpoint' : 'baseball', 'scoreboard' : 'baseball'},
 'Soccer'    : {'pinnacle' : 'Soccer', 'wettpoint' : 'fussball', 'scoreboard' : 'soccer'},
 'Handball'  : {'pinnacle' : 'Handball', 'wettpoint' : 'handball', 'scoreboard' : 'handball'},
-# 'Hockey'    : {'pinnacle' : 'Hockey', 'wettpoint' : 'eishockey', 'scoreboard' : 'hockey'},
+'Hockey'    : {'pinnacle' : 'Hockey', 'wettpoint' : 'eishockey', 'scoreboard' : 'hockey'},
 'Football'  : {'pinnacle' : 'Football', 'wettpoint' : 'football', 'scoreboard' : 'americanfootball'},
 # 'Basketball': {'pinnacle' : 'Basketball', 'wettpoint' : 'basketball', 'scoreboard' : 'basketball'},
 }
@@ -35,10 +35,12 @@ LEAGUES = {
     'Football' : {
         'NFL' : {'pinnacle' : 'NFL', 'wettpoint' : 'NFL', 'scoreboard' : 'NFL'},
     },
-#     'Hockey' : {
+    'Hockey' : {
 #         'NHL' : {},
-#         'KHL' : {},
-#     },
+        'KHL' : {'pinnacle' : 'Russia KHL 3', 'wettpoint' : 'Continental League', 'scoreboard' : 'KHL'},
+#         'SEL' : {'pinnacle' : 'Swed Elits 3', 'wettpoint' : 'Elitserien', 'scoreboard' : ''},
+#         'SM-Liiga' : {'pinnacle' : 'Finland SM 3', 'wettpoint' : 'SM Liga', 'scoreboard' : ''},
+    },
 #     'Basketball' : {
 #         'NBA' : {},
 #         'NCAAB' : {},

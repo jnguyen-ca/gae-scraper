@@ -353,4 +353,74 @@ TEAMS = {
             },
         },
     },
+    'Hockey' : {
+        'KHL' : {
+            'keys' : {
+                      # Bobrov divison
+                      'Atlant'                      : '174550',
+                      'Dinamo Minsk'                : '174553',
+                      'Dinamo Riga'                 : '174549',
+                      'Jokerit'                     : '4649',
+                      'Medvescak Zagreb'            : '205839', #change datatstore
+                      'SKA St Petersburg'           : '99847',
+                      'Slovan Bratislava'           : '134210',
+                      # Tarasov division
+                      'Vityaz Chehov'               : '106361',
+                      'Dynamo Moscow'               : '99836',
+                      'Lokomotiv Yaroslavl'         : '99840',
+                      'Severstal Cherepovec'        : '99842',
+                      'Torpedo NN'                  : '152909',
+                      'HC Sochi'                    : '324041',
+                      'CSKA Moscow'                 : '99846',
+                      # Kharlamov division
+                      'Avtomobilist'                : '174552',
+                      'Ak Bars Kazan'               : '99839',
+                      'Lada Togliatti'              : '99837',
+                      'Metallurg Magnitogorsk'      : '99838',
+                      'Neftekhimik Nizhnekamsk'     : '99843',
+                      'Traktor Chelyabinsk'         : '132276', # change datastore
+                      'Yugra'                       : '216748',
+                      # Chernyshev division
+                      'Avangard Omsk'               : '99844',
+                      'Admiral'                     : '300725',
+                      'Amur Khabarovsk'             : '132277',
+                      'Barys Astana'                : '174551',
+                      'Metallurg Novokuznetsk'      : '99841',
+                      'Salavat Ufa'                 : '99848',
+                      'Sibir Novosibirsk'           : '99850',
+            },
+            'values' : {
+                        # Bobrov divison
+                        '174550'    : ['Atlant Mytischi', 'ATLANT MSK.'],
+                        '174553'    : ['Dynamo Minsk', 'DINAMO MN.'],
+                        '174549'    : ['Dynamo Riga', 'DINAMO R.'],
+                        '205839'    : ['KHL Medvescak Zagreb', 'KHL MEDVESCAK Z.', 'KHL Medvescak'],
+                        '99847'     : ['SKA St. Petersburg', 'SKA S.PETERSBURG'],
+                        '134210'    : ['HC Slovan Bratislava', 'HC SL. BRATISLAVA'],
+                        # Tarasov division
+                        '106361'    : ['Vityaz Podolsk Chekhov', 'VITYAZ'],
+                        '99836'     : ['Dynamo Moskva', 'DYNAMO MSK.'],
+                        '99840'     : ['LOKOMOTIV'],
+                        '99842'     : ['Severstal Cherepovets', 'SEVERSTAL'],
+                        '152909'    : ['Torpedo Novgorod', 'TORPEDO'],
+                        '99846'     : ['CSKA Moskva', 'CSKA MSK.'],
+                        # Kharlamov division
+                        '174552'    : ['Avtomobilist Yekaterinburg', 'AVTOMOBILIST EK.'],
+                        '99839'     : ['AK BARS'],
+                        '99837'     : ['LADA T.'],
+                        '99838'     : ['METALLURG MG'],
+                        '99843'     : ['NEFTEKHIMIK'],
+                        '132276'    : ['Traktor Chel', 'TRAKTOR', 'Tractor'],
+                        '216748'    : ['Yugra Khanty-Mansiysk', 'HC YUGRA', 'Ugra', 'HC Ugra'],
+                        # Chernyshev division
+                        '99844'     : ['AVANGARD'],
+                        '300725'    : ['Admiral Vladivostok', 'ADMIRAL VL.'],
+                        '132277'    : ['HC Amur', 'AMUR'],
+                        '174551'    : ['BARYS A.'],
+                        '99841'     : ['METALLURG NK'],
+                        '99848'     : ['Salavat Yulaev Ufa', 'SALAVAT Y.'],
+                        '99850'     : ['SIBIR N.'],
+            },
+        },
+    },
 }

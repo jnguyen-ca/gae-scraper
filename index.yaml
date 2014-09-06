@@ -1,5 +1,7 @@
 indexes:
 
+####### PERSONAL USE #######
+
 - kind: Tip
   properties:
   - name: game_league
@@ -12,34 +14,79 @@ indexes:
   - name: date
     direction: desc
 
+####### END PERSONAL USE #######
+
+####### SCRAPER.FIND_GAMES #######
+
+- kind: Tip
+  properties:
+  - name: date
+  - name: game_league
+  - name: game_sport
+  - name: game_team_away
+  - name: game_team_home
+  - name: elapsed
+
 - kind: Tip
   properties:
   - name: game_league
-  - name: archived
+  - name: game_sport
+  - name: game_team_away
+  - name: game_team_home
   - name: date
+  - name: elapsed
+
+- kind: Tip
+  properties:
+  - name: game_league
+  - name: game_sport
+  - name: game_team_away
+  - name: game_team_home
+  - name: pinnacle_game_no
+  - name: elapsed
+
+####### END SCRAPER.FIND_GAMES #######
+
+####### SCRAPER.FILL_GAMES #######
+
+- kind: Tip
+  properties:
+  - name: game_sport
+  - name: elapsed
   
 - kind: Tip
   properties:
+  - name: elapsed
+  - name: game_league
+  - name: archived
+  
+####### END SCRAPER.FILL_GAMES #######
+
+####### TIPDISPLAY.POST #######
+
+- kind: Tip
+  properties:
   - name: archived
   - name: game_league
   - name: date
 
+####### END TIPDISPLAY.POST #######
+
+####### TIPDISPLAY.LIST_NEXT_GAMES #######
+
 - kind: Tip
   properties:
-  - name: elapsed
   - name: game_league
   - name: archived
+  - name: date
+
+####### END TIPDISPLAY.LIST_NEXT_GAMES #######
 
 - kind: Tip
   properties:
   - name: game_league
   - name: elapsed
   - name: date
-
-- kind: Tip
-  properties:
-  - name: game_sport
-  - name: elapsed
 
 - kind: Tip
   properties:
@@ -135,30 +182,3 @@ indexes:
 # manually, move them above the marker line.  The index.yaml file is
 # automatically uploaded to the admin console when you next deploy
 # your application using appcfg.py.
-
-- kind: Tip
-  properties:
-  - name: date
-  - name: game_league
-  - name: game_sport
-  - name: game_team_away
-  - name: game_team_home
-  - name: elapsed
-
-- kind: Tip
-  properties:
-  - name: game_league
-  - name: game_sport
-  - name: game_team_away
-  - name: game_team_home
-  - name: date
-  - name: elapsed
-
-- kind: Tip
-  properties:
-  - name: game_league
-  - name: game_sport
-  - name: game_team_away
-  - name: game_team_home
-  - name: pinnacle_game_no
-  - name: elapsed

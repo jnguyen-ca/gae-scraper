@@ -810,7 +810,7 @@ class Scraper(webapp.RequestHandler):
                             if h2h_team is not False:
                                 tip_stake_changed = False
 #                                 if minutes_until_start <= (45 + 5):
-                                tip_instance.wettpoint_tip_stake = h2h_stake * -1
+                                tip_instance.wettpoint_tip_stake = (10 - h2h_stake) * -1
 #                                 else:
 #                                     tip_instance.wettpoint_tip_stake = None
                             else:
@@ -822,7 +822,7 @@ class Scraper(webapp.RequestHandler):
 #                               and abs(last_minutes_past_start) <= 15
                             if h2h_stake is not False:
                                 if h2h_team is not False:
-                                    tip_instance.wettpoint_tip_stake = h2h_stake * -1
+                                    tip_instance.wettpoint_tip_stake = (10 - h2h_stake) * -1
                                 else:
                                     tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
                             else:

@@ -827,6 +827,7 @@ class Scraper(webapp.RequestHandler):
                                     else:
                                         tip_instance.wettpoint_tip_stake = (10.0 - h2h_stake) * -1
                                 else:
+                                    h2h_stake = (10.0 - h2h_stake) / 10.0
                                     tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
                             else:
                                 tip_instance.wettpoint_tip_stake = 0.0

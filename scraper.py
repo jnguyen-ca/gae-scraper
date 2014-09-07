@@ -312,9 +312,6 @@ class Scraper(webapp.RequestHandler):
                                 score_header_column_text = score_header_column.get_text().strip()
                                 if score_header_column_text in ['K/O', 'League', 'Stat', 'Home', 'Away', 'FT', 'FINAL', 'R']:
                                     score_row_key_indices[score_header_column_text] = index + index_offset
-                                    
-                                if len(score_row_key_indices) == 7:
-                                    break
                         
                         if len(score_row_key_indices) < 6:
                             logging.warning(sport_key+' score header indices not adding up!')
@@ -378,9 +375,11 @@ class Scraper(webapp.RequestHandler):
                                                 row_away_score = row_columns[score_row_key_indices['R'] - 1].get_text().strip()
                                         else:
                                             row_FT_score = row_columns[score_row_key_indices['FT']].get_text().strip()
+                                            row_FINAL_score = None
                                             if 'FINAL' in score_row_key_indices:
                                                 row_FINAL_score = row_columns[score_row_key_indices['FINAL']].get_text().strip()
                                                 
+                                            if row_FINAL_score is not None and row_FINAL_score != row_FT_score:
                                                 row_scores = row_FINAL_score.split('-')
                                                 if row_FINAL_score != row_FT_score:
                                                     if score_row_key_indices['Home'] < score_row_key_indices['Away']:

@@ -310,13 +310,13 @@ class Scraper(webapp.RequestHandler):
                                 if score_header_column.has_attr('colspan'):
                                     index_offset += int(score_header_column['colspan']) - 1
                                 score_header_column_text = score_header_column.get_text().strip()
-                                if score_header_column_text in ['K/O', 'League', 'Stat', 'Home', 'Away']:
+                                if score_header_column_text in ['K/O', 'League', 'Stat', 'Home', 'Away', 'FT', 'FINAL', 'R']:
                                     score_row_key_indices[score_header_column_text] = index + index_offset
                                     
-                                if len(score_row_key_indices) == 5:
+                                if len(score_row_key_indices) == 7:
                                     break
                         
-                        if len(score_row_key_indices) < 5:
+                        if len(score_row_key_indices) < 6:
                             logging.warning(sport_key+' score header indices not adding up!')
                             break
                         
@@ -369,26 +369,35 @@ class Scraper(webapp.RequestHandler):
                                     row_game_status = row_columns[score_row_key_indices['Stat']].get_text().strip()
                                     
                                     if row_game_status == 'Fin':
-                                        row_game_bolds = score_row.find_all('b')
-                                        row_last_bold = row_game_bolds[-1].get_text().strip()
-                                        
-                                        # should have both sides' scores
-                                        if '-' not in row_last_bold:
+                                        if sport_key == 'Baseball':
                                             if score_row_key_indices['Home'] < score_row_key_indices['Away']:
-                                                row_home_score = row_game_bolds[-2].get_text().strip()
-                                                row_away_score = row_last_bold
+                                                row_home_score = row_columns[score_row_key_indices['R'] - 1].get_text().strip()
+                                                row_away_score = row_columns[score_row_key_indices['R']].get_text().strip()
                                             else:
-                                                row_home_score = row_last_bold
-                                                row_away_score = row_game_bolds[-2].get_text().strip()
+                                                row_home_score = row_columns[score_row_key_indices['R']].get_text().strip()
+                                                row_away_score = row_columns[score_row_key_indices['R'] - 1].get_text().strip()
                                         else:
-                                            row_scores = row_last_bold.split('-')
-                                            if score_row_key_indices['Home'] < score_row_key_indices['Away']:
-                                                row_home_score = row_scores[0].strip()
-                                                row_away_score = row_scores[1].strip()
+                                            row_FT_score = row_columns[score_row_key_indices['FT']].get_text().strip()
+                                            if 'FINAL' in score_row_key_indices:
+                                                row_FINAL_score = row_columns[score_row_key_indices['FINAL']].get_text().strip()
+                                                
+                                                row_scores = row_FINAL_score.split('-')
+                                                if row_FINAL_score != row_FT_score:
+                                                    if score_row_key_indices['Home'] < score_row_key_indices['Away']:
+                                                        row_home_score = row_scores[0].strip() + ' (OT)'
+                                                        row_away_score = row_scores[1].strip() + ' (OT)'
+                                                    else:
+                                                        row_home_score = row_scores[1].strip() + ' (OT)'
+                                                        row_away_score = row_scores[0].strip() + ' (OT)'
                                             else:
-                                                row_home_score = row_scores[1].strip()
-                                                row_away_score = row_scores[0].strip()
-                                        
+                                                row_scores = row_FT_score.split('-')
+                                                if score_row_key_indices['Home'] < score_row_key_indices['Away']:
+                                                    row_home_score = row_scores[0].strip()
+                                                    row_away_score = row_scores[1].strip()
+                                                else:
+                                                    row_home_score = row_scores[1].strip()
+                                                    row_away_score = row_scores[0].strip()
+                                                
                                         tip_instance.score_home = row_home_score
                                         tip_instance.score_away = row_away_score
                                     elif row_game_status != 'Abd' and row_game_status != 'Post' and row_game_status != 'Canc':

@@ -13,6 +13,7 @@ from models import Tip, TipChange
 # from _symtable import LOCAL
 
 from httplib import HTTPException
+from requests.packages.urllib3.exceptions import ProtocolError
 from datetime import datetime, timedelta
 from timeit import itertools
 from bs4 import BeautifulSoup
@@ -86,7 +87,7 @@ class Scraper(webapp.RequestHandler):
         new_or_updated_tips = {}
         try:
             new_or_updated_tips = self.find_games()
-        except HTTPException:
+        except HTTPException, ProtocolError:
             logging.warning('Pinnacle XML feed down')
             
         self.EXECUTION_LOGS['find_games'] = time.time() - find_games_start_time
@@ -230,7 +231,7 @@ class Scraper(webapp.RequestHandler):
         archived_tips = {}
         try:
             archived_tips = self.fill_scores(not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league)
-        except HTTPException:
+        except HTTPException, ProtocolError:
             logging.warning('Scoreboard feed down')
             
         self.EXECUTION_LOGS['fill_scores'] = time.time() - fill_scores_start_time
@@ -297,6 +298,10 @@ class Scraper(webapp.RequestHandler):
                         
                         logging.info('REQUESTING '+feed_url)
                         feed_html = requests.get(feed_url, headers=constants.get_header())
+                        
+                        if feed_html.status_code != 200:
+                            logging.debug('Scores Status Code: '+str(feed_html.status_code))
+                        
                         soup = BeautifulSoup(feed_html.text)
                         
                         scores_rows = None
@@ -450,6 +455,10 @@ class Scraper(webapp.RequestHandler):
                 
                 logging.info('REQUESTING '+feed_url)
                 feed_html = requests.get(feed_url, headers=constants.get_header())
+                
+                if feed_html.status_code != 200:
+                    logging.debug('Handball Status Code: '+str(feed_html.status_code))
+                    
                 feed_html.encoding = 'utf-8'
                 soup = BeautifulSoup(feed_html.text)
                 
@@ -552,6 +561,10 @@ class Scraper(webapp.RequestHandler):
             
             logging.info('REQUESTING '+feed)
             html = requests.get(feed, headers=constants.get_header())
+            
+            if html.status_code != 200:
+                logging.debug('Wettpoint Status Code: '+str(html.status_code))
+                
             soup = BeautifulSoup(html.text)
             
             # get the tip table for this sport
@@ -908,6 +921,10 @@ class Scraper(webapp.RequestHandler):
 #         h2h_html = requests.get(h2h_link, headers=constants.HEADER)
         logging.info('FETCHING REQUEST '+h2h_link)
         h2h_html = urlfetch.fetch(h2h_link, headers={ "Accept-Encoding" : "identity" })
+        
+        if h2h_html.status_code != 200:
+            logging.debug('H2H Status Code: '+str(h2h_html.status_code))
+        
         h2h_soup = BeautifulSoup(h2h_html.content).find('div', {'class' : 'inhalt2'})
         
         # ensure teams are correct and we got the right link
@@ -1226,6 +1243,10 @@ class Scraper(webapp.RequestHandler):
         etree_parser = etree.XMLParser(ns_clean=True,recover=True)
         logging.info('FETCHING REQUEST '+sport_feed)
         pinnacle_xml = urlfetch.fetch(sport_feed)
+        
+        if pinnacle_xml.status_code != 200:
+            logging.debug('Pinnacle Status Code: '+str(pinnacle_xml.status_code))
+            
         lxml_tree = etree.fromstring(pinnacle_xml.content, etree_parser)
         
         # get sports we're interested in listed in constant SPORTS

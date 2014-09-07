@@ -121,7 +121,7 @@ class Scraper(webapp.RequestHandler):
         
         logging_info = ''
         for x in self.EXECUTION_LOGS:
-            logging_info += x + ' : ' + str(self.EXECUTION_LOGS[x]) + '; '
+            logging_info += x + ' : ' + str("{0:.4f}".format(self.EXECUTION_LOGS[x])) + '; '
         logging.info(logging_info)
     
     def commit_tips(self, update_tips):
@@ -195,7 +195,7 @@ class Scraper(webapp.RequestHandler):
                             first_event_UTC_time = datetime.strptime(wettpoint_tables_memcache[sport_key]['first_event_time'], '%d.%m.%Y %H:%M') - timedelta(hours=2)
                             
                             if ((first_event_UTC_time - timedelta(minutes=15)) - datetime.utcnow()).total_seconds() <= 0:
-                                logging.debug('Checking '+sport_key+' for updated table (UTC: '+first_event_UTC_time.strftime('%d.%m.%Y %H:%M')+')')
+                                logging.debug('Checking '+sport_key+' for updated table ('+first_event_UTC_time.strftime('%d.%m.%Y %H:%M')+')')
                                 wettpoint_check_tables_sport.append(sport_key)
                         else:
                             wettpoint_check_tables_sport.append(sport_key)
@@ -381,13 +381,12 @@ class Scraper(webapp.RequestHandler):
                                                 
                                             if row_FINAL_score is not None and row_FINAL_score != row_FT_score:
                                                 row_scores = row_FINAL_score.split('-')
-                                                if row_FINAL_score != row_FT_score:
-                                                    if score_row_key_indices['Home'] < score_row_key_indices['Away']:
-                                                        row_home_score = row_scores[0].strip() + ' (OT)'
-                                                        row_away_score = row_scores[1].strip() + ' (OT)'
-                                                    else:
-                                                        row_home_score = row_scores[1].strip() + ' (OT)'
-                                                        row_away_score = row_scores[0].strip() + ' (OT)'
+                                                if score_row_key_indices['Home'] < score_row_key_indices['Away']:
+                                                    row_home_score = row_scores[0].strip() + ' (OT)'
+                                                    row_away_score = row_scores[1].strip() + ' (OT)'
+                                                else:
+                                                    row_home_score = row_scores[1].strip() + ' (OT)'
+                                                    row_away_score = row_scores[0].strip() + ' (OT)'
                                             else:
                                                 row_scores = row_FT_score.split('-')
                                                 if score_row_key_indices['Home'] < score_row_key_indices['Away']:

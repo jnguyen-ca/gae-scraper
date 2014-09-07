@@ -822,7 +822,7 @@ class Scraper(webapp.RequestHandler):
 #                               and abs(last_minutes_past_start) <= 15
                             if h2h_stake is not False:
                                 if h2h_team is not False:
-                                    if tip_instance.wettpoint_tip_stake is None:
+                                    if tip_instance.wettpoint_tip_stake is None and h2h_total is not False:
                                         tip_instance.wettpoint_tip_stake = round(10.0 - h2h_stake)
                                     else:
                                         tip_instance.wettpoint_tip_stake = (10.0 - h2h_stake) * -1

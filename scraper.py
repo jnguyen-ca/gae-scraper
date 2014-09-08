@@ -379,22 +379,22 @@ class Scraper(webapp.RequestHandler):
                                             if 'FINAL' in score_row_key_indices:
                                                 row_FINAL_score = row_columns[score_row_key_indices['FINAL']].get_text().strip()
                                                 
+                                            row_FT_split_scores = row_FT_score.split('-')
                                             if row_FINAL_score is not None and row_FINAL_score != row_FT_score:
-                                                row_scores = row_FINAL_score.split('-')
+                                                row_FINAL_split_scores = row_FINAL_score.split('-')
                                                 if score_row_key_indices['Home'] < score_row_key_indices['Away']:
-                                                    row_home_score = row_scores[0].strip() + ' (OT)'
-                                                    row_away_score = row_scores[1].strip() + ' (OT)'
+                                                    row_home_score = row_FINAL_split_scores[0].strip() + ' ('+row_FT_split_scores[0].strip()+')'
+                                                    row_away_score = row_FINAL_split_scores[1].strip() + ' ('+row_FT_split_scores[1].strip()+')'
                                                 else:
-                                                    row_home_score = row_scores[1].strip() + ' (OT)'
-                                                    row_away_score = row_scores[0].strip() + ' (OT)'
+                                                    row_home_score = row_FINAL_split_scores[1].strip() + ' ('+row_FT_split_scores[1].strip()+')'
+                                                    row_away_score = row_FINAL_split_scores[0].strip() + ' ('+row_FT_split_scores[0].strip()+')'
                                             else:
-                                                row_scores = row_FT_score.split('-')
                                                 if score_row_key_indices['Home'] < score_row_key_indices['Away']:
-                                                    row_home_score = row_scores[0].strip()
-                                                    row_away_score = row_scores[1].strip()
+                                                    row_home_score = row_FT_split_scores[0].strip()
+                                                    row_away_score = row_FT_split_scores[1].strip()
                                                 else:
-                                                    row_home_score = row_scores[1].strip()
-                                                    row_away_score = row_scores[0].strip()
+                                                    row_home_score = row_FT_split_scores[1].strip()
+                                                    row_away_score = row_FT_split_scores[0].strip()
                                                 
                                         tip_instance.score_home = row_home_score
                                         tip_instance.score_away = row_away_score

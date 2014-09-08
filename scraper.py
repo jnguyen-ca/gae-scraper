@@ -223,14 +223,14 @@ class Scraper(webapp.RequestHandler):
         self.EXECUTION_LOGS['fill_wettpoint_tips'] = time.time() - fill_wettpoint_tips_start_time
         
         fill_lines_start_time = time.time()
-        not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport_league)
+        not_elapsed_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport_league)
         self.EXECUTION_LOGS['fill_lines'] = time.time() - fill_lines_start_time
         
         fill_scores_start_time = time.time()
         
         archived_tips = {}
         try:
-            archived_tips = self.fill_scores(not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league)
+            archived_tips = self.fill_scores(not_archived_tips_by_sport_league)
         except HTTPException, ProtocolError:
             logging.warning('Scoreboard feed down')
             
@@ -251,7 +251,7 @@ class Scraper(webapp.RequestHandler):
             update_tips[tip_instance_key] = tip_instance
         return update_tips
         
-    def fill_scores(self, not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league):
+    def fill_scores(self, not_archived_tips_by_sport_league):
         archived_tips = {}
         for sport_key, sport_leagues in constants.LEAGUES.iteritems():
             scores_by_date = {}
@@ -266,11 +266,6 @@ class Scraper(webapp.RequestHandler):
                     and league_key in not_archived_tips_by_sport_league[sport_key]
                     ):
                     all_tip_check_scores += not_archived_tips_by_sport_league[sport_key][league_key].values()
-                if (
-                    sport_key in possible_ppd_tips_by_sport_league 
-                    and league_key in possible_ppd_tips_by_sport_league[sport_key]
-                    ):
-                    all_tip_check_scores += possible_ppd_tips_by_sport_league[sport_key][league_key].values()
                 
                 league = values['scoreboard']
                 
@@ -1049,7 +1044,7 @@ class Scraper(webapp.RequestHandler):
         return tip_instance
     
     def fill_lines(self, not_elapsed_tips_by_sport_league):
-        possible_ppd_tips_by_sport_league = {}
+#         possible_ppd_tips_by_sport_league = {}
         
         # go through all our sports
         for sport_key in constants.SPORTS:
@@ -1218,13 +1213,19 @@ class Scraper(webapp.RequestHandler):
                         # or game is a duplicate (something changed that i didn't account for)
                         logging.warning('Missing Game: Cannot find '+tip_instance.game_team_home.strip()+' or '+tip_instance.game_team_away.strip()+' for '+key_string)
                         
-                        if tip_instance.game_sport not in possible_ppd_tips_by_sport_league:
-                            possible_ppd_tips_by_sport_league[tip_instance.game_sport] = {}
-                        if tip_instance.game_league not in possible_ppd_tips_by_sport_league[tip_instance.game_sport]:
-                            possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league] = {}
-                        possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league][key_string] = tip_instance
+                        if datetime.now().hour % 2 == 0 and datetime.now().minute < 30:
+                            if self.WARNING_MAIL is False:
+                                self.WARNING_MAIL = ''
+                            else:
+                                self.WARNING_MAIL += "\n"
+                            self.WARNING_MAIL += 'Missing '+tip_instance.date.strftime('%m %d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home
+#                         if tip_instance.game_sport not in possible_ppd_tips_by_sport_league:
+#                             possible_ppd_tips_by_sport_league[tip_instance.game_sport] = {}
+#                         if tip_instance.game_league not in possible_ppd_tips_by_sport_league[tip_instance.game_sport]:
+#                             possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league] = {}
+#                         possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league][key_string] = tip_instance
                     
-        return not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league
+        return not_elapsed_tips_by_sport_league#, possible_ppd_tips_by_sport_league
         
     def find_games(self):
         """Find a list of games (and their details) corresponding to our interests

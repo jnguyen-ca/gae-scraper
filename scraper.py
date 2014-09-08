@@ -1079,6 +1079,13 @@ class Scraper(webapp.RequestHandler):
                         continue
                     
                     if tip_instance.pinnacle_game_no in self.FEED[sport_key][tip_instance.game_league]:
+                        minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
+                        
+                        # games more than 24 hours from start, only fill lines every 4 hours
+                        if minutes_until_start >= 1440:
+                            if datetime.now().hour % 4 != 0 or datetime.now().minute > 30:
+                                continue
+                        
                         # successful pinnacle call + game line exists
                         event_tag = self.FEED[sport_key][tip_instance.game_league][tip_instance.pinnacle_game_no]
                         

@@ -325,13 +325,13 @@ class Scraper(webapp.RequestHandler):
                             scores_by_date[scoreboard_date_string].append(score_row)
                             
                     # remove the game digit before committing (only if scores get successfully scraped)    
-                    doubleheader_search = re.search('^G(\d+)\s+(.+)', tip_instance.game_team_away)
-                    if doubleheader_search:
-                        game_digit = int(doubleheader_search.group(1))
-                        tip_instance.game_team_away = doubleheader_search.group(2).strip()
-                        tip_instance.game_team_home = re.search('^G\d+\s+(.+)', tip_instance.game_team_home).group(1).strip()
-                    else:
-                        game_digit = False
+#                     doubleheader_search = re.search('^G(\d+)\s+(.+)', tip_instance.game_team_away)
+#                     if doubleheader_search:
+#                         game_digit = int(doubleheader_search.group(1))
+#                         tip_instance.game_team_away = doubleheader_search.group(2).strip()
+#                         tip_instance.game_team_home = re.search('^G\d+\s+(.+)', tip_instance.game_team_home).group(1).strip()
+#                     else:
+#                         game_digit = False
                     
                     # get all team aliases
                     team_home_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_home)[0]
@@ -469,11 +469,11 @@ class Scraper(webapp.RequestHandler):
             else:
                 score_tables = scores_by_date[tip_instance.game_league]
                 
-            # remove the game digit before committing (only if scores get successfully scraped)    
-            doubleheader_search = re.search('^G(\d+)\s+(.+)', tip_instance.game_team_away)
-            if doubleheader_search:
-                tip_instance.game_team_away = doubleheader_search.group(2).strip()
-                tip_instance.game_team_home = re.search('^G\d+\s+(.+)', tip_instance.game_team_home).group(1).strip()
+#             # remove the game digit before committing (only if scores get successfully scraped)    
+#             doubleheader_search = re.search('^G(\d+)\s+(.+)', tip_instance.game_team_away)
+#             if doubleheader_search:
+#                 tip_instance.game_team_away = doubleheader_search.group(2).strip()
+#                 tip_instance.game_team_home = re.search('^G\d+\s+(.+)', tip_instance.game_team_home).group(1).strip()
             
             # get all team aliases
             team_home_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_home)[0]

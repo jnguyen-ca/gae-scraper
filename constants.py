@@ -38,8 +38,9 @@ LEAGUES = {
     'Hockey' : {
 #         'NHL' : {},
         'KHL' : {'pinnacle' : 'Russia KHL 3', 'wettpoint' : 'Continental League', 'scoreboard' : 'KHL'},
-#         'SEL' : {'pinnacle' : 'Swed Elits 3', 'wettpoint' : 'Elitserien', 'scoreboard' : ''},
-#         'SM-Liiga' : {'pinnacle' : 'Finland SM 3', 'wettpoint' : 'SM Liga', 'scoreboard' : ''},
+        'Czech Extraliga' : {'pinnacle' : 'CZ ExtraLi 3', 'wettpoint' : 'Extraliga', 'scoreboard' : 'LIG'},
+        'Finnish Elite League' : {'pinnacle' : 'Finland SM 3', 'wettpoint' : 'SM Liga', 'scoreboard' : 'SML'},
+        'SEL' : {'pinnacle' : 'Swed Elits 3', 'wettpoint' : 'Elitserien', 'scoreboard' : 'SHL'},
     },
 #     'Basketball' : {
 #         'NBA' : {},

@@ -79,7 +79,7 @@ class Scraper(webapp.RequestHandler):
         self.MAIL_BODY = False
         self.PPD_MAIL_BODY = False
         
-        urlfetch.set_default_fetch_deadline(30)
+        urlfetch.set_default_fetch_deadline(15)
         logging.getLogger('requests').setLevel(logging.WARNING) # disable requests library info and debug messages (to replace with my own)
         
         find_games_start_time = time.time()
@@ -87,7 +87,7 @@ class Scraper(webapp.RequestHandler):
         new_or_updated_tips = {}
         try:
             new_or_updated_tips = self.find_games()
-        except HTTPException, ProtocolError:
+        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
             logging.warning('Pinnacle XML feed down')
             
         self.EXECUTION_LOGS['find_games'] = time.time() - find_games_start_time
@@ -231,7 +231,7 @@ class Scraper(webapp.RequestHandler):
         archived_tips = {}
         try:
             archived_tips = self.fill_scores(not_archived_tips_by_sport_league)
-        except HTTPException, ProtocolError:
+        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
             logging.warning('Scoreboard feed down')
             
         self.EXECUTION_LOGS['fill_scores'] = time.time() - fill_scores_start_time

@@ -774,80 +774,60 @@ class Scraper(webapp.RequestHandler):
                                 
                             break
                     
-                    if (
-                        sport_key not in constants.SPORTS_H2H_EXCLUDE 
-                        and (
-                             # 1. finalized -> within 12 hours, no running games, no games with either team in an earlier date
-                             # 2. just got changed (into 0.0)
-                             # 3. is about to start (and is either not filled out (None) or has no table info (0.0))
-                             matchup_finalized 
-                             or tip_stake_changed is True 
-                             or minutes_until_start <= (45 + 5) 
-                             ) 
-                        and (
-                             tip_instance.wettpoint_tip_stake is None 
-                             or tip_instance.wettpoint_tip_stake <= 0.0 
-                             )
-                        and (
-                             # 1. about to start so fill with H2H stake rounded (if team provided)
-                             # 2. first time doing a H2H scrape
-                             minutes_until_start <= (45 + 5) 
-                             or (
-                                tip_instance.wettpoint_tip_team is None 
-                                and tip_instance.wettpoint_tip_total is None
-                                )
-                             )
+                    if sport_key not in constants.SPORTS_H2H_EXCLUDE:
+                        if ((
+                            tip_instance.wettpoint_tip_stake is None 
+                            and (
+                                 minutes_until_start <= (45 + 5) 
+                                 or (
+                                     matchup_finalized 
+                                     and tip_instance.wettpoint_tip_team is None 
+                                     and tip_instance.wettpoint_tip_total is None
+                                     )
+                                 )
+                            ) or
+                            (
+                             tip_instance.wettpoint_tip_stake == 0.0 
+                             and tip_stake_changed is True 
+                            ) #or
+#                             (
+#                              tip_instance.wettpoint_tip_stake < 0.0 
+#                             )
                         ):
-                        nolimit = False
-                        if minutes_until_start <= (45 + 5):
-                            nolimit = True
-                        h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
-                    
-                        if h2h_total is not False:
-                            if (
-                                tip_instance.wettpoint_tip_total is not None 
-                                and tip_instance.wettpoint_tip_total != h2h_total
-                                ):
-                                tip_instance.total_no = None
-                                tip_instance.total_lines = None
-                            tip_instance.wettpoint_tip_total = h2h_total
-                            
-                        if h2h_team is not False:
-                            if (
-                                tip_instance.wettpoint_tip_team is not None 
-                                and tip_instance.wettpoint_tip_team != h2h_team
-                                ):
-                                tip_instance.team_lines = None
-                                tip_instance.spread_no = None
-                                tip_instance.spread_lines = None
-                            tip_instance.wettpoint_tip_team = h2h_team
-                       
-                        if h2h_stake is not False: #and tip_instance.wettpoint_tip_stake == 0.0:
-                            tip_stake_changed = True
+                            nolimit = False
+                            if minutes_until_start <= (45 + 5):
+                                nolimit = True
+                            h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
+                        
+                            if h2h_total is not False:
+                                if (
+                                    tip_instance.wettpoint_tip_total is not None 
+                                    and tip_instance.wettpoint_tip_total != h2h_total
+                                    ):
+                                    tip_instance.total_no = None
+                                    tip_instance.total_lines = None
+                                tip_instance.wettpoint_tip_total = h2h_total
+                                
                             if h2h_team is not False:
-                                tip_instance.wettpoint_tip_stake = (10.0 - h2h_stake) * -1
-#                                 if minutes_until_start <= (45 + 5):
-#                                 else:
-#                                     tip_instance.wettpoint_tip_stake = None
-                            elif tip_instance.wettpoint_tip_stake == 0.0:
-                                h2h_stake = (10.0 - h2h_stake) / 10.0
-                                tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
-#                         elif minutes_until_start <= (45 + 5):
-#                             tip_stake_changed = False
-# #                               and abs(last_minutes_past_start) <= 15
-#                             if h2h_stake is not False:
-#                                 if h2h_team is not False:
-#                                     if tip_instance.wettpoint_tip_stake is None and h2h_total is not False:
-#                                         tip_instance.wettpoint_tip_stake = round(10.0 - h2h_stake) #remove
-#                                     else:
-#                                         tip_instance.wettpoint_tip_stake = (10.0 - h2h_stake) * -1
-#                                 else:
-#                                     h2h_stake = (10.0 - h2h_stake) / 10.0
-#                                     tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
-#                             else:
-#                                 tip_instance.wettpoint_tip_stake = 0.0
-                        elif self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] is True and tip_instance.wettpoint_tip_stake == 0.0:
-                            tip_instance.wettpoint_tip_stake = None
+                                if (
+                                    tip_instance.wettpoint_tip_team is not None 
+                                    and tip_instance.wettpoint_tip_team != h2h_team
+                                    ):
+                                    tip_instance.team_lines = None
+                                    tip_instance.spread_no = None
+                                    tip_instance.spread_lines = None
+                                tip_instance.wettpoint_tip_team = h2h_team
+                           
+                            if h2h_stake is not False:
+                                if h2h_team is not False:
+                                    tip_instance.wettpoint_tip_stake = (10.0 - h2h_stake) * -1
+                                elif tip_instance.wettpoint_tip_stake == 0.0:
+                                    h2h_stake = (10.0 - h2h_stake) / 10.0
+                                    tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
+                            elif minutes_until_start <= (45 + 5):
+                                tip_instance.wettpoint_tip_stake = 0.0
+                            elif self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] is True and tip_instance.wettpoint_tip_stake == 0.0:
+                                tip_instance.wettpoint_tip_stake = None
                             
                     # change object created, put in datastore
                     if self.temp_holder != False:

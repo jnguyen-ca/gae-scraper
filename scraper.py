@@ -611,9 +611,13 @@ class Scraper(webapp.RequestHandler):
                     team_away_aliases = get_team_aliases(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_away)[0]
                     
                     matchup_finalized = False
-                    if minutes_until_start <= 720:
-                        if sport_key not in not_archived_tips_by_sport_league or league_key not in not_archived_tips_by_sport_league[sport_key] or len(not_archived_tips_by_sport_league[sport_key][league_key]) < 1:
-                            matchup_finalized = self.matchup_data_finalized([tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, not_elapsed_tips_by_sport_league[sport_key][league_key].values())
+                    
+                    possible_earlier_games = []
+                    if sport_key in not_archived_tips_by_sport_league and league_key in not_archived_tips_by_sport_league[sport_key]:
+                        possible_earlier_games += not_archived_tips_by_sport_league[sport_key][league_key].values()
+                    possible_earlier_games += not_elapsed_tips_by_sport_league[sport_key][league_key].values()
+                    
+                    matchup_finalized = self.matchup_data_finalized([tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, possible_earlier_games)
                     
 #                     last_game_time = re.sub('[^0-9\.\s:]', '', tip_rows[-1].find_all('td')[6].get_text())
 #                     # format the tip time to a standard
@@ -730,10 +734,7 @@ class Scraper(webapp.RequestHandler):
                                 if (
                                     sport_key not in constants.SPORTS_H2H_EXCLUDE 
                                     and tip_instance.wettpoint_tip_stake % 1 == 0 
-                                    and (
-                                         matchup_finalized 
-                                         or tip_stake_changed is True 
-                                         )
+                                    and matchup_finalized 
                                     ):
                                     tip_stake_changed = True
                                     tip_instance.wettpoint_tip_stake = self.add_wettpoint_h2h_details(tip_instance)
@@ -775,6 +776,11 @@ class Scraper(webapp.RequestHandler):
                             break
                     
                     if sport_key not in constants.SPORTS_H2H_EXCLUDE:
+                        if tip_instance.wettpoint_tip_stake == 0.0 and tip_stake_changed is True:
+                            if not matchup_finalized:
+                                tip_instance.wettpoint_tip_stake = None
+                                tip_stake_changed = False
+                        
                         if ((
                             tip_instance.wettpoint_tip_stake is None 
                             and (
@@ -856,11 +862,15 @@ class Scraper(webapp.RequestHandler):
     def matchup_data_finalized(self, team_list, matchup_date, possible_earlier_games):
         for check_tip_instance in possible_earlier_games:
             if (
-                check_tip_instance.date < matchup_date 
-                and (
-                     check_tip_instance.game_team_away in team_list 
-                     or check_tip_instance.game_team_home in team_list
+                check_tip_instance.date < (matchup_date - timedelta(hours = 12))
+                or
+                (
+                 check_tip_instance.date < matchup_date 
+                 and (
+                      check_tip_instance.game_team_away in team_list 
+                      or check_tip_instance.game_team_home in team_list
                      )
+                 )
                 ):
                 return False
             
@@ -1064,6 +1074,9 @@ class Scraper(webapp.RequestHandler):
                         # games more than 24 hours from start, only fill lines 3 times daily
                         if minutes_until_start >= 1440:
                             if datetime.now().hour % 9 != 0 or datetime.now().minute >= 30:
+                                continue
+                        elif minutes_until_start > 720:
+                            if datetime.now().minute >= 30:
                                 continue
                         
                         # successful pinnacle call + game line exists

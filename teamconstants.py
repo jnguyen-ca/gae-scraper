@@ -398,7 +398,7 @@ TEAMS = {
                         '99847'     : ['SKA St. Petersburg', 'SKA S.PETERSBURG'],
                         '134210'    : ['HC Slovan Bratislava', 'HC SL. BRATISLAVA'],
                         # Tarasov division
-                        '106361'    : ['Vityaz Podolsk Chekhov', 'VITYAZ'],
+                        '106361'    : ['Vityaz Podolsk Chekhov', 'VITYAZ', 'Vitiaz Chehov'],
                         '99836'     : ['Dynamo Moskva', 'DYNAMO MSK.', 'Dinamo Moscow'],
                         '99840'     : ['LOKOMOTIV'],
                         '99842'     : ['Severstal Cherepovets', 'SEVERSTAL'],
@@ -408,7 +408,7 @@ TEAMS = {
                         '174552'    : ['Avtomobilist Yekaterinburg', 'AVTOMOBILIST EK.'],
                         '99839'     : ['AK BARS'],
                         '99837'     : ['LADA T.'],
-                        '99838'     : ['METALLURG MG'],
+                        '99838'     : ['METALLURG MG', 'Magnitogorsk'],
                         '99843'     : ['NEFTEKHIMIK'],
                         '132276'    : ['Traktor Chel', 'TRAKTOR', 'Tractor'],
                         '216748'    : ['Yugra Khanty-Mansiysk', 'HC YUGRA', 'Ugra', 'HC Ugra'],
@@ -459,7 +459,7 @@ TEAMS = {
                       'Assat'       : '4657',
                       'Ilves'       : '4646',
                       'JYP'         : '4650',
-                      'Sport'       : '6641',
+                      'Sport'       : '6441',
                       'KalPa'       : '6436',
                       'SaiPa'       : '4654',
                       'Pelicans'    : '4653',
@@ -483,8 +483,8 @@ TEAMS = {
                       'HV 71'           : '5094',
                       'Frolunda HC'     : '5107',
                       'Brynas IF'       : '5091',
-                      'Linkopings HC'   : '5096', # pinnacle check
-                      'Djurgardens IF'  : '5092', # pinnacle check
+                      'Linkopings HC'   : '5096',
+                      'Djurgardens IF'  : '5092',
             },
             'values' : {
                         '5097'  : ['Luleå HF'],

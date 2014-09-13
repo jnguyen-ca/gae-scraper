@@ -15,7 +15,7 @@ from models import Tip, TipChange
 from httplib import HTTPException
 from requests.packages.urllib3.exceptions import ProtocolError
 from datetime import datetime, timedelta
-from timeit import itertools
+# from timeit import itertools
 from bs4 import BeautifulSoup
 from bs4.element import Tag as bs4_Tag
 from lxml import etree
@@ -223,14 +223,14 @@ class Scraper(webapp.RequestHandler):
         self.EXECUTION_LOGS['fill_wettpoint_tips'] = time.time() - fill_wettpoint_tips_start_time
         
         fill_lines_start_time = time.time()
-        not_elapsed_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport_league)
+        not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport_league)
         self.EXECUTION_LOGS['fill_lines'] = time.time() - fill_lines_start_time
         
         fill_scores_start_time = time.time()
         
         archived_tips = {}
         try:
-            archived_tips = self.fill_scores(not_archived_tips_by_sport_league)
+            archived_tips = self.fill_scores(not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league)
         except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
             logging.warning('Scoreboard feed down')
             
@@ -251,7 +251,7 @@ class Scraper(webapp.RequestHandler):
             update_tips[tip_instance_key] = tip_instance
         return update_tips
         
-    def fill_scores(self, not_archived_tips_by_sport_league):
+    def fill_scores(self, not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league):
         archived_tips = {}
         for sport_key, sport_leagues in constants.LEAGUES.iteritems():
             scores_by_date = {}
@@ -260,21 +260,32 @@ class Scraper(webapp.RequestHandler):
                 if 'scoreboard' not in values:
                     continue
                 
-                all_tip_check_scores = []
+                all_tip_check_scores_league_values = []
                 if (
                     sport_key in not_archived_tips_by_sport_league 
                     and league_key in not_archived_tips_by_sport_league[sport_key]
                     ):
-                    all_tip_check_scores += not_archived_tips_by_sport_league[sport_key][league_key].values()
+                    all_tip_check_scores_league_values += not_archived_tips_by_sport_league[sport_key][league_key].values()
+                if (
+                    sport_key in possible_ppd_tips_by_sport_league 
+                    and league_key in possible_ppd_tips_by_sport_league[sport_key]
+                    ):
+                    all_tip_check_scores_league_values += possible_ppd_tips_by_sport_league[sport_key][league_key].values()
                 
                 league = values['scoreboard']
                 
                 if sport_key == 'Handball':
-                    archived_tips, scores_by_date = self.fill_handball_scores(archived_tips, scores_by_date, all_tip_check_scores, sport_key, league_key)
+                    archived_tips, scores_by_date = self.fill_handball_scores(
+                                                                              archived_tips, 
+                                                                              scores_by_date, 
+                                                                              sport_key, 
+                                                                              league_key, 
+                                                                              all_tip_check_scores_league_values
+                                                                              )
                     continue
                 
                 # go through all non-archived tips that have already begun
-                for tip_instance in all_tip_check_scores:
+                for tip_instance in all_tip_check_scores_league_values:
                     scoreboard_game_time = tip_instance.date + timedelta(hours = 3)
                     
                     # have we gotten the scoreboard for this day before
@@ -282,6 +293,13 @@ class Scraper(webapp.RequestHandler):
                     scoreboard_date_string = scoreboard_game_time.strftime('%d-%m')
                     
                     if not scoreboard_date_string in scores_by_date:
+                        if (
+                            sport_key in possible_ppd_tips_by_sport_league 
+                            and league_key in possible_ppd_tips_by_sport_league[sport_key] 
+                            and unicode(tip_instance.key.urlsafe()) in possible_ppd_tips_by_sport_league[sport_key][league_key]
+                        ):
+                            continue
+                        
                         scores_by_date[scoreboard_date_string] = []
                         
 #                         logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
@@ -433,8 +451,8 @@ class Scraper(webapp.RequestHandler):
                         
         return archived_tips
     
-    def fill_handball_scores(self, archived_tips, scores_by_date, all_tip_check_scores_by_league, sport_key, league_key):
-        for tip_instance in all_tip_check_scores_by_league:
+    def fill_handball_scores(self, archived_tips, scores_by_date, sport_key, league_key, all_tip_check_scores_league_values):
+        for tip_instance in all_tip_check_scores_league_values:
             scoreboard_game_time = tip_instance.date + timedelta(hours = 1)
             scoreboard_date_string = scoreboard_game_time.strftime('%a %d %b %Y')
                 
@@ -495,7 +513,8 @@ class Scraper(webapp.RequestHandler):
                         break
             
             for score_row in scores_rows:
-                if score_row.find('td', {'class' : 'status'}).get_text().strip() != 'FT':
+                row_status = score_row.find('td', {'class' : 'status'}).get_text().strip()
+                if row_status != 'FT' and row_status != 'Pst':
                     continue
                 
                 row_game_time = datetime.strptime(scoreboard_date_string + ' ' + score_row.find('td', {'class' : 'datetime'}).get_text().replace('(','').replace(')','').strip(), '%a %d %b %Y %H:%M')
@@ -511,8 +530,9 @@ class Scraper(webapp.RequestHandler):
                     if row_away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
                         if row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
                             
-                            tip_instance.score_home = row_teams[0].find('td', {'class' : 'ts_setB'}).get_text().strip()
-                            tip_instance.score_away = row_teams[1].find('td', {'class' : 'ts_setB'}).get_text().strip()
+                            if row_status != 'Pst':
+                                tip_instance.score_home = row_teams[0].find('td', {'class' : 'ts_setB'}).get_text().strip()
+                                tip_instance.score_away = row_teams[1].find('td', {'class' : 'ts_setB'}).get_text().strip()
                             
                             tip_instance.archived = True
                             
@@ -1034,7 +1054,7 @@ class Scraper(webapp.RequestHandler):
         return tip_instance
     
     def fill_lines(self, not_elapsed_tips_by_sport_league):
-#         possible_ppd_tips_by_sport_league = {}
+        possible_ppd_tips_by_sport_league = {}
         
         # go through all our sports
         for sport_key in constants.SPORTS:
@@ -1219,13 +1239,14 @@ class Scraper(webapp.RequestHandler):
                             else:
                                 self.WARNING_MAIL += "\n"
                             self.WARNING_MAIL += 'Missing '+tip_instance.date.strftime('%m %d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home
-#                         if tip_instance.game_sport not in possible_ppd_tips_by_sport_league:
-#                             possible_ppd_tips_by_sport_league[tip_instance.game_sport] = {}
-#                         if tip_instance.game_league not in possible_ppd_tips_by_sport_league[tip_instance.game_sport]:
-#                             possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league] = {}
-#                         possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league][key_string] = tip_instance
+                        
+                        if tip_instance.game_sport not in possible_ppd_tips_by_sport_league:
+                            possible_ppd_tips_by_sport_league[tip_instance.game_sport] = {}
+                        if tip_instance.game_league not in possible_ppd_tips_by_sport_league[tip_instance.game_sport]:
+                            possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league] = {}
+                        possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league][key_string] = tip_instance
                     
-        return not_elapsed_tips_by_sport_league#, possible_ppd_tips_by_sport_league
+        return not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league
         
     def find_games(self):
         """Find a list of games (and their details) corresponding to our interests

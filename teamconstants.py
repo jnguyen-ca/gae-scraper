@@ -394,6 +394,7 @@ TEAMS = {
                         '174550'    : ['Atlant Mytischi', 'ATLANT MSK.'],
                         '174553'    : ['Dynamo Minsk', 'DINAMO MN.'],
                         '174549'    : ['Dynamo Riga', 'DINAMO R.'],
+                        '4649'      : ['Jokerit Helsinki'],
                         '205839'    : ['KHL Medvescak Zagreb', 'KHL MEDVESCAK Z.', 'KHL Medvescak'],
                         '99847'     : ['SKA St. Petersburg', 'SKA S.PETERSBURG'],
                         '134210'    : ['HC Slovan Bratislava', 'HC SL. BRATISLAVA'],
@@ -444,9 +445,10 @@ TEAMS = {
                         '100315'    : ['HC Litvinov', 'HC V LITVINOV'],
                         '100318'    : ['HC E KARLOVY VARY'],
                         '100311'    : ['Bili Tygri Liberec', 'BT LIBEREC'],
-                        '100319'    : ['HC O TRINEC'],
-                        '100309'    : ['HC CSOB PARDUBICE', 'HC CSOB Pojistovna Pardubice'],
-                        '100314'    : ['HC S. PLZEN'],
+                        '100319'    : ['HC O TRINEC', 'HC Trinec'],
+                        '100309'    : ['HC CSOB PARDUBICE', 'HC CSOB Pojistovna Pardubice', 'HC Pardubice'],
+                        '100314'    : ['HC S. PLZEN', 'HC Plzen', 'HC Škoda Plzen'],
+                        '174556'    : ['HC Mlada Boleslav'],
             },
         },
         'Finnish Elite League' : {
@@ -469,6 +471,8 @@ TEAMS = {
             'values' : {
                         '4651'  : ['Kärpät'],
                         '4657'  : ['Ässät'],
+                        '6441'  : ['Vaasan Sport'],
+                        '6436'  : ['KaIPa'],
             },
         },
         'SEL' : {

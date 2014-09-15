@@ -530,7 +530,7 @@ class Scraper(webapp.RequestHandler):
                     if row_away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
                         if row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
                             
-                            if row_status != 'Pst':
+                            if row_status == 'FT':
                                 tip_instance.score_home = row_teams[0].find('td', {'class' : 'ts_setB'}).get_text().strip()
                                 tip_instance.score_away = row_teams[1].find('td', {'class' : 'ts_setB'}).get_text().strip()
                             

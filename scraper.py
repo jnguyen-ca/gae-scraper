@@ -588,7 +588,12 @@ class Scraper(webapp.RequestHandler):
                 time.sleep(random.uniform(9.9,30.1))
             
             logging.info('REQUESTING '+feed)
-            html = requests.get(feed, headers=constants.get_header())
+            
+            try:
+                html = requests.get(feed, headers=constants.get_header())
+            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
+                logging.warning('wettpoint tables down')
+                return not_elapsed_tips_by_sport_league
             
             if html.status_code != 200:
                 logging.debug('Wettpoint Status Code: '+str(html.status_code))
@@ -770,7 +775,12 @@ class Scraper(webapp.RequestHandler):
                                     and matchup_finalized 
                                     ):
                                     tip_stake_changed = True
-                                    tip_instance.wettpoint_tip_stake = self.add_wettpoint_h2h_details(tip_instance)
+                                    try:
+                                        tip_instance.wettpoint_tip_stake = self.add_wettpoint_h2h_details(tip_instance)
+                                    except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
+                                        logging.warning('wettpoint '+sport_key+' H2H down, removing from memcache')
+                                        self.wettpoint_tables_memcache.pop(sport_key, None)
+                                        return not_elapsed_tips_by_sport_league
                                 
                                 break
                             # one of the team names matches but the other doesn't, send admin mail to check team names
@@ -836,7 +846,12 @@ class Scraper(webapp.RequestHandler):
                             nolimit = False
                             if minutes_until_start <= (45 + 5):
                                 nolimit = True
-                            h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
+                            try:
+                                h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
+                            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
+                                logging.warning('wettpoint '+sport_key+' H2H down, removing from memcache')
+                                self.wettpoint_tables_memcache.pop(sport_key, None)
+                                return not_elapsed_tips_by_sport_league
                         
                             if h2h_total is not False:
                                 if (

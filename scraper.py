@@ -69,6 +69,7 @@ class Scraper(webapp.RequestHandler):
         self.FEED = {}
         self.REQUEST_COUNT = {constants.PINNACLE_FEED : 0, constants.WETTPOINT_FEED: 0, constants.XSCORES_FEED : 0, constants.BACKUP_SCORES_FEED : 0}
         self.EXECUTION_LOGS = {}
+        self.DEBUG_EXECUTION_LOGS = {}
         #sys.stderr.write("ARRRRGHH")
         #sys.stderr.write("\n")
         #reload(sys)
@@ -121,9 +122,21 @@ class Scraper(webapp.RequestHandler):
         logging.info(logging_info)
         
         logging_info = ''
+        for x in self.DEBUG_EXECUTION_LOGS:
+            debug_log_time = self.DEBUG_EXECUTION_LOGS[x]
+            if isinstance(self.DEBUG_EXECUTION_LOGS[x], list):
+                if self.DEBUG_EXECUTION_LOGS[x][1] > 0:
+                    debug_log_time = self.DEBUG_EXECUTION_LOGS[x][0] / self.DEBUG_EXECUTION_LOGS[x][1]
+                else:
+                    continue
+            logging_info += x + ' : ' + str("{0:.4f}".format(debug_log_time)) + '; '
+        if len(logging_info) > 0:
+            logging.debug(logging_info)
+        
+        logging_info = ''
         for x in self.EXECUTION_LOGS:
             logging_info += x + ' : ' + str("{0:.4f}".format(self.EXECUTION_LOGS[x])) + '; '
-        logging.info(logging_info)
+        logging.debug(logging_info)
     
     def commit_tips(self, update_tips):
         ndb.put_multi(update_tips.values())
@@ -1422,7 +1435,7 @@ class Scraper(webapp.RequestHandler):
                                             logging.info('(0.2) Changing pinnacle name ('+participant_name_home+') to datastore ('+datastore_name+')')
                                             participant_name_home = datastore_name
                                         break
-                                        
+                                    
                                 if team_name_exists is False:
                                     for value_team_id, possible_team_aliases in league_team_info['values'].iteritems():
                                         if participant_name_multi and participant_name_multi_upper in (name_alias.upper() for name_alias in possible_team_aliases):

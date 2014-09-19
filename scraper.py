@@ -1391,37 +1391,68 @@ class Scraper(webapp.RequestHandler):
                                      and participant_name_multi in league_team_info['keys'].keys()
                                      )
                                 ):
-                                
                                 team_name_exists = False
-                                for value_team_id, possible_team_aliases in league_team_info['values'].iteritems():
-                                    if participant_name_multi and participant_name_multi.upper() in (name_alias.upper() for name_alias in possible_team_aliases):
-                                        for datastore_name, key_team_id in league_team_info['keys'].iteritems():
-                                            if value_team_id == key_team_id:
-                                                team_name_exists = True
-                                                
-                                                if participant_name == participant_name_visiting:
-                                                    logging.info('(3) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+participant_game_string + datastore_name+')')
-                                                    participant_name_multi_visiting = datastore_name
-                                                    participant_name_visiting = participant_game_string + datastore_name
-                                                elif participant_name == participant_name_home:
-                                                    logging.info('(4) Changing pinnacle name ('+participant_name_home+') to datastore ('+participant_game_string + datastore_name+')')
-                                                    participant_name_multi_home = datastore_name
-                                                    participant_name_home = participant_game_string + datastore_name
-                                                break
+                                
+                                participant_name_upper = participant_name.upper()
+                                if participant_name_multi:
+                                    participant_name_multi_upper = participant_name_multi.upper()
+                                
+                                for name_alias in league_team_info['keys']:
+                                    if participant_name_multi and participant_name_multi_upper == name_alias.upper():
+                                        datastore_name = name_alias
+                                        team_name_exists = True
+                                        
+                                        if participant_name == participant_name_visiting:
+                                            logging.info('(0.3) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+participant_game_string + datastore_name+')')
+                                            participant_name_multi_visiting = datastore_name
+                                            participant_name_visiting = participant_game_string + datastore_name
+                                        elif participant_name == participant_name_home:
+                                            logging.info('(0.4) Changing pinnacle name ('+participant_name_home+') to datastore ('+participant_game_string + datastore_name+')')
+                                            participant_name_multi_home = datastore_name
+                                            participant_name_home = participant_game_string + datastore_name
                                         break
-                                    elif participant_name.upper() in (name_alias.upper() for name_alias in possible_team_aliases):
-                                        for datastore_name, key_team_id in league_team_info['keys'].iteritems():
-                                            if value_team_id == key_team_id:
-                                                team_name_exists = True
-                                                
-                                                if participant_name == participant_name_visiting:
-                                                    logging.info('(1) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+datastore_name+')')
-                                                    participant_name_visiting = datastore_name
-                                                elif participant_name == participant_name_home:
-                                                    logging.info('(2) Changing pinnacle name ('+participant_name_home+') to datastore ('+datastore_name+')')
-                                                    participant_name_home = datastore_name
-                                                break
+                                    elif participant_name_upper == name_alias.upper():
+                                        datastore_name = name_alias
+                                        team_name_exists = True
+                                        
+                                        if participant_name == participant_name_visiting:
+                                            logging.info('(0.1) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+datastore_name+')')
+                                            participant_name_visiting = datastore_name
+                                        elif participant_name == participant_name_home:
+                                            logging.info('(0.2) Changing pinnacle name ('+participant_name_home+') to datastore ('+datastore_name+')')
+                                            participant_name_home = datastore_name
                                         break
+                                        
+                                if team_name_exists is False:
+                                    for value_team_id, possible_team_aliases in league_team_info['values'].iteritems():
+                                        if participant_name_multi and participant_name_multi_upper in (name_alias.upper() for name_alias in possible_team_aliases):
+                                            for datastore_name, key_team_id in league_team_info['keys'].iteritems():
+                                                if value_team_id == key_team_id:
+                                                    team_name_exists = True
+                                                    
+                                                    if participant_name == participant_name_visiting:
+                                                        logging.info('(3) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+participant_game_string + datastore_name+')')
+                                                        participant_name_multi_visiting = datastore_name
+                                                        participant_name_visiting = participant_game_string + datastore_name
+                                                    elif participant_name == participant_name_home:
+                                                        logging.info('(4) Changing pinnacle name ('+participant_name_home+') to datastore ('+participant_game_string + datastore_name+')')
+                                                        participant_name_multi_home = datastore_name
+                                                        participant_name_home = participant_game_string + datastore_name
+                                                    break
+                                            break
+                                        elif participant_name_upper in (name_alias.upper() for name_alias in possible_team_aliases):
+                                            for datastore_name, key_team_id in league_team_info['keys'].iteritems():
+                                                if value_team_id == key_team_id:
+                                                    team_name_exists = True
+                                                    
+                                                    if participant_name == participant_name_visiting:
+                                                        logging.info('(1) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+datastore_name+')')
+                                                        participant_name_visiting = datastore_name
+                                                    elif participant_name == participant_name_home:
+                                                        logging.info('(2) Changing pinnacle name ('+participant_name_home+') to datastore ('+datastore_name+')')
+                                                        participant_name_home = datastore_name
+                                                    break
+                                            break
                                 
                                 if team_name_exists is False:
                                     if self.WARNING_MAIL is False:

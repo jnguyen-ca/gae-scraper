@@ -399,7 +399,7 @@ TEAMS = {
                         '99847'     : ['SKA St. Petersburg', 'SKA S.PETERSBURG'],
                         '134210'    : ['HC Slovan Bratislava', 'HC SL. BRATISLAVA'],
                         # Tarasov division
-                        '106361'    : ['Vityaz Podolsk Chekhov', 'VITYAZ', 'Vitiaz Chehov'],
+                        '106361'    : ['Vityaz Podolsk Chekhov', 'VITYAZ', 'Vitiaz Chehov', 'HC Vityaz'],
                         '99836'     : ['Dynamo Moskva', 'DYNAMO MSK.', 'Dinamo Moscow'],
                         '99840'     : ['LOKOMOTIV'],
                         '99842'     : ['Severstal Cherepovets', 'SEVERSTAL'],
@@ -448,7 +448,7 @@ TEAMS = {
                         '100319'    : ['HC O TRINEC', 'HC Trinec'],
                         '100309'    : ['HC CSOB PARDUBICE', 'HC CSOB Pojistovna Pardubice', 'HC Pardubice'],
                         '100314'    : ['HC S. PLZEN', 'HC Plzen', 'HC Škoda Plzen'],
-                        '174556'    : ['HC Mlada Boleslav'],
+                        '174556'    : ['HC Mlada Boleslav', 'HK Mlada Boleslav'],
             },
         },
         'Finnish Elite League' : {

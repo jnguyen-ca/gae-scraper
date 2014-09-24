@@ -88,7 +88,7 @@ class Scraper(webapp.RequestHandler):
         new_or_updated_tips = {}
         try:
             new_or_updated_tips = self.find_games()
-        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
+        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError):
             logging.warning('Pinnacle XML feed down')
             
         self.EXECUTION_LOGS['find_games'] = time.time() - find_games_start_time
@@ -244,7 +244,7 @@ class Scraper(webapp.RequestHandler):
         archived_tips = {}
         try:
             archived_tips = self.fill_scores(not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league)
-        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
+        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError):
             logging.warning('Scoreboard feed down')
             
         self.EXECUTION_LOGS['fill_scores'] = time.time() - fill_scores_start_time
@@ -591,7 +591,7 @@ class Scraper(webapp.RequestHandler):
             
             try:
                 html = requests.get(feed, headers=constants.get_header())
-            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
+            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError):
                 logging.warning('wettpoint tables down')
                 return not_elapsed_tips_by_sport_league
             
@@ -777,7 +777,7 @@ class Scraper(webapp.RequestHandler):
                                     tip_stake_changed = True
                                     try:
                                         tip_instance.wettpoint_tip_stake = self.add_wettpoint_h2h_details(tip_instance)
-                                    except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
+                                    except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError):
                                         logging.warning('wettpoint '+sport_key+' H2H down, removing from memcache')
                                         self.wettpoint_tables_memcache.pop(sport_key, None)
                                         return not_elapsed_tips_by_sport_league
@@ -848,7 +848,7 @@ class Scraper(webapp.RequestHandler):
                                 nolimit = True
                             try:
                                 h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
-                            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError):
+                            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError):
                                 logging.warning('wettpoint '+sport_key+' H2H down, removing from memcache')
                                 self.wettpoint_tables_memcache.pop(sport_key, None)
                                 return not_elapsed_tips_by_sport_league

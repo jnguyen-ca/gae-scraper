@@ -518,12 +518,14 @@ class Scraper(webapp.RequestHandler):
                     if correct_date is False:
                         if row_date.get_text().strip() == scoreboard_date_string:
                             correct_date = True
+                        elif len(scores_rows) > 0:
+                            break
                     else:
                         break
                 elif correct_date is True:
                     if score_table_row.find('table'):
-                        scores_rows = score_table_row.find_all('table', recursive=False)
-                        break
+                        scores_rows += score_table_row.find_all('table', recursive=False)
+                        correct_date = False
             
             for score_row in scores_rows:
                 row_status = score_row.find('td', {'class' : 'status'}).get_text().strip()

@@ -1,8 +1,8 @@
 mapreduce:
-- name: Tip 3.0.0 Patcher
+- name: Tip Binkscraper Patcher
   mapper:
     input_reader: mapreduce.input_readers.DatastoreInputReader
-    handler: binkscraper_patch.patch_3_0_0_tip
+    handler: patches.binkscraper_patch.run_patch
     params:
     - name: entity_kind
       default: models.Tip

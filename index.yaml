@@ -1,5 +1,15 @@
 indexes:
 
+# PATCH #
+
+- kind: Tip
+  properties:
+  - name: game_team_away
+  - name: game_team_home
+  - name: date
+  
+# END PATCH
+
 ####### PERSONAL USE #######
 
 - kind: Tip

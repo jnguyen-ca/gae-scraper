@@ -174,12 +174,25 @@ class Scraper(webapp.RequestHandler):
                 if sport_key not in wettpoint_check_tables_sport:
                     wettpoint_check_tables_sport.append(sport_key)
         
+        off_the_board_tips = {}
         # get all non-elapsed datastore entities so we can store current lines and wettpoint data
         not_elapsed_tips_by_sport_league = {}
         for sport_key in constants.SPORTS:
             query = Tip.gql('WHERE elapsed != True AND game_sport = :1', sport_key)
             for tip_instance in query:
+                key_string = unicode(tip_instance.key.urlsafe())
+                
                 minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
+                
+                if (
+                    tip_instance.pinnacle_game_no.startswith('OTB ') 
+                    and tip_instance.game_team_away.startswith('OTB ') 
+                    and tip_instance.game_team_home.startswith('OTB ')
+                    ):
+                    if minutes_until_start < 0:
+                        tip_instance.elapsed = True
+                        off_the_board_tips[key_string] = tip_instance
+                    continue
                 
                 if sport_key not in not_elapsed_tips_by_sport_league:
                     not_elapsed_tips_by_sport_league[sport_key] = {}
@@ -187,7 +200,6 @@ class Scraper(webapp.RequestHandler):
                     not_elapsed_tips_by_sport_league[sport_key][tip_instance.game_league] = {}
                     
                 # use cached entity if new or updated by pinnacle scrape
-                key_string = unicode(tip_instance.key.urlsafe())
                 if key_string in new_or_updated_tips:
                     tip_instance = new_or_updated_tips[key_string].get()
                     
@@ -239,6 +251,8 @@ class Scraper(webapp.RequestHandler):
         not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport_league)
         self.EXECUTION_LOGS['fill_lines'] = time.time() - fill_lines_start_time
         
+        possible_ppd_tips_by_sport_league = self.check_for_duplicate_tip(possible_ppd_tips_by_sport_league)
+        
         fill_scores_start_time = time.time()
         
         archived_tips = {}
@@ -261,6 +275,10 @@ class Scraper(webapp.RequestHandler):
         for tip_instance_key, tip_instance in archived_tips.iteritems():
             if tip_instance_key in update_tips:
                 raise Exception(tip_instance_key+' duplicate located in archived_tips?!')
+            update_tips[tip_instance_key] = tip_instance
+        for tip_instance_key, tip_instance in off_the_board_tips.iteritems():
+            if tip_instance_key in update_tips:
+                raise Exception(tip_instance_key+' duplicate located in off_the_board_tips?!')
             update_tips[tip_instance_key] = tip_instance
         return update_tips
         
@@ -364,9 +382,20 @@ class Scraper(webapp.RequestHandler):
 #                     else:
 #                         game_digit = False
                     
+                    team_home_name = tip_instance.game_team_home
+                    team_away_name = tip_instance.game_team_away
+                    
+                    if tip_instance.pinnacle_game_no.startswith('OTB '):
+                        OTB_home_search = re.search('^OTB\s+(.+)', team_home_name)
+                        OTB_away_search = re.search('^OTB\s+(.+)', team_away_name)
+                        
+                        if OTB_home_search and OTB_away_search:
+                            team_home_name = OTB_home_search.group(1).strip()
+                            team_away_name = OTB_away_search.group(1).strip()
+                        
                     # get all team aliases
-                    team_home_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_home)[0]
-                    team_away_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_away)[0]
+                    team_home_aliases = get_team_aliases(sport_key, league_key, team_home_name)[0]
+                    team_away_aliases = get_team_aliases(sport_key, league_key, team_away_name)[0]
                         
                     # should now have the scoreboard for this date, if not something went wrong    
                     score_date_rows = None
@@ -432,6 +461,7 @@ class Scraper(webapp.RequestHandler):
                                     elif row_game_status != 'Abd' and row_game_status != 'Post' and row_game_status != 'Canc':
                                         break
                                     
+                                    tip_instance.elapsed = True
                                     tip_instance.archived = True
                                     
                                     # commit
@@ -506,9 +536,20 @@ class Scraper(webapp.RequestHandler):
 #                 tip_instance.game_team_away = doubleheader_search.group(2).strip()
 #                 tip_instance.game_team_home = re.search('^G\d+\s+(.+)', tip_instance.game_team_home).group(1).strip()
             
+            team_home_name = tip_instance.game_team_home
+            team_away_name = tip_instance.game_team_away
+            
+            if tip_instance.pinnacle_game_no.startswith('OTB '):
+                OTB_home_search = re.search('^OTB\s+(.+)', team_home_name)
+                OTB_away_search = re.search('^OTB\s+(.+)', team_away_name)
+                
+                if OTB_home_search and OTB_away_search:
+                    team_home_name = OTB_home_search.group(1).strip()
+                    team_away_name = OTB_away_search.group(1).strip()
+            
             # get all team aliases
-            team_home_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_home)[0]
-            team_away_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_away)[0]
+            team_home_aliases = get_team_aliases(sport_key, league_key, team_home_name)[0]
+            team_away_aliases = get_team_aliases(sport_key, league_key, team_away_name)[0]
             
             scores_rows = []
             correct_date = False
@@ -549,6 +590,7 @@ class Scraper(webapp.RequestHandler):
                                 tip_instance.score_home = row_teams[0].find('td', {'class' : 'ts_setB'}).get_text().strip()
                                 tip_instance.score_away = row_teams[1].find('td', {'class' : 'ts_setB'}).get_text().strip()
                             
+                            tip_instance.elapsed = True
                             tip_instance.archived = True
                             
                             # commit
@@ -1258,7 +1300,6 @@ class Scraper(webapp.RequestHandler):
                                 not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
                                 break
                     else:
-                        #TODO: check for a duplicate game in feed... if one is found, either email admin or delete automatically
                         # either game was taken off the board (for any number of reasons) - could be temporary
                         # or game is a duplicate (something changed that i didn't account for)
                         logging.warning('Missing Game: Cannot find '+tip_instance.game_team_home.strip()+' or '+tip_instance.game_team_away.strip()+' for '+key_string)
@@ -1277,6 +1318,39 @@ class Scraper(webapp.RequestHandler):
                         possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league][key_string] = tip_instance
                     
         return not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league
+        
+    def check_for_duplicate_tip(self, possible_ppd_tips_by_sport_league):
+        for sport_key, possible_ppd_tips_by_league in possible_ppd_tips_by_sport_league.iteritems():
+            for league_key, possible_ppd_tips in possible_ppd_tips_by_league.iteritems():
+                for key_string, tip_instance in possible_ppd_tips.iteritems():
+                    query = Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND date = :3 AND game_team_away = :4 AND game_team_home = :5 AND rot_away = :6 AND rot_home = :7 AND pinnacle_game_no != :8',
+                            tip_instance.game_sport,
+                            tip_instance.game_league,
+                            tip_instance.date,
+                            tip_instance.game_team_away,
+                            tip_instance.game_team_home,
+                            tip_instance.rot_away,
+                            tip_instance.rot_home,
+                            tip_instance.pinnacle_game_no
+                            )
+                    
+                    if query.count() != 0:
+                        if self.WARNING_MAIL is False:
+                            self.WARNING_MAIL = ''
+                        else:
+                            self.WARNING_MAIL += "\n"
+                        
+                        self.WARNING_MAIL += 'Setting duplicate for '+tip_instance.date.strftime('%m %d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home+' ('+tip_instance.pinnacle_game_no+')'
+                        
+                        tip_instance.pinnacle_game_no = 'OTB '+tip_instance.pinnacle_game_no
+                        tip_instance.game_team_away = 'OTB '+tip_instance.game_team_away
+                        tip_instance.game_team_home = 'OTB '+tip_instance.game_team_home
+                        
+                        logging.info('Taken OTB: '+tip_instance.date.strftime('%m %d %H:%M')+' '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)+' ('+tip_instance.pinnacle_game_no+')'
+                        
+                        possible_ppd_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
+                        
+        return possible_ppd_tips_by_sport_league
         
     def find_games(self):
         """Find a list of games (and their details) corresponding to our interests

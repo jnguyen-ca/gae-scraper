@@ -72,6 +72,21 @@ indexes:
   
 ####### END SCRAPER.FILL_GAMES #######
 
+####### SCRAPER.CHECK_FOR_DUPLICATE_TIP #######
+
+- kind: Tip
+  properties:
+  - name: date
+  - name: game_league
+  - name: game_sport
+  - name: game_team_away
+  - name: game_team_home
+  - name: rot_away
+  - name: rot_home
+  - name: pinnacle_game_no
+
+####### END SCRAPER.CHECK_FOR_DUPLICATE_TIP #######
+
 ####### TIPDISPLAY.POST #######
 
 - kind: Tip

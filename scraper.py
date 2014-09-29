@@ -1351,6 +1351,7 @@ class Scraper(webapp.RequestHandler):
                             participant_name_home = unicode(participant_tag.find('participant_name').text)
                             participant_rot_num_home = int(participant_tag.find('rotnum').text)
                             
+                    is_full_game = False
                     for period in event_tag.xpath('./periods/period'):
                         # currently only interested in full game lines
                         if (
@@ -1368,10 +1369,11 @@ class Scraper(webapp.RequestHandler):
 #                                         sys.stderr.write("Add game: "+event_tag.find('gamenumber').string+" for "+participant_name))
 #                                         sys.stderr.write("\n")
                                 self.FEED[sport_key][league_key][event_game_number] = event_tag
+                                is_full_game = True
                             break
                         
                     # not a full game tag, skip
-                    if event_game_number not in self.FEED[sport_key][league_key]:
+                    if is_full_game is not True:
                         continue
                     
                     # skip test cases

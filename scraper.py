@@ -135,7 +135,7 @@ class Scraper(webapp.RequestHandler):
         
         logging_info = ''
         for x in self.EXECUTION_LOGS:
-            logging_info += x + ' : ' + str("{0:.4f}".format(self.EXECUTION_LOGS[x])) + '; '
+            logging_info += x + ' : ' + str("{0:.2f}".format(self.EXECUTION_LOGS[x])) + '; '
         logging.debug(logging_info)
     
     def commit_tips(self, update_tips):
@@ -147,6 +147,7 @@ class Scraper(webapp.RequestHandler):
         query_and_sort_tips_start_time = time.time()
         
         wettpoint_check_tables_sport = []
+        wettpoint_check_tables_sport_debug = {}
         wettpoint_tables_memcache = memcache.get('lastWettpointTablesInfo')
         
         if wettpoint_tables_memcache:
@@ -158,15 +159,16 @@ class Scraper(webapp.RequestHandler):
                     sport_minutes_between_checks = sport_wettpoint_memcache['minutes_between_checks']
                     
                     if sport_wettpoint_memcache['tip_changed'] is True:
-                        logging.debug('Checking '+sport_key+' due to last change')
+                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to last change'
                         wettpoint_check_tables_sport.append(sport_key)
                     elif sport_wettpoint_memcache['h2h_limit_reached'] is True:
-                        logging.debug('Checking '+sport_key+' due to H2H limit reached')
+                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to H2H limit reached'
                         wettpoint_check_tables_sport.append(sport_key)
                     elif divmod((datetime.utcnow() - datetime.strptime(sport_updated, '%d.%m.%Y %H:%M')).total_seconds(), 60)[0] > sport_minutes_between_checks:
-                        logging.debug('Checking '+sport_key+' due to expiration ('+str(sport_minutes_between_checks)+'min since '+sport_updated+')')
+                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to expiration ('+str(sport_minutes_between_checks)+'min since '+sport_updated+')'
                         wettpoint_check_tables_sport.append(sport_key)
                 elif sport_key not in wettpoint_tables_memcache:
+                    wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to missing memcache key'
                     wettpoint_check_tables_sport.append(sport_key)
         else:
             logging.debug('Checking all sports due to memcache expiration')
@@ -204,7 +206,7 @@ class Scraper(webapp.RequestHandler):
                     tip_instance = new_or_updated_tips[key_string].get()
                     
                     if sport_key not in wettpoint_check_tables_sport:
-                        logging.debug('Checking '+sport_key+' due to new tip')
+                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to new tip'
                         wettpoint_check_tables_sport.append(sport_key)
                 
                 if minutes_until_start < 0:
@@ -214,16 +216,17 @@ class Scraper(webapp.RequestHandler):
                     
                 if sport_key not in wettpoint_check_tables_sport:
                     if minutes_until_start <= 180:
-                        logging.debug('Checking '+sport_key+' starting within 3 hours')
+                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' starting within 3 hours'
                         wettpoint_check_tables_sport.append(sport_key)
                     elif tip_instance.wettpoint_tip_stake is None:
                         if wettpoint_tables_memcache and sport_key in wettpoint_tables_memcache:
                             first_event_UTC_time = datetime.strptime(wettpoint_tables_memcache[sport_key]['first_event_time'], '%d.%m.%Y %H:%M') - timedelta(hours=2)
                             
                             if ((first_event_UTC_time - timedelta(minutes=15)) - datetime.utcnow()).total_seconds() <= 0:
-                                logging.debug('Checking '+sport_key+' for updated table ('+first_event_UTC_time.strftime('%d.%m.%Y %H:%M')+')')
+                                wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' for updated table ('+first_event_UTC_time.strftime('%d.%m.%Y %H:%M')+')'
                                 wettpoint_check_tables_sport.append(sport_key)
                         else:
+                            wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to missing memcache key'
                             wettpoint_check_tables_sport.append(sport_key)
                     
         not_archived_tips_by_sport_league = {}
@@ -240,6 +243,8 @@ class Scraper(webapp.RequestHandler):
         for index, sport_key in enumerate(wettpoint_check_tables_sport):
             if sport_key not in not_elapsed_tips_by_sport_league:
                 del wettpoint_check_tables_sport[index]
+            elif sport_key in wettpoint_check_tables_sport_debug:
+                logging.debug(wettpoint_check_tables_sport_debug[sport_key])
         
         self.EXECUTION_LOGS['query_and_sort_tips'] = time.time() - query_and_sort_tips_start_time
         
@@ -251,7 +256,9 @@ class Scraper(webapp.RequestHandler):
         not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport_league)
         self.EXECUTION_LOGS['fill_lines'] = time.time() - fill_lines_start_time
         
+        check_for_duplicate_tip_start_time = time.time()
         not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.check_for_duplicate_tip(not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league)
+        self.EXECUTION_LOGS['check_for_duplicate_tip'] = time.time() - check_for_duplicate_tip_start_time
         
         fill_scores_start_time = time.time()
         
@@ -631,7 +638,6 @@ class Scraper(webapp.RequestHandler):
         # go through all our sports
         for sport_key in constants.SPORTS:
             if sport_key not in not_elapsed_tips_by_sport_league or sport_key not in wettpoint_check_tables_sport:
-                self.wettpoint_tables_memcache.pop(sport_key, None)
                 continue
             
             # get wettpoint tip table page for particular sport

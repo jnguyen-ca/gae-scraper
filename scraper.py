@@ -270,6 +270,7 @@ class Scraper(webapp.RequestHandler):
             for not_elapsed_tips in not_elapsed_tips_by_league.values():
                 for tip_instance_key, tip_instance in not_elapsed_tips.iteritems():
                     if tip_instance_key in update_tips:
+                        logging.error(tip_instance_key+' appears more than once in not_elapsed_tips?!')
                         raise Exception(tip_instance_key+' appears more than once in not_elapsed_tips?!')
                     update_tips[tip_instance_key] = tip_instance
         for tip_instance_key, tip_instance in archived_tips.iteritems():
@@ -279,12 +280,14 @@ class Scraper(webapp.RequestHandler):
                     or tip_instance.game_league not in possible_ppd_tips_by_sport_league[tip_instance.game_sport] 
                     or tip_instance_key not in possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league]
                     ):
+                    logging.error(tip_instance_key+' duplicate located in archived_tips?!')
                     raise Exception(tip_instance_key+' duplicate located in archived_tips?!')
                 else:
                     logging.info('overwriting not elapsed PPD game')
             update_tips[tip_instance_key] = tip_instance
         for tip_instance_key, tip_instance in off_the_board_tips.iteritems():
             if tip_instance_key in update_tips:
+                logging.error(tip_instance_key+' duplicate located in off_the_board_tips?!')
                 raise Exception(tip_instance_key+' duplicate located in off_the_board_tips?!')
             update_tips[tip_instance_key] = tip_instance
         return update_tips
@@ -628,6 +631,7 @@ class Scraper(webapp.RequestHandler):
         # go through all our sports
         for sport_key in constants.SPORTS:
             if sport_key not in not_elapsed_tips_by_sport_league or sport_key not in wettpoint_check_tables_sport:
+                self.wettpoint_tables_memcache.pop(sport_key, None)
                 continue
             
             # get wettpoint tip table page for particular sport
@@ -1617,6 +1621,7 @@ class Scraper(webapp.RequestHandler):
                         else:
                             # should be only one result if it exists
                             if query_count > 1:
+                                logging.error('Multiple matching datastore Tip objects to fill_games query!')
                                 raise Exception('Multiple matching datastore Tip objects to fill_games query!')
                             
                             # tip object exists, grab it
@@ -1641,6 +1646,7 @@ class Scraper(webapp.RequestHandler):
                     else:
                         # should be only one result if it exists
                         if query_count > 1:
+                            logging.error('Multiple matching datastore Tip objects to fill_games query!')
                             raise Exception('Multiple matching datastore Tip objects to fill_games query!')
                         
                         # tip object exists, grab it

@@ -1,5 +1,5 @@
 mapreduce:
-- name: Tip Binkscraper Patcher
+- name: Tip 3.1.0 Patcher
   mapper:
     input_reader: mapreduce.input_readers.DatastoreInputReader
     handler: patches.binkscraper_patch.run_patch

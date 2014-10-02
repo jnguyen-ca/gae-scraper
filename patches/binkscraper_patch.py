@@ -10,6 +10,11 @@ from mapreduce import operation
 from patch_3_1_0_doubleheader_tip import patch_3_1_0_doubleheader_tip
 
 def run_patch(tip_instance):
+    if tip_instance.game_league == 'MLB Regular Season':
+        tip_instance.game_league = 'MLB'
+        yield operation.db.Put(tip_instance)
+        yield operation.counters.Increment('Updated')
+        
     result = patch_3_1_0_doubleheader_tip(tip_instance)
     
     yield operation.counters.Increment(tip_instance.game_sport)

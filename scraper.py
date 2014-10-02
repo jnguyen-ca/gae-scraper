@@ -251,7 +251,7 @@ class Scraper(webapp.RequestHandler):
         not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport_league)
         self.EXECUTION_LOGS['fill_lines'] = time.time() - fill_lines_start_time
         
-        possible_ppd_tips_by_sport_league = self.check_for_duplicate_tip(possible_ppd_tips_by_sport_league)
+        not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.check_for_duplicate_tip(not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league)
         
         fill_scores_start_time = time.time()
         
@@ -274,7 +274,14 @@ class Scraper(webapp.RequestHandler):
                     update_tips[tip_instance_key] = tip_instance
         for tip_instance_key, tip_instance in archived_tips.iteritems():
             if tip_instance_key in update_tips:
-                raise Exception(tip_instance_key+' duplicate located in archived_tips?!')
+                if (
+                    tip_instance.game_sport not in possible_ppd_tips_by_sport_league 
+                    or tip_instance.game_league not in possible_ppd_tips_by_sport_league[tip_instance.game_sport] 
+                    or tip_instance_key not in possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league]
+                    ):
+                    raise Exception(tip_instance_key+' duplicate located in archived_tips?!')
+                else:
+                    logging.info('overwriting not elapsed PPD game')
             update_tips[tip_instance_key] = tip_instance
         for tip_instance_key, tip_instance in off_the_board_tips.iteritems():
             if tip_instance_key in update_tips:
@@ -990,8 +997,8 @@ class Scraper(webapp.RequestHandler):
         # wettpoint h2h link is home team - away team
         h2h_link = 'http://'+sport+'.'+constants.WETTPOINT_FEED+'/h2h/'+team_home_id+'-'+team_away_id+'.html'
         
-        if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
-            self.REQUEST_COUNT[constants.WETTPOINT_FEED] += 1
+#         if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
+        self.REQUEST_COUNT[constants.WETTPOINT_FEED] += 1
         if self.REQUEST_COUNT[constants.WETTPOINT_FEED] > 1:
             time.sleep(random.uniform(16.87,30.9))
         
@@ -1080,13 +1087,14 @@ class Scraper(webapp.RequestHandler):
         key_string = unicode(tip_instance.key.urlsafe())
         
         query = TipChange.gql('WHERE tip_key = :1', key_string)
+        query_count = query.count(limit=1)
         
-        if query.count() == 0 and self.temp_holder is False:
+        if query_count == 0 and self.temp_holder is False:
             tip_change_object = TipChange()
             tip_change_object.changes = 1
             tip_change_object.type = ctype
         else:
-            if query.count() == 0:
+            if query_count == 0:
                 tip_change_object = self.temp_holder
             else:
                 tip_change_object = query.get()
@@ -1319,7 +1327,7 @@ class Scraper(webapp.RequestHandler):
                     
         return not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league
         
-    def check_for_duplicate_tip(self, possible_ppd_tips_by_sport_league):
+    def check_for_duplicate_tip(self, not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league):
         for sport_key, possible_ppd_tips_by_league in possible_ppd_tips_by_sport_league.iteritems():
             for league_key, possible_ppd_tips in possible_ppd_tips_by_league.iteritems():
                 for key_string, tip_instance in possible_ppd_tips.iteritems():
@@ -1334,7 +1342,7 @@ class Scraper(webapp.RequestHandler):
                             tip_instance.pinnacle_game_no
                             )
                     
-                    if query.count() != 0:
+                    if query.count(limit=1) != 0:
                         if self.WARNING_MAIL is False:
                             self.WARNING_MAIL = ''
                         else:
@@ -1348,9 +1356,13 @@ class Scraper(webapp.RequestHandler):
                         
                         logging.info('Taken OTB: '+tip_instance.date.strftime('%m %d %H:%M')+' '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)+' ('+tip_instance.pinnacle_game_no+')'
                         
-                        possible_ppd_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
+                        if key_string not in not_elapsed_tips_by_sport_league[sport_key][league_key]:
+                            logging.warning('duplicated tip not in commit hash')
+                            
+                        not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
+                        possible_ppd_tips_by_sport_league[sport_key][league_key].pop(key_string, None)
                         
-        return possible_ppd_tips_by_sport_league
+        return not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league
         
     def find_games(self):
         """Find a list of games (and their details) corresponding to our interests
@@ -1578,7 +1590,7 @@ class Scraper(webapp.RequestHandler):
                                 )
                     
                     # safety measure to prevent count() function from doing multiple queries
-                    query_count = query.count()
+                    query_count = query.count(limit=2)
                     
                     # if tip object does not yet exist, create it
                     if query_count == 0:
@@ -1593,7 +1605,7 @@ class Scraper(webapp.RequestHandler):
                                         )
                             
                             # safety measure to prevent count() function from doing multiple queries
-                            query_count = query.count()
+                            query_count = query.count(limit=2)
                         
                         if query_count == 0:
                             # no tip object exists yet, create new one

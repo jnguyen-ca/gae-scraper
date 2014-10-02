@@ -19,7 +19,7 @@ def patch_3_1_0_doubleheader_tip(tip_instance):
                     tip_instance.game_team_home
                     )
     
-    if query.count() > 1:
+    if query.count(limit=2) > 1:
         return tip_instance.date.strftime('%d.%m.%Y')+': '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home
             
     return False

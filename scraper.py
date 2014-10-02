@@ -246,7 +246,7 @@ class Scraper(webapp.RequestHandler):
             elif sport_key in wettpoint_check_tables_sport_debug:
                 logging.debug(wettpoint_check_tables_sport_debug[sport_key])
         
-        self.EXECUTION_LOGS['query_and_sort_tips'] = time.time() - query_and_sort_tips_start_time
+        self.EXECUTION_LOGS['query_tips'] = time.time() - query_and_sort_tips_start_time
         
         fill_wettpoint_tips_start_time = time.time()
         not_elapsed_tips_by_sport_league = self.fill_wettpoint_tips(not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league, wettpoint_check_tables_sport)
@@ -258,7 +258,7 @@ class Scraper(webapp.RequestHandler):
         
         check_for_duplicate_tip_start_time = time.time()
         not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.check_for_duplicate_tip(not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league)
-        self.EXECUTION_LOGS['check_for_duplicate_tip'] = time.time() - check_for_duplicate_tip_start_time
+        self.EXECUTION_LOGS['check_duplicate'] = time.time() - check_for_duplicate_tip_start_time
         
         fill_scores_start_time = time.time()
         

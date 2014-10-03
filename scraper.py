@@ -1178,9 +1178,8 @@ class Scraper(webapp.RequestHandler):
                     elif tip_instance.game_league not in self.FEED[sport_key]:
                         continue
                     
+                    minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
                     if tip_instance.pinnacle_game_no in self.FEED[sport_key][tip_instance.game_league]:
-                        minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
-                        
                         # games more than 24 hours from start, only fill lines 3 times daily
                         if minutes_until_start >= 1440:
                             if datetime.now().hour % 9 != 0 or datetime.now().minute >= 30:
@@ -1322,7 +1321,13 @@ class Scraper(webapp.RequestHandler):
                         # or game is a duplicate (something changed that i didn't account for)
                         logging.warning('Missing Game: Cannot find '+tip_instance.game_team_home.strip()+' or '+tip_instance.game_team_away.strip()+' for '+key_string)
                         
-                        if datetime.now().hour % 2 == 0 and datetime.now().minute < 30:
+                        if (
+                            minutes_until_start <= 60 
+                            or (
+                                datetime.now().hour % 2 == 0 
+                                and datetime.now().minute < 30
+                                )
+                            ):
                             if self.WARNING_MAIL is False:
                                 self.WARNING_MAIL = ''
                             else:

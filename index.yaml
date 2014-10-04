@@ -1,6 +1,6 @@
 indexes:
 
-# PATCH #
+# PATCH 3-1-0 v2 #
 
 - kind: Tip
   properties:
@@ -15,6 +15,12 @@ indexes:
 - kind: Tip
   properties:
   - name: game_league
+  - name: date
+    direction: desc
+    
+- kind: Tip
+  properties:
+  - name: game_sport
   - name: date
     direction: desc
 

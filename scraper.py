@@ -88,8 +88,9 @@ class Scraper(webapp.RequestHandler):
         new_or_updated_tips = {}
         try:
             new_or_updated_tips = self.find_games()
-        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError):
+        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
             logging.warning('Pinnacle XML feed down')
+            logging.warning(str(request_error))
             
         self.EXECUTION_LOGS['find_games'] = time.time() - find_games_start_time
             
@@ -245,6 +246,8 @@ class Scraper(webapp.RequestHandler):
                 del wettpoint_check_tables_sport[index]
             elif sport_key in wettpoint_check_tables_sport_debug:
                 logging.debug(wettpoint_check_tables_sport_debug[sport_key])
+            elif len(wettpoint_check_tables_sport_debug) > 0:
+                logging.debug('failed to find '+sport_key+' message')
         
         self.EXECUTION_LOGS['query_tips'] = time.time() - query_and_sort_tips_start_time
         
@@ -265,8 +268,9 @@ class Scraper(webapp.RequestHandler):
         archived_tips = {}
         try:
             archived_tips = self.fill_scores(not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league)
-        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError):
+        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
             logging.warning('Scoreboard feed down')
+            logging.warning(str(request_error))
             
         self.EXECUTION_LOGS['fill_scores'] = time.time() - fill_scores_start_time
         
@@ -652,8 +656,9 @@ class Scraper(webapp.RequestHandler):
             
             try:
                 html = requests.get(feed, headers=constants.get_header())
-            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError):
+            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
                 logging.warning('wettpoint tables down')
+                logging.warning(str(request_error))
                 return not_elapsed_tips_by_sport_league
             
             if html.status_code != 200:
@@ -679,6 +684,7 @@ class Scraper(webapp.RequestHandler):
                                                     'h2h_limit_reached' : False,
                                                     }
             
+            H2H_sport_issue = False
             for league_key in constants.LEAGUES[sport_key]:
                 if league_key not in not_elapsed_tips_by_sport_league[sport_key]:
                     continue
@@ -814,6 +820,13 @@ class Scraper(webapp.RequestHandler):
                                     
                                     tip_instance.wettpoint_tip_total = 'Under'
                                 
+                                initial_negative_tip_stake = None
+                                if (
+                                    tip_instance.wettpoint_tip_stake is not None 
+                                    and tip_instance.wettpoint_tip_stake < 0
+                                    ):
+                                    initial_negative_tip_stake = tip_instance.wettpoint_tip_stake
+                                
                                 # stake tip changed
                                 if (
                                     tip_instance.wettpoint_tip_stake is not None 
@@ -834,14 +847,23 @@ class Scraper(webapp.RequestHandler):
                                     sport_key not in constants.SPORTS_H2H_EXCLUDE 
                                     and tip_instance.wettpoint_tip_stake % 1 == 0 
                                     and matchup_finalized 
+                                    and H2H_sport_issue is not True
                                     ):
                                     tip_stake_changed = True
                                     try:
                                         tip_instance.wettpoint_tip_stake = self.add_wettpoint_h2h_details(tip_instance)
-                                    except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError):
-                                        logging.warning('wettpoint '+sport_key+' H2H down, removing from memcache')
-                                        self.wettpoint_tables_memcache.pop(sport_key, None)
-                                        return not_elapsed_tips_by_sport_league
+                                    except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
+                                        logging.warning('wettpoint '+sport_key+' H2H down, skipping all H2H fetches (1)')
+                                        logging.warning(str(request_error))
+                                        H2H_sport_issue = True
+                                        
+                                if (
+                                    H2H_sport_issue is True 
+                                    and initial_negative_tip_stake is not None 
+                                    and tip_instance.wettpoint_tip_stake >= 0.0
+                                    ):
+                                    logging.warning('Making H2H stake assumption for '+tip_instance.game_league+':'+tip_instance.game_team_away+'@'+tip_instance.game_team_home)
+                                    tip_instance.wettpoint_tip_stake = tip_instance.wettpoint_tip_stake + (initial_negative_tip_stake * -0.1)
                                 
                                 break
                             # one of the team names matches but the other doesn't, send admin mail to check team names
@@ -879,7 +901,7 @@ class Scraper(webapp.RequestHandler):
                                 
                             break
                     
-                    if sport_key not in constants.SPORTS_H2H_EXCLUDE:
+                    if sport_key not in constants.SPORTS_H2H_EXCLUDE and H2H_sport_issue is not True:
                         if tip_instance.wettpoint_tip_stake == 0.0 and tip_stake_changed is True:
                             if not matchup_finalized:
                                 tip_instance.wettpoint_tip_stake = None
@@ -909,10 +931,11 @@ class Scraper(webapp.RequestHandler):
                                 nolimit = True
                             try:
                                 h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
-                            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError):
-                                logging.warning('wettpoint '+sport_key+' H2H down, removing from memcache')
-                                self.wettpoint_tables_memcache.pop(sport_key, None)
-                                return not_elapsed_tips_by_sport_league
+                            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
+                                logging.warning('wettpoint '+sport_key+' H2H down, skipping all H2H fetches (2)')
+                                logging.warning(str(request_error))
+                                h2h_total = h2h_team = h2h_stake = False
+                                H2H_sport_issue = True
                         
                             if h2h_total is not False:
                                 if (
@@ -1343,6 +1366,8 @@ class Scraper(webapp.RequestHandler):
         return not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league
         
     def check_for_duplicate_tip(self, not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league):
+        keys_to_remove = {}
+        
         for sport_key, possible_ppd_tips_by_league in possible_ppd_tips_by_sport_league.iteritems():
             for league_key, possible_ppd_tips in possible_ppd_tips_by_league.iteritems():
                 for key_string, tip_instance in possible_ppd_tips.iteritems():
@@ -1369,14 +1394,19 @@ class Scraper(webapp.RequestHandler):
                         tip_instance.game_team_away = 'OTB '+tip_instance.game_team_away
                         tip_instance.game_team_home = 'OTB '+tip_instance.game_team_home
                         
-                        logging.info('Taken OTB: '+tip_instance.date.strftime('%m %d %H:%M')+' '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)+' ('+tip_instance.pinnacle_game_no+')'
+                        logging.info('Taken OTB: '+tip_instance.date.strftime('%m %d %H:%M')+' '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home+' ('+tip_instance.pinnacle_game_no+')')
                         
                         if key_string not in not_elapsed_tips_by_sport_league[sport_key][league_key]:
                             logging.warning('duplicated tip not in commit hash')
                             
                         not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
-                        possible_ppd_tips_by_sport_league[sport_key][league_key].pop(key_string, None)
-                        
+                        keys_to_remove[key_string] = [sport_key, league_key]
+        
+        for key_string, sport_list in keys_to_remove.iteritems():
+            sport_key = sport_list[0]
+            league_key = sport_list[1]
+            possible_ppd_tips_by_sport_league[sport_key][league_key].pop(key_string, None)
+            
         return not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league
         
     def find_games(self):

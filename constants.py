@@ -19,8 +19,8 @@ SPORTS = {
 LEAGUES = {
    'Baseball' : {
         'MLB Spring Training' : {'pinnacle' : 'MLB Pre Seas', 'wettpoint' : 'MLB Pre Season', 'scoreboard' : 'MLB'},
-        'MLB Regular Season' : {'pinnacle' : 'MLB', 'wettpoint' : 'MLB', 'scoreboard' : 'MLB'},
-#         'NPB Regular Season' : {'pinnacle' : ['Japan CL', 'Japan PL']},
+        'MLB' : {'pinnacle' : 'MLB', 'wettpoint' : 'MLB', 'scoreboard' : ['MLB', 'PO']},
+#         'NPB' : {'pinnacle' : ['Japan CL', 'Japan PL']},
     },
     'Soccer' : {
 #         'MLS Regular Season' : {'pinnacle' : 'USA (MLS)', 'wettpoint' : 'Major League Soccer MLS', 'scoreboard' : 'MLS'},

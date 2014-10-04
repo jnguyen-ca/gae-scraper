@@ -14,6 +14,8 @@ def run_patch(tip_instance):
         tip_instance.game_league = 'MLB'
         yield operation.db.Put(tip_instance)
         yield operation.counters.Increment('Updated')
+    elif tip_instance.game_league == 'MLB':
+        yield operation.counters.Increment('Previously Updated')
         
     result = patch_3_1_0_doubleheader_tip(tip_instance)
     

@@ -7,8 +7,8 @@ TEAMS = {
 # values are corresponding aliases
 # value keys are wettpoint team ids if they exist
     'Baseball' : {
-        'MLB Spring Training' : 'MLB Regular Season',
-        'MLB Regular Season' : {
+        'MLB Spring Training' : 'MLB',
+        'MLB' : {
             'keys' : {
                       # AL East
                      'Baltimore Orioles'         : '01',
@@ -283,7 +283,7 @@ TEAMS = {
                         '6621'                  : ['Gummersbach'],
                         '23447'                 : ['Hamburg'],
                         '6607'                  : ['Kiel'],
-                        '158007'                : ['Rhein-Neckar Löwen', 'Rhein-Neckar-Löwen'],
+                        '158007'                : ['Rhein-Neckar Löwen', 'Rhein-Neckar-Löwen', 'Rhein-Neckar Loewen'],
                         '6606'                  : ['Lemgo'],
                         '23448'                 : ['TuS N-Lübbecke', 'TuS-N-Lubbecke', 'N-Lubbecke'],
                         '6609'                  : ['Magdeburg'],
@@ -386,6 +386,80 @@ TEAMS = {
         },
     },
     'Hockey' : {
+        'NHL' : {
+            'keys' : {
+                      # Atlantic division
+                      'Boston Bruins'           : '5540',
+                      'Buffalo Sabres'          : '5541',
+                      'Detroit Red Wings'       : '5552',
+                      'Florida Panthers'        : '5547',
+                      'Montreal Canadiens'      : '5542',
+                      'Ottawa Senators'         : '5543',
+                      'Tampa Bay Lightning'     : '5548',
+                      'Toronto Maple Leafs'     : '5544',
+                      # Metropolitan division
+                      'Carolina Hurricanes'     : '5546',
+                      'Columbus Blue Jackets'   : '5551',
+                      'New Jersey Devils'       : '5535',
+                      'New York Islanders'      : '5536',
+                      'New York Rangers'        : '5537',
+                      'Philadelphia Flyers'     : '5538',
+                      'Pittsburgh Penguins'     : '5539',
+                      'Washington Capitals'     : '5549',
+                      # Central division
+                      'Chicago Blackhawks'      : '5550',
+                      'Colorado Avalanche'      : '5556',
+                      'Dallas Stars'            : '5561',
+                      'Minnesota Wild'          : '5558',
+                      'Nashville Predators'     : '5553',
+                      'St Louis Blues'          : '5554',
+                      'Winnipeg Jets'           : '5545',
+                      # Pacific division
+                      'Anaheim Ducks'           : '5560',
+                      'Arizona Coyotes'         : '5563',
+                      'Calgary Flames'          : '5555',
+                      'Edmonton Oilers'         : '5557',
+                      'Los Angeles Kings'       : '5562',
+                      'San Jose Sharks'         : '5564',
+                      'Vancouver Canucks'       : '5559',
+            },
+            'values' : {
+                        # Atlantic division
+                        '5540'  : ['BOS BRUINS'],
+                        '5541'  : ['BUF SABRES'],
+                        '5552'  : ['DET RED WINGS'],
+                        '5547'  : ['FLO PANTHERS'],
+                        '5542'  : ['MON CANADIENS'],
+                        '5543'  : ['OTT SENATORS'],
+                        '5548'  : ['TB LIGHTNING'],
+                        '5544'  : ['TOR MAPLE LEAFS'],
+                        # Metropolitan division
+                        '5546'  : ['CAR HURRICANES'],
+                        '5551'  : ['COB BLUE JACKETS'],
+                        '5535'  : ['NJ DEVILS'],
+                        '5536'  : ['NY ISLANDERS'],
+                        '5537'  : ['NY RANGERS'],
+                        '5538'  : ['PHI FLYERS'],
+                        '5539'  : ['PIT PENGUINS'],
+                        '5549'  : ['WAS CAPITALS'],
+                        # Central division
+                        '5550'  : ['CHI BLACKHAWKS'],
+                        '5556'  : ['COL AVALANCHE'],
+                        '5561'  : ['DAL STARS'],
+                        '5558'  : ['MIN WILD'],
+                        '5553'  : ['NAS PREDATORS'],
+                        '5554'  : ['St. Louis Blues', 'STL BLUES'],
+                        '5545'  : ['WIN JETS'],
+                        # Pacific division
+                        '5560'  : ['ANA DUCKS'],
+                        '5563'  : ['ARI COYOTES'],
+                        '5555'  : ['CAL FLAMES'],
+                        '5557'  : ['EDM OILERS'],
+                        '5562'  : ['LA KINGS'],
+                        '5564'  : ['SJ SHARKS'],
+                        '5559'  : ['VAN CANUCKS'],
+            },
+         },
         'KHL' : {
             'keys' : {
                       # Bobrov divison
@@ -449,7 +523,7 @@ TEAMS = {
                         '99844'     : ['AVANGARD'],
                         '300725'    : ['Admiral Vladivostok', 'ADMIRAL VL.'],
                         '132277'    : ['HC Amur', 'AMUR'],
-                        '174551'    : ['BARYS A.'],
+                        '174551'    : ['BARYS A.', 'HC Barys Astana'],
                         '99841'     : ['METALLURG NK'],
                         '99848'     : ['Salavat Yulaev Ufa', 'SALAVAT Y.'],
                         '99850'     : ['SIBIR N.'],
@@ -475,12 +549,13 @@ TEAMS = {
             'values' : {
                         '159227'    : ['HC Mountfield'],
                         '100315'    : ['HC Litvinov', 'HC V LITVINOV'],
-                        '100318'    : ['HC E KARLOVY VARY'],
+                        '100318'    : ['HC E KARLOVY VARY', 'HC Energie Karlove Vary'],
                         '100311'    : ['Bili Tygri Liberec', 'BT LIBEREC'],
                         '100319'    : ['HC O TRINEC', 'HC Trinec'],
                         '100309'    : ['HC CSOB PARDUBICE', 'HC CSOB Pojistovna Pardubice', 'HC Pardubice'],
                         '100314'    : ['HC S. PLZEN', 'HC Plzen', 'HC Škoda Plzen'],
                         '174556'    : ['HC Mlada Boleslav', 'HK Mlada Boleslav'],
+                        '100317'    : ['HC Slavia Prague'],
             },
         },
         'Finnish Elite League' : {
@@ -533,6 +608,87 @@ TEAMS = {
                         '5091'  : ['Brynäs IF'],
                         '5096'  : ['Linköpings HC'],
                         '5092'  : ['Djurgårdens IF'],
+            },
+        },
+    },
+    'Basketball' : {
+        'NBA Preseason' : 'NBA',
+        'NBA' : {
+            'keys' : {
+                      # Atlantic
+                      'Boston Celtics'          : '14979',
+                      'Brooklyn Nets'           : '14981',
+                      'New York Knicks'         : '14982',
+                      'Philadelphia 76ers'      : '14984',
+                      'Toronto Raptors'         : '14993',
+                      # Central
+                      'Chicago Bulls'           : '14987',
+                      'Cleveland Cavaliers'     : '14988',
+                      'Detroit Pistons'         : '14989',
+                      'Indiana Pacers'          : '14990',
+                      'Milwaukee Bucks'         : '14991',
+                      # Southeast
+                      'Atlanta Hawks'           : '14986',
+                      'Charlotte Hornets'       : '95396',
+                      'Miami Heat'              : '14980',
+                      'Orlando Magic'           : '14983',
+                      'Washington Wizards'      : '14985',
+                      # Southwest
+                      'Dallas Mavericks'        : '14994',
+                      'Houston Rockets'         : '14996',
+                      'Memphis Grizzlies'       : '14998',
+                      'New Orleans Pelicans'    : '14992',
+                      'San Antonio Spurs'       : '15000',
+                      # Northwest
+                      'Denver Nuggets'          : '14995',
+                      'Minnesota Timberwolves'  : '14999',
+                      'Oklahoma City Thunder'   : '184586',
+                      'Portland Trail Blazers'  : '15006',
+                      'Utah Jazz'               : '15001',
+                      # Pacific
+                      'Golden State Warriors'   : '15002',
+                      'Los Angeles Clippers'    : '15003',
+                      'Los Angeles Lakers'      : '15004',
+                      'Phoenix Suns'            : '15005',
+                      'Sacramento Kings'        : '15007',
+            },
+            'values' : {
+                        # Atlantic
+                        '14979'     : ['BOS CELTICS'],
+                        '14981'     : ['BKN NETS'],
+                        '14982'     : ['NY KNICKS'],
+                        '14984'     : ['PHI 76ers'],
+                        '14993'     : ['TOR RAPTORS'],
+                        # Central
+                        '14987'     : ['CHI BULLS'],
+                        '14988'     : ['CLE CAVALIERS'],
+                        '14989'     : ['DET PISTONS'],
+                        '14990'     : ['IND PACERS'],
+                        '14991'     : ['MIL BUCKS'],
+                        # Southeast
+                        '14986'     : ['ATL HAWKS'],
+                        '95396'     : ['CHA HORNETS'],
+                        '14980'     : ['MIA HEAT'],
+                        '14983'     : ['ORL MAGIC'],
+                        '14985'     : ['WAS WIZARDS'],
+                        # Southwest
+                        '14994'     : ['DAL MAVERICKS'],
+                        '14996'     : ['HOU ROCKETS'],
+                        '14998'     : ['MEM GRIZZLIES'],
+                        '14992'     : ['NO PELICANS'],
+                        '15000'     : ['SA SPURS'],
+                        # Northwest
+                        '14995'     : ['DEN NUGGETS'],
+                        '14999'     : ['MIN TIMBERWOLVES'],
+                        '184586'    : ['OKC THUNDER'],
+                        '15006'     : ['POR T BLAZERS'],
+                        '15001'     : ['UTA JAZZ'],
+                        # Pacific
+                        '15002'     : ['GS WARRIORS'],
+                        '15003'     : ['L.A. Clippers', 'LA CLIPPERS'],
+                        '15004'     : ['L.A. Lakers', 'LA LAKERS'],
+                        '15005'     : ['PHO SUNS'],
+                        '15007'     : ['SAC KINGS'],
             },
         },
     },

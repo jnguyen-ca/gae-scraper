@@ -13,7 +13,7 @@ SPORTS = {
 'Handball'  : {'pinnacle' : 'Handball', 'wettpoint' : 'handball', 'scoreboard' : 'handball'},
 'Hockey'    : {'pinnacle' : 'Hockey', 'wettpoint' : 'eishockey', 'scoreboard' : 'hockey'},
 'Football'  : {'pinnacle' : 'Football', 'wettpoint' : 'football', 'scoreboard' : 'americanfootball'},
-# 'Basketball': {'pinnacle' : 'Basketball', 'wettpoint' : 'basketball', 'scoreboard' : 'basketball'},
+'Basketball': {'pinnacle' : 'Basketball', 'wettpoint' : 'basketball', 'scoreboard' : 'basketball'},
 }
 
 LEAGUES = {
@@ -36,16 +36,17 @@ LEAGUES = {
         'NFL' : {'pinnacle' : 'NFL', 'wettpoint' : 'NFL', 'scoreboard' : 'NFL'},
     },
     'Hockey' : {
-#         'NHL' : {},
+        'NHL' : {'pinnacle' : 'NHL', 'wettpoint' : 'NHL', 'scoreboard' : 'NHL'},
         'KHL' : {'pinnacle' : 'Russia KHL 3', 'wettpoint' : 'Continental League', 'scoreboard' : 'KHL'},
         'Czech Extraliga' : {'pinnacle' : 'CZ ExtraLi 3', 'wettpoint' : 'Extraliga', 'scoreboard' : 'LIG'},
         'Finnish Elite League' : {'pinnacle' : 'Finland SM 3', 'wettpoint' : 'SM Liga', 'scoreboard' : 'SML'},
         'SEL' : {'pinnacle' : 'Swed Elits 3', 'wettpoint' : 'Elitserien', 'scoreboard' : 'SHL'},
     },
-#     'Basketball' : {
-#         'NBA' : {},
+    'Basketball' : {
+        'NBA Preseason' : {'pinnacle' : 'NBAPreS', 'wettpoint' : 'NBA Preseason', 'scoreboard' : 'NBA'},
+        'NBA' : {'pinnacle' : 'NBA', 'wettpoint' : 'NBA', 'scoreboard' : 'NBA'},
 #         'NCAAB' : {},
-#     },
+    },
 }
 
 # use pinnacle sports xml feed as our official game list feed

@@ -241,13 +241,20 @@ class Scraper(webapp.RequestHandler):
                         not_archived_tips_by_sport_league[sport_key][league_key] = {}
                     not_archived_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
                     
-        for index, sport_key in enumerate(wettpoint_check_tables_sport):
+        empty_sports_to_remove = []
+        for sport_key in wettpoint_check_tables_sport:
             if sport_key not in not_elapsed_tips_by_sport_league:
-                del wettpoint_check_tables_sport[index]
+                empty_sports_to_remove.append(sport_key)
             elif sport_key in wettpoint_check_tables_sport_debug:
                 logging.debug(wettpoint_check_tables_sport_debug[sport_key])
             elif len(wettpoint_check_tables_sport_debug) > 0:
                 logging.debug('failed to find '+sport_key+' message')
+        
+        for sport_key in empty_sports_to_remove:
+            try:
+                wettpoint_check_tables_sport.remove(sport_key)
+            except ValueError:
+                logging.warning('Unexpected '+sport_key+' missing from table list before removal')
         
         self.EXECUTION_LOGS['query_tips'] = time.time() - query_and_sort_tips_start_time
         

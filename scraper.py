@@ -729,7 +729,7 @@ class Scraper(webapp.RequestHandler):
                         possible_earlier_games += not_archived_tips_by_sport_league[sport_key][league_key].values()
                     possible_earlier_games += not_elapsed_tips_by_sport_league[sport_key][league_key].values()
                     
-                    matchup_finalized = self.matchup_data_finalized([tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, possible_earlier_games)
+                    matchup_finalized = self.matchup_data_finalized(sport_key, [tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, possible_earlier_games)
                     
 #                     last_game_time = re.sub('[^0-9\.\s:]', '', tip_rows[-1].find_all('td')[6].get_text())
 #                     # format the tip time to a standard
@@ -998,10 +998,13 @@ class Scraper(webapp.RequestHandler):
         memcache.set('lastWettpointTablesInfo', self.wettpoint_tables_memcache)
         return not_elapsed_tips_by_sport_league
     
-    def matchup_data_finalized(self, team_list, matchup_date, possible_earlier_games):
+    def matchup_data_finalized(self, sport_key, team_list, matchup_date, possible_earlier_games):
         for check_tip_instance in possible_earlier_games:
             if (
-                check_tip_instance.date < (matchup_date - timedelta(hours = 12))
+                (
+                 sport_key not in constants.SPORTS_WEEKLY_SCHEDULE 
+                 and check_tip_instance.date < (matchup_date - timedelta(hours = 12)) 
+                 )
                 or
                 (
                  check_tip_instance.date < matchup_date 

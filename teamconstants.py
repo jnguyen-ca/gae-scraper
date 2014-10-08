@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import re
+import logging
+
 TEAMS = {
 # keys are pinnacle team names
 # values are corresponding aliases
@@ -693,3 +696,38 @@ TEAMS = {
         },
     },
 }
+
+def get_team_aliases(sport, league, team_name):
+    # remove the game digit to get correct team name aliases
+    doubleheader_search = re.search('^G\d+\s+(.+)', team_name)
+    if doubleheader_search:
+        team_name = doubleheader_search.group(1).strip()
+    
+    team_aliases = [team_name]
+    
+    if sport not in TEAMS or league not in TEAMS[sport]:
+        logging.warning(league+' for '+sport+' has no team information (1)!')
+        return team_aliases, None
+    
+    league_team_info = TEAMS[sport][league]
+    if isinstance(league_team_info, basestring):
+        # reference to another league information
+        league_team_info = TEAMS[sport][league_team_info]
+    
+    if (
+        'keys' not in league_team_info 
+        or 'values' not in league_team_info 
+        ):
+        logging.warning(league+' for '+sport+' has no team information (2)!')
+        return team_aliases, None
+    
+    # get all team aliases
+    team_id = None
+    if team_name in league_team_info['keys']:
+        team_id = league_team_info['keys'][team_name]
+        if team_id in league_team_info['values']:
+            team_aliases += league_team_info['values'][team_id]
+    else:
+        logging.warning(team_name+' in '+league+' for '+sport+' has no team id!')
+        
+    return team_aliases, team_id

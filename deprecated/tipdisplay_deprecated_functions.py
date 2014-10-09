@@ -1,3 +1,15 @@
+        self.cssheader.append(
+'''<link rel="stylesheet" href="/javascript/scatterplot/css/scatterplot.css" />''')
+        self.jsheader.append(
+'''<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+<script src="/javascript/scatterplot/js/scatterplot.min.js"></script>''')
+
+.hour {text-decoration: underline; text-align: center;}
+.line_hour_interval {display: inline-block; vertical-align: top; width: 20%; margin: 1%; padding: 1%; border: 1px solid black;}
+.point {margin-bottom: -4.5px; margin-left: -6.5px;}
+.point .data {display: none; background: lightblue; padding: 3px; margin-left: 12px; float: left; text-align: right; position: absolute; z-index: 1;}
+.intervals .interval {float: left; display: inline-block; width: 120px; height: 35px; opacity: 0.25; font-weight: bold; color: white; margin: -1px 1px 1px -1px;}
+
     def line_by_time(self, league):
         if hasattr(self, 'hour_intervals'):
             return self.hour_intervals

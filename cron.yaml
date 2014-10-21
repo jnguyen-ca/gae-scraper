@@ -2,3 +2,7 @@ cron:
 - description: scraper
   url: /scrape
   schedule: every 30 mins
+- description: daily archive
+  url: /archive
+  schedule: every day 00:00
+  timezone: America/Edmonton

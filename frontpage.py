@@ -9,6 +9,7 @@ from google.appengine.api import users, memcache
 from models import DisplaySession
 from scraper import Scraper
 from tipdisplay import TipDisplay
+from tiparchive import TipArchive
 
 import re
 import json
@@ -82,6 +83,7 @@ class AwaitAction(webapp.RequestHandler):
 application = webapp.WSGIApplication([('/', AwaitAction), 
                                       ('/scrape', Scraper), 
                                       ('/display', TipDisplay),
+                                      ('/archive', TipArchive),
                                     ], 
                                     debug=True)
 

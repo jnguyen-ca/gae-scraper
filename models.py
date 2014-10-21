@@ -4,6 +4,17 @@ from __future__ import unicode_literals
 
 from google.appengine.ext import ndb
 
+TIP_SELECTION_TEAM_AWAY = '2'
+TIP_SELECTION_TEAM_HOME = '1'
+TIP_SELECTION_TEAM_DRAW = 'X'
+
+TIP_SELECTION_TOTAL_OVER = 'Over'
+TIP_SELECTION_TOTAL_UNDER = 'Under'
+
+TIP_SELECTION_LINE_SEPARATOR = '|'
+
+TIP_HASH_DATETIME_FORMAT = '%d.%m.%Y %H:%M'
+
 class DisplaySession(ndb.Model):
     user = ndb.UserProperty()
     last_login = ndb.DateTimeProperty()

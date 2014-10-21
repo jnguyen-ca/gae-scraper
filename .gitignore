@@ -1,7 +1,10 @@
 # eclipse
-.settings
+.settings/
 .project
 .pydevproject
 
 # python
-/*.pyc
+*.pyc
+
+# project
+*.pem

@@ -8,8 +8,6 @@ sys.path.insert(0, 'libs')
 from google.appengine.ext import webapp, ndb
 from google.appengine.api import mail, urlfetch, memcache
 
-from models import Tip, TipChange
-
 # from _symtable import LOCAL
 
 from httplib import HTTPException
@@ -28,45 +26,14 @@ import logging
 import requests
 import constants
 import teamconstants
+import models
 
 def get_team_aliases(sport, league, team_name):
     return teamconstants.get_team_aliases(sport, league, team_name)
-#     
-#     # remove the game digit to get correct team name aliases
-#     doubleheader_search = re.search('^G\d+\s+(.+)', team_name)
-#     if doubleheader_search:
-#         team_name = doubleheader_search.group(1).strip()
-#     
-#     team_aliases = [team_name]
-#     
-#     if sport not in teamconstants.TEAMS or league not in teamconstants.TEAMS[sport]:
-#         logging.warning(league+' for '+sport+' has no team information (1)!')
-#         return team_aliases, None
-#     
-#     league_team_info = teamconstants.TEAMS[sport][league]
-#     if isinstance(league_team_info, basestring):
-#         # reference to another league information
-#         league_team_info = teamconstants.TEAMS[sport][league_team_info]
-#     
-#     if (
-#         'keys' not in league_team_info 
-#         or 'values' not in league_team_info 
-#         ):
-#         logging.warning(league+' for '+sport+' has no team information (2)!')
-#         return team_aliases, None
-#     
-#     # get all team aliases
-#     team_id = None
-#     if team_name in league_team_info['keys']:
-#         team_id = league_team_info['keys'][team_name]
-#         if team_id in league_team_info['values']:
-#             team_aliases += league_team_info['values'][team_id]
-#     else:
-#         logging.warning(team_name+' in '+league+' for '+sport+' has no team id!')
-#         
-#     return team_aliases, team_id
 
 class Scraper(webapp.RequestHandler):
+    WETTPOINT_DATETIME_FORMAT = '%d.%m.%Y %H:%M'
+    
     def get(self):
         self.FEED = {}
         self.REQUEST_COUNT = {constants.PINNACLE_FEED : 0, constants.WETTPOINT_FEED: 0, constants.XSCORES_FEED : 0, constants.BACKUP_SCORES_FEED : 0}
@@ -167,8 +134,8 @@ class Scraper(webapp.RequestHandler):
                     elif sport_wettpoint_memcache['h2h_limit_reached'] is True:
                         wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to H2H limit reached'
                         wettpoint_check_tables_sport.append(sport_key)
-                    elif divmod((datetime.utcnow() - datetime.strptime(sport_updated, '%d.%m.%Y %H:%M')).total_seconds(), 60)[0] > sport_minutes_between_checks:
-                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to expiration ('+str(sport_minutes_between_checks)+'min since '+sport_updated+')'
+                    elif divmod((datetime.utcnow() - datetime.strptime(sport_updated, self.WETTPOINT_DATETIME_FORMAT)).total_seconds(), 60)[0] > sport_minutes_between_checks:
+                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to expiration ('+str(round(sport_minutes_between_checks))+'min since '+sport_updated+')'
                         wettpoint_check_tables_sport.append(sport_key)
                 elif sport_key not in wettpoint_tables_memcache:
                     wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to missing memcache key'
@@ -183,7 +150,7 @@ class Scraper(webapp.RequestHandler):
         # get all non-elapsed datastore entities so we can store current lines and wettpoint data
         not_elapsed_tips_by_sport_league = {}
         for sport_key in constants.SPORTS:
-            query = Tip.gql('WHERE elapsed != True AND game_sport = :1', sport_key)
+            query = models.Tip.gql('WHERE elapsed != True AND game_sport = :1', sport_key)
             for tip_instance in query:
                 key_string = unicode(tip_instance.key.urlsafe())
                 
@@ -223,10 +190,11 @@ class Scraper(webapp.RequestHandler):
                         wettpoint_check_tables_sport.append(sport_key)
                     elif tip_instance.wettpoint_tip_stake is None:
                         if wettpoint_tables_memcache and sport_key in wettpoint_tables_memcache:
-                            first_event_UTC_time = datetime.strptime(wettpoint_tables_memcache[sport_key]['first_event_time'], '%d.%m.%Y %H:%M') - timedelta(hours=2)
+                            if wettpoint_tables_memcache[sport_key]['first_event_time'] is not False:
+                                last_event_UTC_time = datetime.strptime(wettpoint_tables_memcache[sport_key]['first_event_time'], self.WETTPOINT_DATETIME_FORMAT) - timedelta(hours=constants.TIMEDELTA_UTC_WETTPOINT_HOUR_OFFSET)
                             
-                            if ((first_event_UTC_time - timedelta(minutes=15)) - datetime.utcnow()).total_seconds() <= 0:
-                                wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' for updated table ('+first_event_UTC_time.strftime('%d.%m.%Y %H:%M')+')'
+                                if ((last_event_UTC_time - timedelta(minutes=15)) - datetime.utcnow()).total_seconds() <= 0:
+                                    wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' for updated table ('+last_event_UTC_time.strftime(self.WETTPOINT_DATETIME_FORMAT)+')'
                                 wettpoint_check_tables_sport.append(sport_key)
                         else:
                             wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to missing memcache key'
@@ -235,7 +203,7 @@ class Scraper(webapp.RequestHandler):
         not_archived_tips_by_sport_league = {}
         for sport_key, sport_leagues in constants.LEAGUES.iteritems():
             for league_key in sport_leagues:
-                query = Tip.gql('WHERE elapsed = True AND archived != True AND game_league = :1', league_key)
+                query = models.Tip.gql('WHERE elapsed = True AND archived != True AND game_league = :1', league_key)
                 for tip_instance in query:
                     if sport_key not in not_archived_tips_by_sport_league:
                         not_archived_tips_by_sport_league[sport_key] = {}
@@ -347,7 +315,7 @@ class Scraper(webapp.RequestHandler):
                 
                 # go through all non-archived tips that have already begun
                 for tip_instance in all_tip_check_scores_league_values:
-                    scoreboard_game_time = tip_instance.date + timedelta(hours = 3)
+                    scoreboard_game_time = tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_SCOREBOARD_HOUR_OFFET)
                     
                     # have we gotten the scoreboard for this day before
                     # only get it if we don't already have it
@@ -403,29 +371,9 @@ class Scraper(webapp.RequestHandler):
                             
                             scores_by_date[scoreboard_date_string].append(score_row)
                             
-                    # remove the game digit before committing (only if scores get successfully scraped)    
-#                     doubleheader_search = re.search('^G(\d+)\s+(.+)', tip_instance.game_team_away)
-#                     if doubleheader_search:
-#                         game_digit = int(doubleheader_search.group(1))
-#                         tip_instance.game_team_away = doubleheader_search.group(2).strip()
-#                         tip_instance.game_team_home = re.search('^G\d+\s+(.+)', tip_instance.game_team_home).group(1).strip()
-#                     else:
-#                         game_digit = False
-                    
-                    team_home_name = tip_instance.game_team_home
-                    team_away_name = tip_instance.game_team_away
-                    
-                    if tip_instance.pinnacle_game_no.startswith('OTB '):
-                        OTB_home_search = re.search('^OTB\s+(.+)', team_home_name)
-                        OTB_away_search = re.search('^OTB\s+(.+)', team_away_name)
-                        
-                        if OTB_home_search and OTB_away_search:
-                            team_home_name = OTB_home_search.group(1).strip()
-                            team_away_name = OTB_away_search.group(1).strip()
-                        
                     # get all team aliases
-                    team_home_aliases = get_team_aliases(sport_key, league_key, team_home_name)[0]
-                    team_away_aliases = get_team_aliases(sport_key, league_key, team_away_name)[0]
+                    team_home_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_home)[0]
+                    team_away_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_away)[0]
                         
                     # should now have the scoreboard for this date, if not something went wrong    
                     score_date_rows = None
@@ -520,13 +468,13 @@ class Scraper(webapp.RequestHandler):
                         else:
                             self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + "\n\n"
                             
-                        self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date - timedelta(hours = 6)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
+                        self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
                         
         return archived_tips
     
     def fill_handball_scores(self, archived_tips, scores_by_date, sport_key, league_key, all_tip_check_scores_league_values):
         for tip_instance in all_tip_check_scores_league_values:
-            scoreboard_game_time = tip_instance.date + timedelta(hours = 1)
+            scoreboard_game_time = tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_BACKUP_HOUR_OFFET)
             scoreboard_date_string = scoreboard_game_time.strftime('%a %d %b %Y')
                 
             if not tip_instance.game_league in scores_by_date:
@@ -560,26 +508,9 @@ class Scraper(webapp.RequestHandler):
             else:
                 score_tables = scores_by_date[tip_instance.game_league]
                 
-#             # remove the game digit before committing (only if scores get successfully scraped)    
-#             doubleheader_search = re.search('^G(\d+)\s+(.+)', tip_instance.game_team_away)
-#             if doubleheader_search:
-#                 tip_instance.game_team_away = doubleheader_search.group(2).strip()
-#                 tip_instance.game_team_home = re.search('^G\d+\s+(.+)', tip_instance.game_team_home).group(1).strip()
-            
-            team_home_name = tip_instance.game_team_home
-            team_away_name = tip_instance.game_team_away
-            
-            if tip_instance.pinnacle_game_no.startswith('OTB '):
-                OTB_home_search = re.search('^OTB\s+(.+)', team_home_name)
-                OTB_away_search = re.search('^OTB\s+(.+)', team_away_name)
-                
-                if OTB_home_search and OTB_away_search:
-                    team_home_name = OTB_home_search.group(1).strip()
-                    team_away_name = OTB_away_search.group(1).strip()
-            
             # get all team aliases
-            team_home_aliases = get_team_aliases(sport_key, league_key, team_home_name)[0]
-            team_away_aliases = get_team_aliases(sport_key, league_key, team_away_name)[0]
+            team_home_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_home)[0]
+            team_away_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_away)[0]
             
             scores_rows = []
             correct_date = False
@@ -637,7 +568,7 @@ class Scraper(webapp.RequestHandler):
                 else:
                     self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + "\n\n"
                     
-                self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date - timedelta(hours = 6)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
+                self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
         
         return archived_tips, scores_by_date
 
@@ -646,7 +577,7 @@ class Scraper(webapp.RequestHandler):
         if not self.wettpoint_tables_memcache:
             self.wettpoint_tables_memcache = {}
         
-        wettpoint_current_time = datetime.utcnow() + timedelta(hours = 2)
+        wettpoint_current_time = datetime.utcnow() + timedelta(hours = constants.TIMEDELTA_UTC_WETTPOINT_HOUR_OFFSET)
         wettpoint_current_date = wettpoint_current_time.strftime('%d.%m.%Y')
         # go through all our sports
         for sport_key in constants.SPORTS:
@@ -680,14 +611,20 @@ class Scraper(webapp.RequestHandler):
             tip_table = tables[1]
             tip_rows = tip_table.find_all('tr')
             
-            first_event_time = re.sub('[^0-9\.\s:]', '', tip_rows[2].find_all('td')[6].get_text())
+            last_event_columns = tip_rows[-1].find_all('td')
+            
+            if 6 >= len(last_event_columns):
+                last_event_time = False
+            else:
+                last_event_time = re.sub('[^0-9\.\s:]', '', last_event_columns[6].get_text())
+                
             # format the tip time to a standard
-            if not re.match('\d{2}\.\d{2}\.\d{4}', first_event_time):
-                first_event_time = wettpoint_current_date + ' ' + first_event_time
+            if last_event_time is not False and not re.match('\d{2}\.\d{2}\.\d{4}', last_event_time):
+                last_event_time = wettpoint_current_date + ' ' + last_event_time
             
             self.wettpoint_tables_memcache[sport_key] = {
-                                                    'first_event_time' : first_event_time,
-                                                    'time_updated' : datetime.utcnow().strftime('%d.%m.%Y %H:%M'),
+                                                    'first_event_time' : last_event_time,
+                                                    'time_updated' : datetime.utcnow().strftime(self.WETTPOINT_DATETIME_FORMAT),
                                                     'tip_changed' : False,
                                                     'minutes_between_checks' : 120,
                                                     'h2h_limit_reached' : False,
@@ -704,16 +641,12 @@ class Scraper(webapp.RequestHandler):
                     minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
                     
                     if tip_instance.wettpoint_tip_stake is not None:
-#                         if minutes_until_start < 0:
-#                             # game has already begun, move on to next
-#                             tip_instance.elapsed = True
-#                             # set tip to be updated
-#                             not_elapsed_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
-#                             continue
                         if tip_instance.elapsed is True:
                             continue
                         elif minutes_until_start < 20:
                             # tip has already been filled out and table updated past tip time, move on to next to avoid resetting tip to 0
+                            continue
+                        elif minutes_until_start <= 30 and tip_instance.wettpoint_tip_stake >= 1.0:
                             continue
                     
                     if not 'wettpoint' in constants.LEAGUES[tip_instance.game_sport][tip_instance.game_league]:
@@ -733,23 +666,19 @@ class Scraper(webapp.RequestHandler):
                     
                     matchup_finalized = self.matchup_data_finalized(sport_key, [tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, possible_earlier_games)
                     
-#                     last_game_time = re.sub('[^0-9\.\s:]', '', tip_rows[-1].find_all('td')[6].get_text())
-#                     # format the tip time to a standard
-#                     if not re.match('\d{2}\.\d{2}\.\d{4}', last_game_time):
-#                         wettpoint_current_time = datetime.utcnow() + timedelta(hours = 2)
-#                         wettpoint_current_date = wettpoint_current_time.strftime('%d.%m.%Y')
-#                          
-#                         last_game_time = wettpoint_current_date + ' ' + last_game_time
-#                          
-#                     last_game_time = datetime.strptime(last_game_time, '%d.%m.%Y %H:%M') - timedelta(hours = 2)
-#                     last_minutes_past_start = divmod((last_game_time - tip_instance.date).total_seconds(), 60)[0]
-                    
                     # has the wettpoint tip been changed
                     tip_change_created = False
                     self.temp_holder = False
                     # go through the events listed
                     for tip_row in tip_rows[2:]:
                         columns = tip_row.find_all('td')
+                        
+                        if 6 >= len(columns):
+                            if tip_instance.wettpoint_tip_stake is None:
+                                tip_stake_changed = True
+                                tip_instance.wettpoint_tip_stake = 0.0
+                                
+                            break
                         
                         # standard information to determine if tip is of interest
                         team_names = columns[0].get_text()
@@ -761,7 +690,7 @@ class Scraper(webapp.RequestHandler):
                             game_time = wettpoint_current_date + ' ' + game_time
                         
                         # set game time to UTC    
-                        game_time = datetime.strptime(game_time, '%d.%m.%Y %H:%M') - timedelta(hours = 2)
+                        game_time = datetime.strptime(game_time, self.WETTPOINT_DATETIME_FORMAT) - timedelta(hours = constants.TIMEDELTA_UTC_WETTPOINT_HOUR_OFFSET)
                         row_minutes_past_start = divmod((game_time - tip_instance.date).total_seconds(), 60)[0]
                         
                         # is it a league we're interested in and does the game time match the tip's game time?
@@ -781,9 +710,9 @@ class Scraper(webapp.RequestHandler):
                             correct_league is True 
                             and abs(row_minutes_past_start) <= 15
                             ):
-                            index = team_names.find('-')
+                            index = team_names.find(' - ')
                             home_team = team_names[0:index].strip()
-                            away_team = team_names[index+1:len(team_names)].strip()
+                            away_team = team_names[index+3:len(team_names)].strip()
                             
                             # finally, are the teams correct?
                             if (
@@ -811,23 +740,23 @@ class Scraper(webapp.RequestHandler):
                                     # total tip changed
                                     if (
                                         tip_instance.total_lines is not None 
-                                        and tip_instance.wettpoint_tip_total != 'Over'
+                                        and tip_instance.wettpoint_tip_total != models.TIP_SELECTION_TOTAL_OVER
                                         ):
                                         tip_instance = self.create_tip_change_object(tip_instance, 'total', 'total_over', not tip_change_created)
                                         tip_change_created = True
                                     
-                                    tip_instance.wettpoint_tip_total = 'Over'
+                                    tip_instance.wettpoint_tip_total = models.TIP_SELECTION_TOTAL_OVER
                                 # tip is under
                                 elif tip_total.lower().find('under') != -1:
                                     # total tip changed
                                     if (
                                         tip_instance.wettpoint_tip_total is not None 
-                                        and tip_instance.wettpoint_tip_total != 'Under'
+                                        and tip_instance.wettpoint_tip_total != models.TIP_SELECTION_TOTAL_UNDER
                                         ):
                                         tip_instance = self.create_tip_change_object(tip_instance, 'total', 'total_under', not tip_change_created)
                                         tip_change_created = True
                                     
-                                    tip_instance.wettpoint_tip_total = 'Under'
+                                    tip_instance.wettpoint_tip_total = models.TIP_SELECTION_TOTAL_UNDER
                                 
                                 initial_negative_tip_stake = None
                                 if (
@@ -895,10 +824,10 @@ class Scraper(webapp.RequestHandler):
                                 tip_instance.wettpoint_tip_stake is not None 
                                 and tip_instance.wettpoint_tip_stake >= 1.0
                                 ):
-                                tip_instance = self.create_tip_change_object(tip_instance, 'team', 'stake_team_all', not tip_change_created)
-                                tip_change_created = True
-                                tip_instance = self.create_tip_change_object(tip_instance, 'total', 'stake_total_all', not tip_change_created)
+#                                 tip_instance = self.create_tip_change_object(tip_instance, 'team', 'stake_team_all', not tip_change_created)
+#                                 tip_instance = self.create_tip_change_object(tip_instance, 'total', 'stake_total_all', not tip_change_created)
                                 tip_instance = self.create_tip_change_object(tip_instance, 'stake', 'stake_all', not tip_change_created)
+                                tip_change_created = True
                             
                             if tip_instance.wettpoint_tip_stake is None or tip_instance.wettpoint_tip_stake >= 1.0:
                                 tip_stake_changed = True
@@ -945,6 +874,7 @@ class Scraper(webapp.RequestHandler):
                                 logging.warning(str(request_error))
                                 h2h_total = h2h_team = h2h_stake = False
                                 H2H_sport_issue = True
+                                tip_instance.wettpoint_tip_stake = None
                         
                             if h2h_total is not False:
                                 if (
@@ -968,7 +898,7 @@ class Scraper(webapp.RequestHandler):
                             if h2h_stake is not False:
                                 if h2h_team is not False:
                                     tip_instance.wettpoint_tip_stake = (10.0 - h2h_stake) * -1
-                                elif tip_instance.wettpoint_tip_stake == 0.0:
+                                elif tip_instance.wettpoint_tip_stake == 0.0 or minutes_until_start <= (45 + 5):
                                     h2h_stake = (10.0 - h2h_stake) / 10.0
                                     tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
                             elif minutes_until_start <= (45 + 5):
@@ -1022,12 +952,14 @@ class Scraper(webapp.RequestHandler):
     
     def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away, **kwargs):
         if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
-            logging.debug('Upcoming connection counts towards limit. Standing at '+str(self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)))
+#             logging.debug('Upcoming connection counts towards limit. Standing at '+str(self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)))
             if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) > 5:
                 logging.debug('wettpoint limit H2H reached')
                 if sport_key in self.wettpoint_tables_memcache:
                     self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] = True
                 return False, False, False
+        else:
+            logging.debug('NOLIMIT fetch')
         
         team_home_aliases, team_home_id = get_team_aliases(sport_key, league_key, team_home)
         team_away_aliases, team_away_id = get_team_aliases(sport_key, league_key, team_away)
@@ -1048,7 +980,7 @@ class Scraper(webapp.RequestHandler):
             time.sleep(random.uniform(16.87,30.9))
         
 #         h2h_html = requests.get(h2h_link, headers=constants.HEADER)
-        logging.info('FETCHING REQUEST '+h2h_link)
+        logging.info('FETCHING REQUEST '+h2h_link+' ('+team_home+'-'+team_away+')')
         h2h_html = urlfetch.fetch(h2h_link, headers={ "Accept-Encoding" : "identity" })
         
         if h2h_html.status_code != 200:
@@ -1068,9 +1000,9 @@ class Scraper(webapp.RequestHandler):
             if h2h_total_text:
                 h2h_total_text = h2h_total_text.find_next_sibling('b').get_text().strip()
                 if 'UNDER' in h2h_total_text:
-                    h2h_total = 'Under'
+                    h2h_total = models.TIP_SELECTION_TOTAL_UNDER
                 elif 'OVER' in h2h_total_text: 
-                    h2h_total = 'Over'
+                    h2h_total = models.TIP_SELECTION_TOTAL_OVER
                     
             h2h_team_text = h2h_header.find_next_sibling(text=re.compile('1X2 System'))
             if h2h_team_text:
@@ -1088,6 +1020,7 @@ class Scraper(webapp.RequestHandler):
                 self.WARNING_MAIL = ''
             else:
                 self.WARNING_MAIL += "\n"
+            logging.warning('Probable '+team_away+'('+team_away_id+') @ '+team_home+'('+team_home_id+') wettpoint H2H ids for ' + league_key + ' MISMATCH!')
             self.WARNING_MAIL += 'Probable '+team_away+'('+team_away_id+') @ '+team_home+'('+team_home_id+') wettpoint H2H ids for ' + league_key + ' MISMATCH!' + "\n"
         
         return h2h_total, h2h_team, h2h_stake
@@ -1123,7 +1056,7 @@ class Scraper(webapp.RequestHandler):
             else:
                 self.MAIL_BODY = self.MAIL_BODY + "\n\n"
             
-            self.MAIL_BODY = self.MAIL_BODY + (tip_instance.date - timedelta(hours = 6)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home + "\n"
+            self.MAIL_BODY = self.MAIL_BODY + (tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home + "\n"
             self.MAIL_BODY = self.MAIL_BODY + str(tip_instance.wettpoint_tip_stake) + " " + str(tip_instance.wettpoint_tip_team) + " " + str(tip_instance.wettpoint_tip_total) 
             self.MAIL_BODY = self.MAIL_BODY + "\n" + ctype + " (" + line + ")"
         else:
@@ -1131,11 +1064,11 @@ class Scraper(webapp.RequestHandler):
         
         key_string = unicode(tip_instance.key.urlsafe())
         
-        query = TipChange.gql('WHERE tip_key = :1', key_string)
+        query = models.TipChange.gql('WHERE tip_key = :1', key_string)
         query_count = query.count(limit=1)
         
         if query_count == 0 and self.temp_holder is False:
-            tip_change_object = TipChange()
+            tip_change_object = models.TipChange()
             tip_change_object.changes = 1
             tip_change_object.type = ctype
         else:
@@ -1190,12 +1123,6 @@ class Scraper(webapp.RequestHandler):
                     continue
                 for tip_instance in not_elapsed_tips_by_sport_league[sport_key][league_key].values():
                     key_string = unicode(tip_instance.key.urlsafe())
-#                     if (tip_instance.date - datetime.now()).total_seconds() < 0:
-#                         # tip has started, move onto next
-#                         tip_instance.elapsed = True
-#                         # update this tip
-#                         not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
-#                         continue
                     if tip_instance.elapsed is True:
                         continue
                     
@@ -1226,6 +1153,7 @@ class Scraper(webapp.RequestHandler):
                         # successful pinnacle call + game line exists
                         event_tag = self.FEED[sport_key][tip_instance.game_league][tip_instance.pinnacle_game_no]
                         
+                        line_date = datetime.now().strftime(models.TIP_HASH_DATETIME_FORMAT)
                         for period in event_tag.xpath('./periods/period'):
                             # currently only interested in full game lines
                             if (
@@ -1244,7 +1172,7 @@ class Scraper(webapp.RequestHandler):
                                     else:
                                         hash1 = {}
                                         
-                                    hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_total.find('total_points').text)
+                                    hash1[line_date] = unicode(period_total.find('total_points').text)
                                     tip_instance.total_no = json.dumps(hash1)
                                     
                                     # get the total odds line
@@ -1253,10 +1181,10 @@ class Scraper(webapp.RequestHandler):
                                     else:
                                         hash1 = {}
                                     
-                                    if tip_instance.wettpoint_tip_total == 'Over':
-                                        hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_total.find('over_adjust').text)
+                                    if tip_instance.wettpoint_tip_total == models.TIP_SELECTION_TOTAL_OVER:
+                                        hash1[line_date] = unicode(period_total.find('over_adjust').text)
                                     else:
-                                        hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_total.find('under_adjust').text)
+                                        hash1[line_date] = unicode(period_total.find('under_adjust').text)
                                         
                                     tip_instance.total_lines = json.dumps(hash1)
                                 # get the moneyline
@@ -1282,35 +1210,38 @@ class Scraper(webapp.RequestHandler):
                                     if tip_instance.wettpoint_tip_team is not None:
                                         moneyline = ''
                                         for i in tip_instance.wettpoint_tip_team:
-                                            if i == '1':
-                                                moneyline += period_moneyline_home + '|'
-                                            elif i == 'X':
-                                                moneyline += period_moneyline_draw + '|'
-                                            elif i == '2':
-                                                moneyline += period_moneyline_visiting + '|'
+                                            if i == models.TIP_SELECTION_TEAM_HOME:
+                                                moneyline += period_moneyline_home + models.TIP_SELECTION_LINE_SEPARATOR
+                                            elif i == models.TIP_SELECTION_TEAM_DRAW:
+                                                moneyline += period_moneyline_draw + models.TIP_SELECTION_LINE_SEPARATOR
+                                            elif i == models.TIP_SELECTION_TEAM_AWAY:
+                                                moneyline += period_moneyline_visiting + models.TIP_SELECTION_LINE_SEPARATOR
                                         
                                         if (
                                             period_moneyline_draw 
                                             and len(tip_instance.wettpoint_tip_team) < 2
                                             ):
-                                            moneyline += period_moneyline_draw
+                                            if tip_instance.wettpoint_tip_team == models.TIP_SELECTION_TEAM_DRAW:
+                                                moneyline += period_moneyline_home
+                                            else:
+                                                moneyline += period_moneyline_draw
                                             
-                                        moneyline = moneyline.rstrip('|')
-                                        hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = moneyline
+                                        moneyline = moneyline.rstrip(models.TIP_SELECTION_LINE_SEPARATOR)
+                                        hash1[line_date] = moneyline
                                     else:
                                         # if no tip team, get favourite line
                                         moneyline = ''
                                         if float(period_moneyline_visiting) < float(period_moneyline_home):
-                                            tip_instance.wettpoint_tip_team = '2'
+                                            tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_AWAY
                                             moneyline = period_moneyline_visiting
                                         else:
-                                            tip_instance.wettpoint_tip_team = '1'
+                                            tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_HOME
                                             moneyline = period_moneyline_home
                                             
                                         if period_moneyline_draw:
-                                            moneyline += '|'+period_moneyline_draw
+                                            moneyline += models.TIP_SELECTION_LINE_SEPARATOR+period_moneyline_draw
                                             
-                                        hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = moneyline
+                                        hash1[line_date] = moneyline
                                             
                                     tip_instance.team_lines = json.dumps(hash1)
                                     
@@ -1328,23 +1259,37 @@ class Scraper(webapp.RequestHandler):
                                         
                                     period_spread_home = unicode(period_spread.find('spread_home').text)
                                     period_spread_visiting = unicode(period_spread.find('spread_visiting').text)
+                                    period_spread_adjust_home = unicode(period_spread.find('spread_adjust_home').text)
+                                    period_spread_adjust_visiting = unicode(period_spread.find('spread_adjust_visiting').text)
                                         
                                     if tip_instance.wettpoint_tip_team is not None:
-                                        if tip_instance.wettpoint_tip_team.find('1') != -1 or tip_instance.wettpoint_tip_team == 'X':
-                                            hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_home
-                                            hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_home').text)
-                                        elif tip_instance.wettpoint_tip_team.find('2') != -1:
-                                            hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_visiting
-                                            hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_visiting').text)
+                                        if tip_instance.wettpoint_tip_team.find(models.TIP_SELECTION_TEAM_HOME) != -1 or tip_instance.wettpoint_tip_team == models.TIP_SELECTION_TEAM_DRAW:
+                                            hash1[line_date] = period_spread_home
+                                            hash2[line_date] = period_spread_adjust_home
+                                        elif tip_instance.wettpoint_tip_team.find(models.TIP_SELECTION_TEAM_AWAY) != -1:
+                                            hash1[line_date] = period_spread_visiting
+                                            hash2[line_date] = period_spread_adjust_visiting
                                     else:
-                                        if float(period_spread_visiting) < float(period_spread_home):
-                                            tip_instance.wettpoint_tip_team = '2'
-                                            hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_visiting
-                                            hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_visiting').text)
-                                        else:
-                                            tip_instance.wettpoint_tip_team = '1'
-                                            hash1[datetime.now().strftime('%d.%m.%Y %H:%M')] = period_spread_home
-                                            hash2[datetime.now().strftime('%d.%m.%Y %H:%M')] = unicode(period_spread.find('spread_adjust_home').text)
+                                        if (
+                                            float(period_spread_visiting) < float(period_spread_home) 
+                                            or (
+                                                float(period_spread_visiting) == float(period_spread_home) 
+                                                and float(period_spread_adjust_visiting) < float(period_spread_adjust_home)
+                                            )
+                                        ):
+                                            tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_AWAY
+                                            hash1[line_date] = period_spread_visiting
+                                            hash2[line_date] = period_spread_adjust_visiting
+                                        elif (
+                                              float(period_spread_visiting) > float(period_spread_home) 
+                                              or (
+                                                  float(period_spread_visiting) == float(period_spread_home) 
+                                                  and float(period_spread_adjust_visiting) >= float(period_spread_adjust_home)
+                                              )
+                                        ):
+                                            tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_HOME
+                                            hash1[line_date] = period_spread_home
+                                            hash2[line_date] = period_spread_adjust_home
                                         
                                     tip_instance.spread_no = json.dumps(hash1)
                                     tip_instance.spread_lines = json.dumps(hash2)
@@ -1367,7 +1312,7 @@ class Scraper(webapp.RequestHandler):
                                 self.WARNING_MAIL = ''
                             else:
                                 self.WARNING_MAIL += "\n"
-                            self.WARNING_MAIL += 'Missing '+tip_instance.date.strftime('%m %d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home
+                            self.WARNING_MAIL += 'Missing '+tip_instance.date.strftime('%m/%d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home
                         
                         if tip_instance.game_sport not in possible_ppd_tips_by_sport_league:
                             possible_ppd_tips_by_sport_league[tip_instance.game_sport] = {}
@@ -1383,7 +1328,7 @@ class Scraper(webapp.RequestHandler):
         for sport_key, possible_ppd_tips_by_league in possible_ppd_tips_by_sport_league.iteritems():
             for league_key, possible_ppd_tips in possible_ppd_tips_by_league.iteritems():
                 for key_string, tip_instance in possible_ppd_tips.iteritems():
-                    query = Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND date = :3 AND game_team_away = :4 AND game_team_home = :5 AND rot_away = :6 AND rot_home = :7 AND pinnacle_game_no != :8',
+                    query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND date = :3 AND game_team_away = :4 AND game_team_home = :5 AND rot_away = :6 AND rot_home = :7 AND pinnacle_game_no != :8',
                             tip_instance.game_sport,
                             tip_instance.game_league,
                             tip_instance.date,
@@ -1520,7 +1465,7 @@ class Scraper(webapp.RequestHandler):
                         continue
                     
                     # skip test cases
-                    if re.match('^TEST\d', participant_name_visiting):
+                    if re.match('^TEST\s?\d', participant_name_visiting, re.IGNORECASE):
                         continue
                     # also skip grand salami cases
                     elif participant_name_visiting.split(' ')[0].lower() == 'away' and participant_name_home.split(' ')[0].lower() == 'home':
@@ -1638,7 +1583,7 @@ class Scraper(webapp.RequestHandler):
                                     self.WARNING_MAIL += participant_name + ' for ' + league_key + ', ' + sport_key + ' does not exist!' + "\n"
                             
                     # do a search of the datastore to see if current tip object already created based on game number, sport, league, and team name
-                    query = Tip.gql('WHERE elapsed != True AND pinnacle_game_no = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4 AND game_team_home = :5', 
+                    query = models.Tip.gql('WHERE elapsed != True AND pinnacle_game_no = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4 AND game_team_home = :5', 
                                     event_game_number, 
                                     sport_key,
                                     league_key,
@@ -1653,7 +1598,7 @@ class Scraper(webapp.RequestHandler):
                     if query_count == 0:
                         # do a search for doubleheaders - game number would have changed so search for same time
                         if participant_name_multi_visiting is not False and participant_name_multi_home is not False:
-                            query = Tip.gql('WHERE elapsed != True AND date = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4 AND game_team_home = :5', 
+                            query = models.Tip.gql('WHERE elapsed != True AND date = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4 AND game_team_home = :5', 
                                             date_GMT,
                                             sport_key,
                                             league_key,
@@ -1666,7 +1611,7 @@ class Scraper(webapp.RequestHandler):
                         
                         if query_count == 0:
                             # no tip object exists yet, create new one
-                            tip_instance = Tip()
+                            tip_instance = models.Tip()
                             tip_instance.game_team_away = participant_name_visiting
                             tip_instance.game_team_home = participant_name_home
                             tip_instance.rot_away = participant_rot_num_visiting

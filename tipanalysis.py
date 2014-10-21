@@ -7,6 +7,9 @@ from google.appengine.ext import webapp
 import json
 from datetime import datetime
 
+import re
+import models
+
 # .teams, .totals, .over, .under, .none, .total_side .header {display: inline-block; width: 150px; text-align: right;}
 # .tip_stake_result {margin: 3px 0;}
 # .total_nos_result {margin: 12px 0;}
@@ -15,17 +18,75 @@ from datetime import datetime
 # .total_no_result .total_no, .tip_stake_result .stake {display: inline-block; width: 28px;}
 # .unit_change {margin: 0 0 0 6px ;}
 
-def calculate_event_score_result(backing_score, opposition_score):
+BET_RESULT_WIN = 'Y'
+BET_RESULT_LOSS = 'N'
+BET_RESULT_NONE = 'R'
+BET_RESULT_PUSH = 'PU'
+BET_RESULT_SPLIT = 'H'
+BET_RESULT_HALF_WIN = 'HW'
+BET_RESULT_HALF_LOSS = 'HL'
+
+def calculate_event_score_result(backing_score, opposition_score, **kwargs):
+    if isinstance(backing_score, basestring):
+        if '(' in backing_score:
+            if (
+                'regulation_only' in kwargs 
+                and kwargs['regulation_only'] is True 
+                ):
+                backing_score = re.sub('.+\(', '', backing_score).rstrip(')')
+                opposition_score = re.sub('.+\(', '', opposition_score).rstrip(')')
+            else:
+                backing_score = re.sub('\s+.*', '', backing_score)
+                opposition_score = re.sub('\s+.*', '', opposition_score)
+    
+    backing_score = float(backing_score)
+    opposition_score = float(opposition_score)
+    
     if backing_score is None or opposition_score is None:
-        return 'R'
-    elif float(backing_score) > float(opposition_score):
-        return 'W'
-    elif float(backing_score) < float(opposition_score):
-        return 'L'
+        return BET_RESULT_NONE
+    
+    if 'spread_modifier' in kwargs and kwargs['spread_modifier'] is not None:
+        spread_modifier = float(kwargs['spread_modifier'])
+        
+        if spread_modifier % 0.5 == 0:
+            if opposition_score < (backing_score + spread_modifier):
+                return BET_RESULT_WIN
+            elif opposition_score > (backing_score + spread_modifier):
+                return BET_RESULT_LOSS
+            else:
+                return BET_RESULT_PUSH
+        else:
+            backing_score_low_modifier = backing_score + spread_modifier - 0.25
+            backing_score_high_modifier = backing_score + spread_modifier + 0.25
+            
+            if backing_score_low_modifier > opposition_score:
+                return BET_RESULT_WIN
+            elif backing_score_high_modifier < opposition_score:
+                return BET_RESULT_LOSS
+            elif backing_score_low_modifier == opposition_score:
+                return BET_RESULT_HALF_WIN
+            elif backing_score_high_modifier == opposition_score:
+                return BET_RESULT_HALF_LOSS
     else:
-        return 'D'
+        if 'draw_result' in kwargs and kwargs['draw_result'] is True:
+            if backing_score == opposition_score:
+                return BET_RESULT_WIN
+            else:
+                return BET_RESULT_LOSS
+        else:
+            if backing_score > opposition_score:
+                return BET_RESULT_WIN
+            elif backing_score < opposition_score:
+                return BET_RESULT_LOSS
+            else:
+                if 'draw_lose' in kwargs and kwargs['draw_lose'] is True:
+                    return BET_RESULT_LOSS
+                else:
+                    return BET_RESULT_PUSH
     
 def convert_to_decimal_odds(moneyline):
+    moneyline = float(moneyline)
+    
     if moneyline < 0:
         return 100.0 / (moneyline * -1) + 1.0
     else:
@@ -42,14 +103,35 @@ def calculate_event_unit_change(result, moneyline, **kwargs):
     else:
         bet_amount = 1.0
             
-    if result == 'W':
+    if result == BET_RESULT_WIN:
         return bet_amount * fractional_line
-    elif result == 'L':
+    elif result == BET_RESULT_LOSS:
         return bet_amount * -1.0
     elif result == 'H':
         return ((bet_amount / 2.0) * fractional_line) - (bet_amount / 2.0)
     
     return None
+
+def get_line(line_dates, **kwargs):
+    if line_dates is None:
+        return None, None
+    elif isinstance(line_dates, basestring):
+        line_dates = json.loads(line_dates)
+    
+    date = line = None
+    if 'date' in kwargs and isinstance(kwargs['date'], datetime):
+        specified_date = kwargs['date']
+        
+        closest_date_string = min(line_dates, key=lambda x: abs(specified_date - datetime.strptime(x, models.TIP_HASH_DATETIME_FORMAT)))
+        date = datetime.strptime(closest_date_string, models.TIP_HASH_DATETIME_FORMAT)
+        line = line_dates[closest_date_string]
+    else:
+        sorted_line_dates = sorted(line_dates, key=lambda x: datetime.strptime(x, models.TIP_HASH_DATETIME_FORMAT))
+        latest_date_string = sorted_line_dates[-1]
+        date = datetime.strptime(latest_date_string, models.TIP_HASH_DATETIME_FORMAT)
+        line = line_dates[latest_date_string]
+        
+    return line, date
 
 class TipAnalysis(webapp.RequestHandler):
     def get(self):
@@ -299,17 +381,17 @@ class TipAnalysis(webapp.RequestHandler):
                 if result == 'R':
                     wettpoint_list[tip_stake][2] += 1
                 elif (
-                      result == 'W' 
+                      result == BET_RESULT_WIN 
                       or (
                           tip_instance.wettpoint_tip_team == 'X' 
                           and result == 'D'
                           )
                       ):
                     wettpoint_list[tip_stake][0] += 1
-                    wettpoint_list[tip_stake][3] += calculate_event_unit_change('W', float(latest_line), win=1)
+                    wettpoint_list[tip_stake][3] += calculate_event_unit_change(BET_RESULT_WIN, float(latest_line), win=1)
                 else:
                     wettpoint_list[tip_stake][1] += 1
-                    wettpoint_list[tip_stake][3] += calculate_event_unit_change('L', float(latest_line), win=1)
+                    wettpoint_list[tip_stake][3] += calculate_event_unit_change(BET_RESULT_LOSS, float(latest_line), win=1)
             elif tip_instance.wettpoint_tip_team == '12':
                 pass
             elif tip_instance.wettpoint_tip_team == '1X':

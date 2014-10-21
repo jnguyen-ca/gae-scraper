@@ -527,7 +527,7 @@ TEAMS = {
                         '300725'    : ['Admiral Vladivostok', 'ADMIRAL VL.'],
                         '132277'    : ['HC Amur', 'AMUR'],
                         '174551'    : ['BARYS A.', 'HC Barys Astana'],
-                        '99841'     : ['METALLURG NK'],
+                        '99841'     : ['METALLURG NK', 'Novokuznetsk'],
                         '99848'     : ['Salavat Yulaev Ufa', 'SALAVAT Y.'],
                         '99850'     : ['SIBIR N.'],
             },
@@ -670,7 +670,7 @@ TEAMS = {
                         '14991'     : ['MIL BUCKS'],
                         # Southeast
                         '14986'     : ['ATL HAWKS'],
-                        '95396'     : ['CHA HORNETS'],
+                        '95396'     : ['CHA HORNETS', 'Charlotte Bobcats'],
                         '14980'     : ['MIA HEAT'],
                         '14983'     : ['ORL MAGIC'],
                         '14985'     : ['WAS WIZARDS'],
@@ -702,6 +702,10 @@ def get_team_aliases(sport, league, team_name):
     doubleheader_search = re.search('^G\d+\s+(.+)', team_name)
     if doubleheader_search:
         team_name = doubleheader_search.group(1).strip()
+        
+    OTB_search = re.search('^OTB\s+(.+)', team_name)
+    if OTB_search:
+        team_name = OTB_search.group(1).strip()
     
     team_aliases = [team_name]
     

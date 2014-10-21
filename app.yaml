@@ -1,5 +1,5 @@
 application: binkscraper
-version: 3-1-1
+version: 3-1-2
 runtime: python27
 api_version: 1
 threadsafe: false
@@ -22,6 +22,8 @@ handlers:
 
 libraries:
 - name: lxml
+  version: latest
+- name: pycrypto
   version: latest
   
 builtins:

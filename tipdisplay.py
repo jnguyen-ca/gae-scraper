@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import json
 import constants
 import teamconstants
+import tipanalysis
 
 class TipDisplay(webapp.RequestHandler):
     def post(self):
@@ -182,8 +183,8 @@ def list_next_games(league, not_archived_tips):
     game_count = 0
     next_games_html.append('<div class="upcoming_games">')
     for tip_instance in not_archived_tips:
-        current_time = datetime.utcnow() - timedelta(hours = 6)
-        game_time = tip_instance.date - timedelta(hours = 6)
+        current_time = datetime.utcnow() + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
+        game_time = tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
         
         date_class = 'game_time-MST'
         if current_time.date().day == game_time.date().day:
@@ -208,13 +209,7 @@ def list_next_games(league, not_archived_tips):
         wettpoint_team = tip_instance.wettpoint_tip_team
         wettpoint_total = tip_instance.wettpoint_tip_total
         
-        latest_date = False
-        latest_line = False
-        if tip_instance.team_lines:
-            team_lines = json.loads(tip_instance.team_lines)
-            sorted_team_line_dates = sorted(team_lines, key=lambda x: datetime.strptime(x, '%d.%m.%Y %H:%M'))
-            latest_date = datetime.strptime(sorted_team_line_dates[-1], '%d.%m.%Y %H:%M')
-            latest_line = team_lines[sorted_team_line_dates[-1]]
+        latest_line, latest_date = tipanalysis.get_line(tip_instance.team_lines)
         
         total_no = False
         if tip_instance.total_no:
@@ -228,7 +223,7 @@ def list_next_games(league, not_archived_tips):
                 total_no = totals[latest_date_string]
         
         if latest_date:
-            latest_date = latest_date - timedelta(hours = 6)
+            latest_date = latest_date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
             latest_date = latest_date.strftime('%Y/%m/%d %I:%M%p')
             
         game_count += 1
@@ -242,7 +237,8 @@ def list_next_games(league, not_archived_tips):
         next_games_html.append('<span class="tip-date">%(latest_date)s</span>' % locals())
         next_games_html.append('<span class="tip-total">%(wettpoint_total)s</span>' % locals())
         next_games_html.append('<span class="tip-total_no">%(total_no)s</span>' % locals())
-        next_games_html.append('<span class="h2h-link"><a href="%(wettpoint_h2h_link)s">H2H</a></span>' % locals())
+        if tip_instance.game_sport not in constants.SPORTS_H2H_EXCLUDE:
+            next_games_html.append('<span class="h2h-link"><a href="%(wettpoint_h2h_link)s">H2H</a></span>' % locals())
         next_games_html.append('</div>')
     
     next_games_html.append('</div>')

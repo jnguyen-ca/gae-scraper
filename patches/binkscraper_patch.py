@@ -3,7 +3,7 @@
 from __future__ import unicode_literals
 
 import sys
-sys.path.insert(0, 'libs')
+sys.path.append('libs/GoogleAppEngineMapReduce-1.9.5.0')
 
 from mapreduce import operation
 

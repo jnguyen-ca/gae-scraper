@@ -13,7 +13,7 @@ handlers:
   static_dir: javascript
 
 - url: /mapreduce(/.*)?
-  script: libs/mapreduce/main.py
+  script: libs/GoogleAppEngineMapReduce-1.9.5.0/mapreduce/main.py
   login: admin
 
 - url: /.*

@@ -5,6 +5,7 @@ from __future__ import unicode_literals
 import sys
 sys.path.append('libs/oauth2client-1.3')
 sys.path.append('libs/gspread-0.2.2')
+sys.path.append('libs/pytz-2014.7')
 
 from google.appengine.ext import webapp
 from oauth2client.client import SignedJwtAssertionCredentials
@@ -14,6 +15,7 @@ from datetime import date, datetime, timedelta
 
 import string
 import logging
+import pytz
 import gspread
 import constants
 import models
@@ -221,6 +223,8 @@ class TipArchive(webapp.RequestHandler):
         return worksheet
     
     def update_archive(self, day_limit):
+        local_timezone = pytz.timezone(constants.TIMEZONE_LOCAL)
+        
         info_worksheet = self.get_spreadsheet().worksheet('Information')
         latest_MST_MDY_string = info_worksheet.acell(self.SPREADSHEET_MODIFIED_DATE_CELL).value
         
@@ -230,17 +234,17 @@ class TipArchive(webapp.RequestHandler):
                 
         dates_to_archive_keys = [x.strip() for x in info_worksheet.cell(self.SPREADSHEET_LIMIT_ROW, self.SPREADSHEET_DATE_COL).value.split(';')]
                 
-        latest_UTC_date = datetime.strptime(latest_MST_MDY_string+' 23:59.59.999999', '%m/%d/%Y %H:%M.%S.%f') - timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
+        latest_UTC_date = local_timezone.localize(datetime.strptime(latest_MST_MDY_string+' 23:59.59.999999', '%m/%d/%Y %H:%M.%S.%f')).astimezone(pytz.utc)
         limit_UTC_date = latest_UTC_date + timedelta(days = abs(day_limit))
         
         all_tips_by_date = models.Tip.gql('WHERE date > :1 AND date <= :2 ORDER BY date ASC',
-                                          latest_UTC_date,
-                                          limit_UTC_date
+                                          latest_UTC_date.replace(tzinfo=None),
+                                          limit_UTC_date.replace(tzinfo=None)
                                           )
         
         tips_to_archive_by_date = {}
         for tip_instance in all_tips_by_date:
-            date_MST = tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
+            date_MST = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(local_timezone)
             date_MST_MDY_string = date_MST.strftime(self.DATE_FORMAT)
             
             if tip_instance.archived is True:
@@ -270,7 +274,7 @@ class TipArchive(webapp.RequestHandler):
         latest_date_split = latest_MST_MDY_string.split('/')
         latest_date = date(int(latest_date_split[2]), int(latest_date_split[0]), int(latest_date_split[1]))
         
-        new_date = (limit_UTC_date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)).date()
+        new_date = (limit_UTC_date.astimezone(local_timezone)).date()
         
         number_of_updated_cells = 0
         for date_MST_MDY_string in tips_to_archive_date_order:
@@ -351,7 +355,7 @@ class TipArchive(webapp.RequestHandler):
         logging.debug('Total number of cells updated: '+str(number_of_updated_cells))
         
     def get_tip_archive_values(self, new_tip_archive_row_lists, tip_instance, dates_to_archive_keys):
-        date_MST = tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
+        date_MST = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))
                         
         default_row_values = [
                       date_MST.strftime(self.DATE_FORMAT),                  # DATE
@@ -378,9 +382,9 @@ class TipArchive(webapp.RequestHandler):
                       None                                                  # Closing Line
                       ]
         
-        nine_pm_UTC = (date_MST - timedelta(days = 1)).replace(hour=21, minute=0, second=0, microsecond=0) - timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
-        eight_am_UTC = date_MST.replace(hour=8, minute=0, second=0, microsecond=0) - timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
-        eleven_am_UTC = date_MST.replace(hour=11, minute=30, second=0, microsecond=0) - timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
+        nine_pm_UTC = (date_MST - timedelta(days = 1)).replace(hour=21, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+        eight_am_UTC = date_MST.replace(hour=8, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
+        eleven_am_UTC = date_MST.replace(hour=11, minute=30, second=0, microsecond=0).astimezone(pytz.utc)
         
         # see BET_TIME class constants
         dates_to_archive = {

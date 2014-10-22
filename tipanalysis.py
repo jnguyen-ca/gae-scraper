@@ -120,7 +120,7 @@ def get_line(line_dates, **kwargs):
     
     date = line = None
     if 'date' in kwargs and isinstance(kwargs['date'], datetime):
-        specified_date = kwargs['date']
+        specified_date = kwargs['date'].replace(tzinfo=None)
         
         closest_date_string = min(line_dates, key=lambda x: abs(specified_date - datetime.strptime(x, models.TIP_HASH_DATETIME_FORMAT)))
         date = datetime.strptime(closest_date_string, models.TIP_HASH_DATETIME_FORMAT)

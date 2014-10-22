@@ -4,6 +4,7 @@ from __future__ import unicode_literals
 
 import sys
 sys.path.insert(0, 'libs')
+sys.path.append('libs/pytz-2014.7')
 
 from google.appengine.ext import webapp, ndb
 from google.appengine.api import mail, urlfetch, memcache
@@ -21,6 +22,7 @@ from lxml import etree
 import re
 import json
 import time
+import pytz
 import random
 import logging
 import requests
@@ -191,9 +193,9 @@ class Scraper(webapp.RequestHandler):
                     elif tip_instance.wettpoint_tip_stake is None:
                         if wettpoint_tables_memcache and sport_key in wettpoint_tables_memcache:
                             if wettpoint_tables_memcache[sport_key]['first_event_time'] is not False:
-                                last_event_UTC_time = datetime.strptime(wettpoint_tables_memcache[sport_key]['first_event_time'], self.WETTPOINT_DATETIME_FORMAT) - timedelta(hours=constants.TIMEDELTA_UTC_WETTPOINT_HOUR_OFFSET)
+                                last_event_UTC_time = pytz.timezone(constants.TIMEZONE_WETTPOINT).localize(datetime.strptime(wettpoint_tables_memcache[sport_key]['first_event_time'], self.WETTPOINT_DATETIME_FORMAT)).astimezone(pytz.utc)
                             
-                                if ((last_event_UTC_time - timedelta(minutes=15)) - datetime.utcnow()).total_seconds() <= 0:
+                                if ((last_event_UTC_time - timedelta(minutes=15)) - datetime.utcnow().replace(tzinfo=pytz.utc)).total_seconds() <= 0:
                                     wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' for updated table ('+last_event_UTC_time.strftime(self.WETTPOINT_DATETIME_FORMAT)+')'
                                 wettpoint_check_tables_sport.append(sport_key)
                         else:
@@ -281,6 +283,8 @@ class Scraper(webapp.RequestHandler):
         return update_tips
         
     def fill_scores(self, not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league):
+        scoreboard_timezone = pytz.timezone(constants.TIMEZONE_SCOREBOARD)
+        
         archived_tips = {}
         for sport_key, sport_leagues in constants.LEAGUES.iteritems():
             scores_by_date = {}
@@ -315,7 +319,7 @@ class Scraper(webapp.RequestHandler):
                 
                 # go through all non-archived tips that have already begun
                 for tip_instance in all_tip_check_scores_league_values:
-                    scoreboard_game_time = tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_SCOREBOARD_HOUR_OFFET)
+                    scoreboard_game_time = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(scoreboard_timezone)
                     
                     # have we gotten the scoreboard for this day before
                     # only get it if we don't already have it
@@ -392,7 +396,7 @@ class Scraper(webapp.RequestHandler):
                             if row_league != league:
                                 continue
                         
-                        row_game_time = datetime.strptime(scoreboard_game_time.strftime('%m-%d-%Y') + ' ' + row_columns[score_row_key_indices['K/O']].get_text().replace('(','').replace(')','').strip(), '%m-%d-%Y %H:%M')
+                        row_game_time = scoreboard_timezone.localize(datetime.strptime(scoreboard_game_time.strftime('%m-%d-%Y') + ' ' + row_columns[score_row_key_indices['K/O']].get_text().replace('(','').replace(')','').strip(), '%m-%d-%Y %H:%M'))
                         row_home_team = row_columns[score_row_key_indices['Home']].get_text().strip()
                         row_away_team = row_columns[score_row_key_indices['Away']].get_text().strip()
                         
@@ -468,13 +472,15 @@ class Scraper(webapp.RequestHandler):
                         else:
                             self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + "\n\n"
                             
-                        self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
+                        self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
                         
         return archived_tips
     
     def fill_handball_scores(self, archived_tips, scores_by_date, sport_key, league_key, all_tip_check_scores_league_values):
+        scoreboard_timezone = pytz.timezone(constants.TIMEZONE_BACKUP)
+        
         for tip_instance in all_tip_check_scores_league_values:
-            scoreboard_game_time = tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_BACKUP_HOUR_OFFET)
+            scoreboard_game_time = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(scoreboard_timezone)
             scoreboard_date_string = scoreboard_game_time.strftime('%a %d %b %Y')
                 
             if not tip_instance.game_league in scores_by_date:
@@ -534,7 +540,7 @@ class Scraper(webapp.RequestHandler):
                 if row_status != 'FT' and row_status != 'Pst':
                     continue
                 
-                row_game_time = datetime.strptime(scoreboard_date_string + ' ' + score_row.find('td', {'class' : 'datetime'}).get_text().replace('(','').replace(')','').strip(), '%a %d %b %Y %H:%M')
+                row_game_time = scoreboard_timezone.localize(datetime.strptime(scoreboard_date_string + ' ' + score_row.find('td', {'class' : 'datetime'}).get_text().replace('(','').replace(')','').strip(), '%a %d %b %Y %H:%M'))
                 
                 row_teams = score_row.find_all('tr')
                 
@@ -568,7 +574,7 @@ class Scraper(webapp.RequestHandler):
                 else:
                     self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + "\n\n"
                     
-                self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
+                self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
         
         return archived_tips, scores_by_date
 
@@ -576,8 +582,10 @@ class Scraper(webapp.RequestHandler):
         self.wettpoint_tables_memcache = memcache.get('lastWettpointTablesInfo')
         if not self.wettpoint_tables_memcache:
             self.wettpoint_tables_memcache = {}
+            
+        wettpoint_timezone = pytz.timezone(constants.TIMEZONE_WETTPOINT)
         
-        wettpoint_current_time = datetime.utcnow() + timedelta(hours = constants.TIMEDELTA_UTC_WETTPOINT_HOUR_OFFSET)
+        wettpoint_current_time = datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(wettpoint_timezone)
         wettpoint_current_date = wettpoint_current_time.strftime('%d.%m.%Y')
         # go through all our sports
         for sport_key in constants.SPORTS:
@@ -690,8 +698,8 @@ class Scraper(webapp.RequestHandler):
                             game_time = wettpoint_current_date + ' ' + game_time
                         
                         # set game time to UTC    
-                        game_time = datetime.strptime(game_time, self.WETTPOINT_DATETIME_FORMAT) - timedelta(hours = constants.TIMEDELTA_UTC_WETTPOINT_HOUR_OFFSET)
-                        row_minutes_past_start = divmod((game_time - tip_instance.date).total_seconds(), 60)[0]
+                        game_time = wettpoint_timezone.localize(datetime.strptime(game_time, self.WETTPOINT_DATETIME_FORMAT)).astimezone(pytz.utc)
+                        row_minutes_past_start = divmod((game_time - tip_instance.date.replace(tzinfo=pytz.utc)).total_seconds(), 60)[0]
                         
                         # is it a league we're interested in and does the game time match the tip's game time?
                         correct_league = False
@@ -1056,7 +1064,7 @@ class Scraper(webapp.RequestHandler):
             else:
                 self.MAIL_BODY = self.MAIL_BODY + "\n\n"
             
-            self.MAIL_BODY = self.MAIL_BODY + (tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home + "\n"
+            self.MAIL_BODY = self.MAIL_BODY + (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home + "\n"
             self.MAIL_BODY = self.MAIL_BODY + str(tip_instance.wettpoint_tip_stake) + " " + str(tip_instance.wettpoint_tip_team) + " " + str(tip_instance.wettpoint_tip_total) 
             self.MAIL_BODY = self.MAIL_BODY + "\n" + ctype + " (" + line + ")"
         else:

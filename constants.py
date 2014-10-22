@@ -67,10 +67,10 @@ WETTPOINT_FEED = 'wettpoint.com'
 XSCORES_FEED = 'xscores.com'
 BACKUP_SCORES_FEED = 'scorespro.com'
 
-TIMEDELTA_UTC_LOCAL_HOUR_OFFSET = -6
-TIMEDELTA_UTC_WETTPOINT_HOUR_OFFSET = 2
-TIMEDELTA_UTC_SCOREBOARD_HOUR_OFFET = 3
-TIMEDELTA_UTC_BACKUP_HOUR_OFFET = 1
+TIMEZONE_LOCAL = 'America/Edmonton'
+TIMEZONE_WETTPOINT = 'Europe/Berlin'
+TIMEZONE_SCOREBOARD = 'Europe/Athens'
+TIMEZONE_BACKUP = 'Etc/GMT+1'
 
 def is_local():
     return os.environ['SERVER_SOFTWARE'].startswith('Development')

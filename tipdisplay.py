@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import sys
+sys.path.append('libs/pytz-2014.7')
+
 from google.appengine.ext import webapp
 from google.appengine.api import users, memcache
 
@@ -12,6 +15,7 @@ from datetime import datetime, timedelta
 import json
 import constants
 import teamconstants
+import pytz
 import tipanalysis
 
 class TipDisplay(webapp.RequestHandler):
@@ -180,11 +184,13 @@ class TipDisplay(webapp.RequestHandler):
 def list_next_games(league, not_archived_tips):
     next_games_html = []
     
+    local_timezone = pytz.timezone(constants.TIMEZONE_LOCAL)
+    
     game_count = 0
     next_games_html.append('<div class="upcoming_games">')
     for tip_instance in not_archived_tips:
-        current_time = datetime.utcnow() + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
-        game_time = tip_instance.date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
+        current_time = datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(local_timezone)
+        game_time = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(local_timezone)
         
         date_class = 'game_time-MST'
         if current_time.date().day == game_time.date().day:
@@ -223,7 +229,7 @@ def list_next_games(league, not_archived_tips):
                 total_no = totals[latest_date_string]
         
         if latest_date:
-            latest_date = latest_date + timedelta(hours = constants.TIMEDELTA_UTC_LOCAL_HOUR_OFFSET)
+            latest_date = latest_date.replace(tzinfo=pytz.utc).astimezone(local_timezone)
             latest_date = latest_date.strftime('%Y/%m/%d %I:%M%p')
             
         game_count += 1

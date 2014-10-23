@@ -160,6 +160,8 @@ class TipArchive(webapp.RequestHandler):
     DATE_FORMAT = '%m/%d/%Y' # format for date stored in spreadsheet
     
     def get(self):
+        self.DATASTORE_READS = 0
+        
         self.response.out.write('Hello<br />')
         
         day_limit = self.request.get('day_limit', default_value='2')
@@ -170,6 +172,8 @@ class TipArchive(webapp.RequestHandler):
         
         self.update_archive(day_limit)
         self.response.out.write('<br />Goodbye')
+        
+        logging.debug('Total Reads: '+str(self.DATASTORE_READS))
         
     def get_client(self):
         if not hasattr(self, 'gclient'):
@@ -237,6 +241,7 @@ class TipArchive(webapp.RequestHandler):
         latest_UTC_date = local_timezone.localize(datetime.strptime(latest_MST_MDY_string+' 23:59.59.999999', '%m/%d/%Y %H:%M.%S.%f')).astimezone(pytz.utc)
         limit_UTC_date = latest_UTC_date + timedelta(days = abs(day_limit))
         
+        self.DATASTORE_READS += 1
         all_tips_by_date = models.Tip.gql('WHERE date > :1 AND date <= :2 ORDER BY date ASC',
                                           latest_UTC_date.replace(tzinfo=None),
                                           limit_UTC_date.replace(tzinfo=None)
@@ -244,6 +249,10 @@ class TipArchive(webapp.RequestHandler):
         
         tips_to_archive_by_date = {}
         for tip_instance in all_tips_by_date:
+            self.DATASTORE_READS += 1
+            if tip_instance.pinnacle_game_no.startswith('OTB '):
+                continue
+            
             date_MST = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(local_timezone)
             date_MST_MDY_string = date_MST.strftime(self.DATE_FORMAT)
             
@@ -356,6 +365,10 @@ class TipArchive(webapp.RequestHandler):
         
     def get_tip_archive_values(self, new_tip_archive_row_lists, tip_instance, dates_to_archive_keys):
         date_MST = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))
+        
+        tip_scores = None
+        if tip_instance.score_away is not None and tip_instance.score_home is not None:
+            tip_scores = tip_instance.score_away+' - '+tip_instance.score_home
                         
         default_row_values = [
                       date_MST.strftime(self.DATE_FORMAT),                  # DATE
@@ -367,7 +380,7 @@ class TipArchive(webapp.RequestHandler):
                       None,                                                 # Time of Line
                       date_MST.strftime('%H:%M')+' '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home, # Fixture / Event
                       'N',                                                  # Live Bet
-                      tip_instance.score_away+' - '+tip_instance.score_home,  # Score / Result
+                      tip_scores,                                           # Score / Result
                       1,                                                    # Stake
                       None,                                                 # Odds (US)
                       'N',                                                  # FB

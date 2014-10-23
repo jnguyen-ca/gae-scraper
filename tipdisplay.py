@@ -13,6 +13,7 @@ from models import Tip, DisplaySession
 from datetime import datetime, timedelta
 
 import json
+import logging
 import constants
 import teamconstants
 import pytz
@@ -20,6 +21,8 @@ import tipanalysis
 
 class TipDisplay(webapp.RequestHandler):
     def post(self):
+        self.DATASTORE_PUTS = 0
+        self.DATASTORE_READS = 0
         self.datastore = {}
         
         self.html = []
@@ -47,9 +50,11 @@ class TipDisplay(webapp.RequestHandler):
         
         #TODO: move to tipanalysis
         # get user to get league dates for tip analysis
+        self.DATASTORE_READS += 1
         session = DisplaySession.gql('WHERE user = :1', users.get_current_user()).get()
         
         if session is None:
+            self.DATASTORE_PUTS += 1
             session = DisplaySession()
             session.user = users.get_current_user()
         
@@ -90,10 +95,12 @@ class TipDisplay(webapp.RequestHandler):
         memcache.set('DisplaySessionCookie', ds_json_string)
         session.leagues = ds_json_string
         
+        self.DATASTORE_READS += 1
         query = Tip.gql('WHERE archived != True')
         not_archived_tips_values_by_sport_league = {}
         unsorted_sport_league_date = []
         for tip_instance in query:
+            self.DATASTORE_READS += 1
             if tip_instance.game_sport not in not_archived_tips_values_by_sport_league:
                 not_archived_tips_values_by_sport_league[tip_instance.game_sport] = {}
             if tip_instance.game_league not in not_archived_tips_values_by_sport_league[tip_instance.game_sport]:
@@ -179,7 +186,10 @@ class TipDisplay(webapp.RequestHandler):
         self.response.out.write("".join(html))
         
         session.last_login = datetime.utcnow()
+        self.DATASTORE_PUTS += 1
         session.put()
+        
+        logging.debug('Total Reads: '+str(self.DATASTORE_READS)+', Total Writes: '+str(self.DATASTORE_PUTS))
         
 def list_next_games(league, not_archived_tips):
     next_games_html = []

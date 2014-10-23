@@ -37,6 +37,8 @@ class Scraper(webapp.RequestHandler):
     WETTPOINT_DATETIME_FORMAT = '%d.%m.%Y %H:%M'
     
     def get(self):
+        self.DATASTORE_PUTS = 0
+        self.DATASTORE_READS = 0
         self.FEED = {}
         self.REQUEST_COUNT = {constants.PINNACLE_FEED : 0, constants.WETTPOINT_FEED: 0, constants.XSCORES_FEED : 0, constants.BACKUP_SCORES_FEED : 0}
         self.EXECUTION_LOGS = {}
@@ -109,8 +111,11 @@ class Scraper(webapp.RequestHandler):
         for x in self.EXECUTION_LOGS:
             logging_info += x + ' : ' + str("{0:.2f}".format(self.EXECUTION_LOGS[x])) + '; '
         logging.debug(logging_info)
+        
+        logging.debug('Total Reads: '+str(self.DATASTORE_READS)+', Total Writes: '+str(self.DATASTORE_PUTS))
     
     def commit_tips(self, update_tips):
+        self.DATASTORE_PUTS += len(update_tips)
         ndb.put_multi(update_tips.values())
         
     def fill_games(self, new_or_updated_tips):
@@ -152,8 +157,10 @@ class Scraper(webapp.RequestHandler):
         # get all non-elapsed datastore entities so we can store current lines and wettpoint data
         not_elapsed_tips_by_sport_league = {}
         for sport_key in constants.SPORTS:
+            self.DATASTORE_READS += 1
             query = models.Tip.gql('WHERE elapsed != True AND game_sport = :1', sport_key)
             for tip_instance in query:
+                self.DATASTORE_READS += 1
                 key_string = unicode(tip_instance.key.urlsafe())
                 
                 minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
@@ -197,7 +204,7 @@ class Scraper(webapp.RequestHandler):
                             
                                 if ((last_event_UTC_time - timedelta(minutes=15)) - datetime.utcnow().replace(tzinfo=pytz.utc)).total_seconds() <= 0:
                                     wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' for updated table ('+last_event_UTC_time.strftime(self.WETTPOINT_DATETIME_FORMAT)+')'
-                                wettpoint_check_tables_sport.append(sport_key)
+                                    wettpoint_check_tables_sport.append(sport_key)
                         else:
                             wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to missing memcache key'
                             wettpoint_check_tables_sport.append(sport_key)
@@ -205,8 +212,10 @@ class Scraper(webapp.RequestHandler):
         not_archived_tips_by_sport_league = {}
         for sport_key, sport_leagues in constants.LEAGUES.iteritems():
             for league_key in sport_leagues:
+                self.DATASTORE_READS += 1
                 query = models.Tip.gql('WHERE elapsed = True AND archived != True AND game_league = :1', league_key)
                 for tip_instance in query:
+                    self.DATASTORE_READS += 1
                     if sport_key not in not_archived_tips_by_sport_league:
                         not_archived_tips_by_sport_league[sport_key] = {}
                     if league_key not in not_archived_tips_by_sport_league[sport_key]:
@@ -916,6 +925,7 @@ class Scraper(webapp.RequestHandler):
                             
                     # change object created, put in datastore
                     if self.temp_holder != False:
+                        self.DATASTORE_PUTS += 1
                         self.temp_holder.put()
                     
                     minutes_for_next_check = minutes_until_start / 3
@@ -1072,10 +1082,12 @@ class Scraper(webapp.RequestHandler):
         
         key_string = unicode(tip_instance.key.urlsafe())
         
+        self.DATASTORE_READS += 1
         query = models.TipChange.gql('WHERE tip_key = :1', key_string)
         query_count = query.count(limit=1)
         
         if query_count == 0 and self.temp_holder is False:
+            self.DATASTORE_PUTS += 1
             tip_change_object = models.TipChange()
             tip_change_object.changes = 1
             tip_change_object.type = ctype
@@ -1083,6 +1095,7 @@ class Scraper(webapp.RequestHandler):
             if query_count == 0:
                 tip_change_object = self.temp_holder
             else:
+                self.DATASTORE_READS += 2
                 tip_change_object = query.get()
             tip_change_object.changes += 1
             tip_change_object.type = tip_change_object.type + ctype
@@ -1336,6 +1349,7 @@ class Scraper(webapp.RequestHandler):
         for sport_key, possible_ppd_tips_by_league in possible_ppd_tips_by_sport_league.iteritems():
             for league_key, possible_ppd_tips in possible_ppd_tips_by_league.iteritems():
                 for key_string, tip_instance in possible_ppd_tips.iteritems():
+                    self.DATASTORE_READS += 1
                     query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND date = :3 AND game_team_away = :4 AND game_team_home = :5 AND rot_away = :6 AND rot_home = :7 AND pinnacle_game_no != :8',
                             tip_instance.game_sport,
                             tip_instance.game_league,
@@ -1348,6 +1362,7 @@ class Scraper(webapp.RequestHandler):
                             )
                     
                     if query.count(limit=1) != 0:
+                        self.DATASTORE_READS += 1
                         if self.WARNING_MAIL is False:
                             self.WARNING_MAIL = ''
                         else:
@@ -1589,7 +1604,8 @@ class Scraper(webapp.RequestHandler):
                                         self.WARNING_MAIL += "\n"
                                     logging.warning(participant_name + ' for ' + league_key + ', ' + sport_key + ' does not exist!')
                                     self.WARNING_MAIL += participant_name + ' for ' + league_key + ', ' + sport_key + ' does not exist!' + "\n"
-                            
+                    
+                    self.DATASTORE_READS += 1
                     # do a search of the datastore to see if current tip object already created based on game number, sport, league, and team name
                     query = models.Tip.gql('WHERE elapsed != True AND pinnacle_game_no = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4 AND game_team_home = :5', 
                                     event_game_number, 
@@ -1606,6 +1622,7 @@ class Scraper(webapp.RequestHandler):
                     if query_count == 0:
                         # do a search for doubleheaders - game number would have changed so search for same time
                         if participant_name_multi_visiting is not False and participant_name_multi_home is not False:
+                            self.DATASTORE_READS += 1
                             query = models.Tip.gql('WHERE elapsed != True AND date = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4 AND game_team_home = :5', 
                                             date_GMT,
                                             sport_key,
@@ -1618,6 +1635,7 @@ class Scraper(webapp.RequestHandler):
                             query_count = query.count(limit=2)
                         
                         if query_count == 0:
+                            self.DATASTORE_PUTS += 1
                             # no tip object exists yet, create new one
                             tip_instance = models.Tip()
                             tip_instance.game_team_away = participant_name_visiting
@@ -1625,8 +1643,10 @@ class Scraper(webapp.RequestHandler):
                             tip_instance.rot_away = participant_rot_num_visiting
                             tip_instance.rot_home = participant_rot_num_home
                         else:
+                            self.DATASTORE_READS += 2
                             # should be only one result if it exists
                             if query_count > 1:
+                                self.DATASTORE_READS += 1
                                 logging.error('Multiple matching datastore Tip objects to fill_games query!')
                                 raise Exception('Multiple matching datastore Tip objects to fill_games query!')
                             
@@ -1650,8 +1670,10 @@ class Scraper(webapp.RequestHandler):
                                 tip_instance = False
                                 continue
                     else:
+                        self.DATASTORE_READS += 2
                         # should be only one result if it exists
                         if query_count > 1:
+                            self.DATASTORE_READS += 1
                             logging.error('Multiple matching datastore Tip objects to fill_games query!')
                             raise Exception('Multiple matching datastore Tip objects to fill_games query!')
                         
@@ -1679,6 +1701,7 @@ class Scraper(webapp.RequestHandler):
                         tip_instance.game_league = league_key
                         tip_instance.pinnacle_game_no = event_game_number
                         
+                        self.DATASTORE_PUTS += 1
                         # store in datastore immediately to ensure no conflicts in this session
                         tip_instance_key = tip_instance.put()
                         # store in constant for future use and additional commit

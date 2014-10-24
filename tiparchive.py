@@ -8,6 +8,7 @@ sys.path.append('libs/gspread-0.2.2')
 sys.path.append('libs/pytz-2014.7')
 
 from google.appengine.ext import webapp
+from google.appengine.api import urlfetch
 from oauth2client.client import SignedJwtAssertionCredentials
 
 from httplib import HTTPException
@@ -59,8 +60,22 @@ BET_TIME_NOON = '11:30AM Same Day'
 BET_TIME_LATEST = 'Latest'
 
 def is_side_team_favourite(**kwargs):
+    """To determine whether team A is the favourite or not
+    
+    Kwargs:
+        side (numeric): The team line for team A
+        draw (numeric): The draw line in 1X2 tip
+        spread_no (numeric): Spread value for team A
+        spread (numeric): The spread line for team A
+        home (bool): Whether or not team A is the home team
+    
+    Returns:
+        bool: True if favourite, False otherwise
+        None: Not enough information
+    """
     side_line = draw_line = spread_no = spread_line = is_home = None
     
+    # normalize all optional parameters
     if 'side' in kwargs:
         try:
             side_line = float(kwargs['side'])
@@ -83,7 +98,8 @@ def is_side_team_favourite(**kwargs):
             spread_line = None
     if 'home' in kwargs:
         is_home = kwargs['home']
-        
+    
+    # spread (when it's not 0) is the easiest to determine favourite
     if (
         spread_no is not None 
         and spread_no != 0
@@ -92,9 +108,13 @@ def is_side_team_favourite(**kwargs):
             return True
         elif 0 < spread_no:
             return False
+    # otherwise try the team lines
     elif side_line is not None:
+        # assuming -104 lines
+        # simple favourite
         if -104 > side_line:
             return True
+        # pick'em (choose home) OR favourite in a 1X2
         elif (
               -104 == side_line 
               and (
@@ -106,21 +126,25 @@ def is_side_team_favourite(**kwargs):
               )
         ):
             return True
+        # if not a 1X2 then anything above -104 is underdog
         elif (
               -104 < side_line 
               and draw_line is None
         ):
             return False
+        # 1X2 complicates things a little
         elif draw_line is not None:
             decimal_side_line = tipanalysis.convert_to_decimal_odds(side_line)
             decimal_draw_line = tipanalysis.convert_to_decimal_odds(draw_line)
             
+            # 100 / 3 = 33.33.., therefore estimate that if line and draw equals greater than 66.66.. then favourite
             if 33 >= (100 - ((100 / decimal_side_line) + (100 / decimal_draw_line))):
                 return True
             else:
                 return False
         else:
             return None
+    # spread 0 lines is the last resort
     elif (
           spread_no == 0 
           and spread_line is not None
@@ -144,6 +168,7 @@ class TipArchive(webapp.RequestHandler):
     # spreadsheet column information row and col indices
     SPREADSHEET_MODIFIED_DATE_CELL = 'B2'
     SPREADSHEET_DATE_COL = 1
+    SPREADSHEET_LEAGUE_COL = 3
     SPREADSHEET_LIMIT_ROW = 3
     
     # list indices for row values
@@ -163,6 +188,7 @@ class TipArchive(webapp.RequestHandler):
         self.DATASTORE_READS = 0
         
         self.response.out.write('Hello<br />')
+        urlfetch.set_default_fetch_deadline(30)
         
         day_limit = self.request.get('day_limit', default_value='2')
         try:
@@ -202,12 +228,16 @@ class TipArchive(webapp.RequestHandler):
             
         return self.spreadsheet
     
-    def get_league_worksheet(self, sport_key, league_key):
+    def get_league_worksheet(self, sport_key, league_key, **kwargs):
         try:
             if isinstance(teamconstants.TEAMS[sport_key][league_key], basestring):
                 league_key = teamconstants.TEAMS[sport_key][league_key]
         except KeyError:
             logging.warning('missing '+league_key+' teamconstant')
+        
+        if 'valid_leagues' in kwargs and kwargs['valid_leagues'] is not None:
+            if league_key not in kwargs['valid_leagues']:
+                return None
         
         if not hasattr(self, 'league_worksheets'):
             self.league_worksheets = {}
@@ -229,15 +259,27 @@ class TipArchive(webapp.RequestHandler):
     def update_archive(self, day_limit):
         local_timezone = pytz.timezone(constants.TIMEZONE_LOCAL)
         
+        # Information worksheet contains basic information such as date and valid values for certain columns
         info_worksheet = self.get_spreadsheet().worksheet('Information')
-        latest_MST_MDY_string = info_worksheet.acell(self.SPREADSHEET_MODIFIED_DATE_CELL).value
         
+        # get last date archive was updated to
+        latest_MST_MDY_string = info_worksheet.acell(self.SPREADSHEET_MODIFIED_DATE_CELL).value
         if latest_MST_MDY_string == '':
             logging.error('No archive date given!')
             raise Exception('No archive date given!')
                 
+        # archive entries can be filtered by time, get the valid times to archive
         dates_to_archive_keys = [x.strip() for x in info_worksheet.cell(self.SPREADSHEET_LIMIT_ROW, self.SPREADSHEET_DATE_COL).value.split(';')]
-                
+        
+        # archive entries can be filtered by league, get the valid leagues to archive
+        leagues_to_archive_cell_value = info_worksheet.cell(self.SPREADSHEET_LIMIT_ROW, self.SPREADSHEET_LEAGUE_COL).value
+        if leagues_to_archive_cell_value == '':
+            leagues_to_archive_keys = None
+        else:
+            leagues_to_archive_keys = [x.strip() for x in leagues_to_archive_cell_value.split(';')]
+        
+        # first day to archive should be day immediately after last archive date
+        # last day depends on day_limit GET parameter (default = 2 days)
         latest_UTC_date = local_timezone.localize(datetime.strptime(latest_MST_MDY_string+' 23:59.59.999999', '%m/%d/%Y %H:%M.%S.%f')).astimezone(pytz.utc)
         limit_UTC_date = latest_UTC_date + timedelta(days = abs(day_limit))
         
@@ -247,12 +289,15 @@ class TipArchive(webapp.RequestHandler):
                                           limit_UTC_date.replace(tzinfo=None)
                                           )
         
+        # run through all tips between the valid dates to get days' tips that are ready to be archived
         tips_to_archive_by_date = {}
         for tip_instance in all_tips_by_date:
             self.DATASTORE_READS += 1
+            # skip off the board games since they will have a duplicate tip without the OTB pre-string
             if tip_instance.pinnacle_game_no.startswith('OTB '):
                 continue
             
+            # store tips in a list with date string keys so that a invalid date can be thrown away easily
             date_MST = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(local_timezone)
             date_MST_MDY_string = date_MST.strftime(self.DATE_FORMAT)
             
@@ -278,12 +323,19 @@ class TipArchive(webapp.RequestHandler):
                 tips_to_archive_by_date.pop(date_MST_MDY_string, None)
                 break
         
+        # sort the list keys so that archive is ordered
         tips_to_archive_date_order = sorted(tips_to_archive_by_date.keys(), key=lambda x: datetime.strptime(x, self.DATE_FORMAT))
         
         latest_date_split = latest_MST_MDY_string.split('/')
         latest_date = date(int(latest_date_split[2]), int(latest_date_split[0]), int(latest_date_split[1]))
         
+        # initially set the potential new archive date as the limit date so that if there were no valid tips between the dates
+        # then we can skip it next time (instead of getting stuck)
+        # will be overridden if there are valid tips
         new_date = (limit_UTC_date.astimezone(local_timezone)).date()
+        
+        # if a date has already been updated (or has no valid tips), we'll want to make sure to update archive date
+        skipped_update = False
         
         number_of_updated_cells = 0
         for date_MST_MDY_string in tips_to_archive_date_order:
@@ -295,22 +347,33 @@ class TipArchive(webapp.RequestHandler):
                 self.league_worksheets = {}
                 
                 for league_key, tip_instances in tip_instances_by_league.iteritems():
-                    league_worksheet = self.get_league_worksheet(sport_key, league_key)
+                    #TODO: update by league first rather than by date to increase size of cell batch update
+                    league_worksheet = self.get_league_worksheet(sport_key, league_key, valid_leagues=leagues_to_archive_keys)
+                    # if a league is not valid then we skip, still want to update the archive date though
+                    if league_worksheet is None:
+                        skipped_update = True
+                        logging.info('Skipping '+date_MST_MDY_string+' '+league_key+' tips due to invalid league')
+                        continue
                     
+                    # ensure last league archived tip date is less than new archive tip date
+                    # if not, then there was a failure in previous run(s) and this league should skip this date
                     league_latest_date_split = league_worksheet.cell(league_worksheet.row_count, self.SPREADSHEET_DATE_COL).value.split('/')
                     if len(league_latest_date_split) == 3:
                         if new_date <= date(int(league_latest_date_split[2]), int(league_latest_date_split[0]), int(league_latest_date_split[1])):
+                            skipped_update = True
                             logging.warning('Failure to complete during previous instance. Skipping redundant '+date_MST_MDY_string+' for '+league_key)
                             continue
                     
                     # get all new rows in value lists (i.e. each new row is a list)
                     new_tip_archive_row_lists = []
                     for tip_instance in tip_instances:
+                        # 1 tip to n archive entries
                         new_tip_archive_row_lists = self.get_tip_archive_values(new_tip_archive_row_lists, tip_instance, dates_to_archive_keys)
                     
                     # need to know how many new rows will need to be added    
                     total_tips_to_archive = len(new_tip_archive_row_lists)
                     
+                    # tip lines were not filled out
                     if total_tips_to_archive < 1:
                         logging.warning(date_MST_MDY_string+' '+league_key+' has empty archived tips.')
                         continue
@@ -339,6 +402,7 @@ class TipArchive(webapp.RequestHandler):
                         else:
                             current_cell_row = cell_list[current_cell_index].row
                         
+                        # have to update the cell values individually
                         for new_cell_value in new_row_list:
                             if new_cell_value is None:
                                 new_cell_value = ''
@@ -349,13 +413,31 @@ class TipArchive(webapp.RequestHandler):
                             cell_list[current_cell_index].value = new_cell_value
                             current_cell_index += 1
                              
+                    # once cell list is updated, send the updates to the worksheet in single call
                     number_of_updated_cells += len(cell_list)
                     try:
                         league_worksheet.update_cells(cell_list)
                     except HTTPException as e:
+                        # DeadlineExceeded but it still seems to update fine
                         logging.warning(str(e))
                         
-        if new_date > latest_date:
+        # update archive date last to ensure all tips have been properly archived
+        # if there was an error, then archive date won't be updated and it'll catch any unarchived tips on next run
+        # also update archive date if there were no tips (valid or not) between the dates to actually archive (to avoid loop)
+        # however don't update archive date if there were invalid tips (i.e. tips that haven't finished)
+        if (
+            (
+             0 < number_of_updated_cells 
+             and new_date > latest_date
+            ) 
+            or (
+                0 == number_of_updated_cells 
+                and (
+                     skipped_update is True 
+                     or 0 == all_tips_by_date.count(limit=1)
+                )
+            )
+        ):
             new_date_string = new_date.strftime(self.DATE_FORMAT)
             logging.info('Updating archive date to '+new_date_string)
             info_worksheet.update_acell(self.SPREADSHEET_MODIFIED_DATE_CELL, new_date_string)
@@ -366,10 +448,12 @@ class TipArchive(webapp.RequestHandler):
     def get_tip_archive_values(self, new_tip_archive_row_lists, tip_instance, dates_to_archive_keys):
         date_MST = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))
         
+        # will also archive PPD or suspended games
         tip_scores = None
         if tip_instance.score_away is not None and tip_instance.score_home is not None:
             tip_scores = tip_instance.score_away+' - '+tip_instance.score_home
                         
+        # certain values don't change per tip
         default_row_values = [
                       date_MST.strftime(self.DATE_FORMAT),                  # DATE
                       'Tracker',                                            # Bookmaker
@@ -395,6 +479,7 @@ class TipArchive(webapp.RequestHandler):
                       None                                                  # Closing Line
                       ]
         
+        # archive time filter
         nine_pm_UTC = (date_MST - timedelta(days = 1)).replace(hour=21, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
         eight_am_UTC = date_MST.replace(hour=8, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
         eleven_am_UTC = date_MST.replace(hour=11, minute=30, second=0, microsecond=0).astimezone(pytz.utc)
@@ -407,6 +492,7 @@ class TipArchive(webapp.RequestHandler):
                             BET_TIME_LATEST : 'latest',
                             }
         
+        # remove invalid archive time filters
         dates_to_remove = []
         for date_to_archive in dates_to_archive:
             if date_to_archive not in dates_to_archive_keys:
@@ -529,6 +615,7 @@ class TipArchive(webapp.RequestHandler):
             new_row_values[self.SELECTION_INDEX] = team_selection
             new_row_values[self.TIME_INDEX] = date_label
                 
+            # archive each bet for this tip
             for bet_type, bet_odds in bet_types.iteritems():
                 if bet_odds[0] is None or bet_odds[1] is None:
                     continue
@@ -552,6 +639,8 @@ class TipArchive(webapp.RequestHandler):
                 ):
                     spread_mod = bet_odds[1]
                 
+                # get bet result
+                # away team bet
                 if (
                     bet_type in [
                                 BET_TYPE_AWAY_FAVOURITE, 
@@ -567,6 +656,7 @@ class TipArchive(webapp.RequestHandler):
                                 ]
                 ):
                     bet_result = tipanalysis.calculate_event_score_result(score_away, score_home, regulation_only=event_with_draw, draw_lose=event_with_draw, spread_modifier=spread_mod)
+                # home team bet
                 elif (
                     bet_type in [
                                 BET_TYPE_HOME_FAVOURITE, 
@@ -584,6 +674,7 @@ class TipArchive(webapp.RequestHandler):
                                 ]
                 ):
                     bet_result = tipanalysis.calculate_event_score_result(score_home, score_away, regulation_only=event_with_draw, draw_lose=event_with_draw, spread_modifier=spread_mod)
+                # draw bet
                 elif (
                       bet_type in [
                                 BET_TYPE_SIDE_DRAW,
@@ -611,9 +702,12 @@ class TipArchive(webapp.RequestHandler):
     def get_new_archive_total_value_lists(self, default_row_values, dates_to_archive, total_selection, total_no, total_lines, score_away, score_home):
         archive_tip_total_lists = []
         
+        # archive PPD or suspended games too
         if score_away is None or score_home is None:
             total_score = None
+        # otherwise get total score to compare against total no bet
         else:
+            # only certain leagues include extra time in bet calculations
             if default_row_values[self.LEAGUE_INDEX] in constants.LEAGUES_OT_INCLUDED:
                 total_score = float(score_away.split('(', 1)[0]) + float(score_home.split('(', 1)[0])
             else:
@@ -636,6 +730,7 @@ class TipArchive(webapp.RequestHandler):
             
             new_row_values[self.SELECTION_INDEX] = total_selection
             
+            # get bet result
             if total_selection == models.TIP_SELECTION_TOTAL_OVER:
                 bet_type = BET_TYPE_TOTAL_OVER
                 bet_result = tipanalysis.calculate_event_score_result(total_score, archive_total_no)

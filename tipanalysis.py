@@ -27,7 +27,9 @@ BET_RESULT_HALF_WIN = 'HW'
 BET_RESULT_HALF_LOSS = 'HL'
 
 def calculate_event_score_result(backing_score, opposition_score, **kwargs):
-    if isinstance(backing_score, basestring):
+    if backing_score is None or opposition_score is None:
+        return BET_RESULT_NONE
+    elif isinstance(backing_score, basestring):
         if '(' in backing_score:
             if (
                 'regulation_only' in kwargs 
@@ -41,9 +43,6 @@ def calculate_event_score_result(backing_score, opposition_score, **kwargs):
     
     backing_score = float(backing_score)
     opposition_score = float(opposition_score)
-    
-    if backing_score is None or opposition_score is None:
-        return BET_RESULT_NONE
     
     if 'spread_modifier' in kwargs and kwargs['spread_modifier'] is not None:
         spread_modifier = float(kwargs['spread_modifier'])

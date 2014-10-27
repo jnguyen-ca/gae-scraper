@@ -86,8 +86,13 @@ def calculate_event_score_result(backing_score, opposition_score, **kwargs):
 def convert_to_decimal_odds(moneyline):
     moneyline = float(moneyline)
     
-    if moneyline < 0:
+    # already decimal (probably)
+    if moneyline > 1.0 and moneyline < 10.0:
+        return moneyline
+    # favourite
+    elif moneyline < 0:
         return 100.0 / (moneyline * -1) + 1.0
+    # underdog
     else:
         return moneyline / 100.0 + 1.0
     

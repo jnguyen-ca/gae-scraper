@@ -685,13 +685,13 @@ class TipArchive(webapp.RequestHandler):
                 new_row_values[self.RESULT_INDEX] = bet_result
                 
                 if spread_mod is not None:
-                    new_row_values[self.ODDS_INDEX] = bet_odds[0]
-                    new_row_values[self.CLOSE_ODDS_INDEX] = closing_spread_line
+                    new_row_values[self.ODDS_INDEX] = round(tipanalysis.convert_to_decimal_odds(bet_odds[0]),3)
+                    new_row_values[self.CLOSE_ODDS_INDEX] = round(tipanalysis.convert_to_decimal_odds(closing_spread_line),3)
                     new_row_values[self.LINE_INDEX] = spread_mod
                     new_row_values[self.CLOSE_LINE_INDEX] = closing_spread_no
                 else:
-                    new_row_values[self.ODDS_INDEX] = bet_odds[0]
-                    new_row_values[self.CLOSE_ODDS_INDEX] = bet_odds[1]
+                    new_row_values[self.ODDS_INDEX] = round(tipanalysis.convert_to_decimal_odds(bet_odds[0]),3)
+                    new_row_values[self.CLOSE_ODDS_INDEX] = round(tipanalysis.convert_to_decimal_odds(bet_odds[1]),3)
                     new_row_values[self.LINE_INDEX] = None
                     new_row_values[self.CLOSE_LINE_INDEX] = None
                 
@@ -746,8 +746,8 @@ class TipArchive(webapp.RequestHandler):
             new_row_values[self.TIME_INDEX] = date_label
             new_row_values[self.RESULT_INDEX] = bet_result
             
-            new_row_values[self.ODDS_INDEX] = archive_total_line
-            new_row_values[self.CLOSE_ODDS_INDEX] = closing_total_line
+            new_row_values[self.ODDS_INDEX] = round(tipanalysis.convert_to_decimal_odds(archive_total_line),3)
+            new_row_values[self.CLOSE_ODDS_INDEX] = round(tipanalysis.convert_to_decimal_odds(closing_total_line),3)
             new_row_values[self.LINE_INDEX] = archive_total_no
             new_row_values[self.CLOSE_LINE_INDEX] = closing_total_no
                 

@@ -552,10 +552,11 @@ TEAMS = {
             'values' : {
                         '159227'    : ['HC Mountfield'],
                         '100315'    : ['HC Litvinov', 'HC V LITVINOV'],
-                        '100318'    : ['HC E KARLOVY VARY', 'HC Energie Karlove Vary'],
-                        '100311'    : ['Bili Tygri Liberec', 'BT LIBEREC'],
+                        '100318'    : ['HC E KARLOVY VARY', 'HC Energie Karlove Vary', 'HC Karlovy Vary'],
+                        '100311'    : ['Bili Tygri Liberec', 'BT LIBEREC', 'HC Liberec'],
                         '100319'    : ['HC O TRINEC', 'HC Trinec'],
                         '100309'    : ['HC CSOB PARDUBICE', 'HC CSOB Pojistovna Pardubice', 'HC Pardubice'],
+                        '100310'    : ['HC Sparta Prague'],
                         '100314'    : ['HC S. PLZEN', 'HC Plzen', 'HC Škoda Plzen'],
                         '174556'    : ['HC Mlada Boleslav', 'HK Mlada Boleslav'],
                         '100317'    : ['HC Slavia Prague'],

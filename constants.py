@@ -70,7 +70,7 @@ BACKUP_SCORES_FEED = 'scorespro.com'
 TIMEZONE_LOCAL = 'America/Edmonton'
 TIMEZONE_WETTPOINT = 'Europe/Berlin'
 TIMEZONE_SCOREBOARD = 'Europe/Athens'
-TIMEZONE_BACKUP = 'Etc/GMT+1'
+TIMEZONE_BACKUP = 'Etc/GMT-1'
 
 def is_local():
     return os.environ['SERVER_SOFTWARE'].startswith('Development')

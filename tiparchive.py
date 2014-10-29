@@ -185,6 +185,10 @@ class TipArchive(webapp.RequestHandler):
     DATE_FORMAT = '%m/%d/%Y' # format for date stored in spreadsheet
     
     def get(self):
+        #TODO: set up push task queue
+        pass
+    
+    def post(self):
         self.DATASTORE_READS = 0
         
         self.response.out.write('Hello<br />')
@@ -368,7 +372,7 @@ class TipArchive(webapp.RequestHandler):
                     new_tip_archive_row_lists = []
                     for tip_instance in tip_instances:
                         # 1 tip to n archive entries
-                        new_tip_archive_row_lists = self.get_tip_archive_values(new_tip_archive_row_lists, tip_instance, dates_to_archive_keys)
+                        self.get_tip_archive_values(new_tip_archive_row_lists, tip_instance, dates_to_archive_keys)
                     
                     # need to know how many new rows will need to be added    
                     total_tips_to_archive = len(new_tip_archive_row_lists)
@@ -506,25 +510,25 @@ class TipArchive(webapp.RequestHandler):
         # Total bets
         new_tip_archive_row_lists += self.get_new_archive_total_value_lists(default_row_values, dates_to_archive, tip_instance.wettpoint_tip_total, tip_instance.total_no, tip_instance.total_lines, tip_instance.score_away, tip_instance.score_home)
         
-        return new_tip_archive_row_lists
-        
     def get_new_archive_team_value_lists(self, default_row_values, dates_to_archive, team_selection, team_lines, spread_no, spread_lines, score_away, score_home):
         archive_tip_team_lists = []
         
         if team_selection is None:
             return archive_tip_team_lists
         
+        original_league_value = default_row_values[self.LEAGUE_INDEX]
+        
         event_with_draw = True
-        if default_row_values[self.LEAGUE_INDEX] in constants.LEAGUES_OT_INCLUDED:
+        if original_league_value in constants.LEAGUES_OT_INCLUDED:
             event_with_draw = False
         
         # get closing line for comparison data
         closing_line = tipanalysis.get_line(team_lines)[0]
         closing_spread_no = tipanalysis.get_line(spread_no)[0]
         closing_spread_line = tipanalysis.get_line(spread_lines)[0]
+        
+        new_row_values = default_row_values[:]
         for date_label, date_to_archive in dates_to_archive.iteritems():
-            new_row_values = default_row_values
-            
             archive_team_line = tipanalysis.get_line(team_lines, date=date_to_archive)[0]
             archive_spread_no = tipanalysis.get_line(spread_no, date=date_to_archive)[0]
             archive_spread_line = tipanalysis.get_line(spread_lines, date=date_to_archive)[0]
@@ -685,11 +689,13 @@ class TipArchive(webapp.RequestHandler):
                 new_row_values[self.RESULT_INDEX] = bet_result
                 
                 if spread_mod is not None:
+                    new_row_values[self.LEAGUE_INDEX] = original_league_value + ' Spread'
                     new_row_values[self.ODDS_INDEX] = round(tipanalysis.convert_to_decimal_odds(bet_odds[0]),3)
                     new_row_values[self.CLOSE_ODDS_INDEX] = round(tipanalysis.convert_to_decimal_odds(closing_spread_line),3)
                     new_row_values[self.LINE_INDEX] = spread_mod
                     new_row_values[self.CLOSE_LINE_INDEX] = closing_spread_no
                 else:
+                    new_row_values[self.LEAGUE_INDEX] = original_league_value + ' Money Line'
                     new_row_values[self.ODDS_INDEX] = round(tipanalysis.convert_to_decimal_odds(bet_odds[0]),3)
                     new_row_values[self.CLOSE_ODDS_INDEX] = round(tipanalysis.convert_to_decimal_odds(bet_odds[1]),3)
                     new_row_values[self.LINE_INDEX] = None
@@ -701,6 +707,8 @@ class TipArchive(webapp.RequestHandler):
     
     def get_new_archive_total_value_lists(self, default_row_values, dates_to_archive, total_selection, total_no, total_lines, score_away, score_home):
         archive_tip_total_lists = []
+        
+        original_league_value = default_row_values[self.LEAGUE_INDEX]
         
         # archive PPD or suspended games too
         if score_away is None or score_home is None:
@@ -719,9 +727,9 @@ class TipArchive(webapp.RequestHandler):
         
         closing_total_no = tipanalysis.get_line(total_no)[0]
         closing_total_line = tipanalysis.get_line(total_lines)[0]
+
+        new_row_values = default_row_values[:]
         for date_label, date_to_archive in dates_to_archive.iteritems():
-            new_row_values = default_row_values
-            
             archive_total_no = tipanalysis.get_line(total_no, date=date_to_archive)[0]
             archive_total_line = tipanalysis.get_line(total_lines, date=date_to_archive)[0]
             
@@ -741,6 +749,7 @@ class TipArchive(webapp.RequestHandler):
                 bet_type = BET_TYPE_TOTAL_NONE
                 bet_result = tipanalysis.calculate_event_score_result(archive_total_no, total_score)
             
+            new_row_values[self.LEAGUE_INDEX] = original_league_value + ' Total'
             new_row_values[self.TYPE_INDEX] = bet_type
             
             new_row_values[self.TIME_INDEX] = date_label

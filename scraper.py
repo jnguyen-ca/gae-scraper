@@ -1046,26 +1046,59 @@ class Scraper(webapp.RequestHandler):
     def add_wettpoint_h2h_details(self, tip_instance):
         h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away)
         
-        if h2h_stake is not False:
-            h2h_stake = (10.0 - h2h_stake) / 10.0
+        new_wettpoint_stake = tip_instance.wettpoint_tip_stake
         
         mail_warning = ''
-        if h2h_total is not False and h2h_total != tip_instance.wettpoint_tip_total:
-            mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TOTAL DISCREPANCY' + "\n"
-        if h2h_team is not False and h2h_team != tip_instance.wettpoint_tip_team:
-            mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TEAM DISCREPANCY' + "\n"
-        if h2h_stake is not False and round(h2h_stake * 10) != tip_instance.wettpoint_tip_stake:
-            mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' STAKE DISCREPANCY' + "\n"
+        if h2h_stake is not False:
+            h2h_stake = (10.0 - h2h_stake) / 10.0
+            
+            if round(h2h_stake * 10) != tip_instance.wettpoint_tip_stake:
+                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' STAKE DISCREPANCY' + "\n"
+        else:
+            h2h_stake = 0.0
+            
+        if (
+            h2h_team is False 
+            and h2h_total is False
+        ):
+            h2h_stake += models.TIP_STAKE_TEAM_TOTAL_NONE / 1000.0
+        elif (
+              h2h_team is not False 
+              and h2h_total is not False 
+        ):
+            if (
+                h2h_team != tip_instance.wettpoint_tip_team 
+                and h2h_total != tip_instance.wettpoint_tip_total
+            ):
+                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TEAM AND TOTAL DISCREPANCY' + "\n"
+                h2h_stake += models.TIP_STAKE_TEAM_TOTAL_DISAGREE / 1000.0
+            elif h2h_team != tip_instance.wettpoint_tip_team:
+                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TEAM DISCREPANCY' + "\n"
+                h2h_stake += models.TIP_STAKE_TEAM_DISAGREE / 1000.0
+            elif h2h_total != tip_instance.wettpoint_tip_total:
+                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TOTAL DISCREPANCY' + "\n"
+                h2h_stake += models.TIP_STAKE_TOTAL_DISAGREE / 1000.0
+        elif h2h_team is not False:
+            if h2h_team != tip_instance.wettpoint_tip_team:
+                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TEAM DISCREPANCY' + "\n"
+                h2h_stake += models.TIP_STAKE_TEAM_DISAGREE_TOTAL_NONE / 1000.0
+            else:
+                h2h_stake += models.TIP_STAKE_TOTAL_NONE / 1000.0
+        elif h2h_total is not False:
+            if h2h_total != tip_instance.wettpoint_tip_total:
+                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TOTAL DISCREPANCY' + "\n"
+                h2h_stake += models.TIP_STAKE_TOTAL_DISAGREE_TEAM_NONE / 1000.0
+            else:
+                h2h_stake += models.TIP_STAKE_TEAM_NONE / 1000.0
+            
         if len(mail_warning) > 0:
             if self.WARNING_MAIL is False:
                 self.WARNING_MAIL = ''+tip_instance.game_league+"\n"+mail_warning
             else:
                 self.WARNING_MAIL += "\n"+tip_instance.game_league+"\n"+mail_warning
-        
-        if h2h_stake is not False:
-            return tip_instance.wettpoint_tip_stake + h2h_stake
-        
-        return tip_instance.wettpoint_tip_stake
+                    
+        new_wettpoint_stake += h2h_stake
+        return new_wettpoint_stake
                                     
     def create_tip_change_object(self, tip_instance, ctype, line, create_mail):
         if create_mail is True:

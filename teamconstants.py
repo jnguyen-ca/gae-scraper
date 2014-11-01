@@ -550,6 +550,7 @@ TEAMS = {
                       'HC CSOB Poistovna Pardubice'     : '100309',
             },
             'values' : {
+                        '100307'    : ['Vitkovice Steel'],
                         '159227'    : ['HC Mountfield'],
                         '100315'    : ['HC Litvinov', 'HC V LITVINOV'],
                         '100318'    : ['HC E KARLOVY VARY', 'HC Energie Karlove Vary', 'HC Karlovy Vary'],

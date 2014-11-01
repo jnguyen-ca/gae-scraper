@@ -8,7 +8,7 @@ sys.path.append('libs/gspread-0.2.2')
 sys.path.append('libs/pytz-2014.7')
 
 from google.appengine.ext import webapp
-from google.appengine.api import urlfetch
+from google.appengine.api import urlfetch, taskqueue
 from oauth2client.client import SignedJwtAssertionCredentials
 
 from httplib import HTTPException
@@ -57,6 +57,7 @@ BET_TYPE_TOTAL_NONE = 'None'
 BET_TIME_NIGHT = '9PM Day Before'
 BET_TIME_MORNING = '8AM Same Day'
 BET_TIME_NOON = '11:30AM Same Day'
+BET_TIME_AFTERNOON = '2PM Same Day'
 BET_TIME_LATEST = 'Latest'
 
 def is_side_team_favourite(**kwargs):
@@ -185,23 +186,18 @@ class TipArchive(webapp.RequestHandler):
     DATE_FORMAT = '%m/%d/%Y' # format for date stored in spreadsheet
     
     def get(self):
-        #TODO: set up push task queue
-        pass
+        self.response.out.write('Hello<br />')
+        taskqueue.add(queue_name='archive', url='/archive', params={'day_limit' : self.request.get('day_limit')})
+        self.response.out.write('<br />Goodbye')
     
     def post(self):
         self.DATASTORE_READS = 0
         
-        self.response.out.write('Hello<br />')
         urlfetch.set_default_fetch_deadline(30)
         
-        day_limit = self.request.get('day_limit', default_value='2')
-        try:
-            day_limit = int(day_limit)
-        except ValueError:
-            day_limit = 2
+        day_limit = self.request.get('day_limit')
         
         self.update_archive(day_limit)
-        self.response.out.write('<br />Goodbye')
         
         logging.debug('Total Reads: '+str(self.DATASTORE_READS))
         
@@ -283,10 +279,28 @@ class TipArchive(webapp.RequestHandler):
             leagues_to_archive_keys = [x.strip() for x in leagues_to_archive_cell_value.split(';')]
         
         # first day to archive should be day immediately after last archive date
-        # last day depends on day_limit GET parameter (default = 2 days)
         latest_UTC_date = local_timezone.localize(datetime.strptime(latest_MST_MDY_string+' 23:59.59.999999', '%m/%d/%Y %H:%M.%S.%f')).astimezone(pytz.utc)
+        
+        try:
+            day_limit = int(day_limit)
+            additional_task_required = False
+        except (TypeError, ValueError):
+            # day_limit parameter not given, default to 7 days
+            day_limit = 7
+            additional_task_required = None
+            
         limit_UTC_date = latest_UTC_date + timedelta(days = abs(day_limit))
         
+        # if no day_limit parameter given then we want to update archive to latest possible date
+        # will need to queue up another task if current run will not update archive to current date
+        if (
+            additional_task_required is None 
+            and limit_UTC_date.date() < (datetime.utcnow() - timedelta(days = 1)).date()
+        ):
+            additional_task_required = True
+        else:
+            additional_task_required = False
+            
         self.DATASTORE_READS += 1
         all_tips_by_date = models.Tip.gql('WHERE date > :1 AND date <= :2 ORDER BY date ASC',
                                           latest_UTC_date.replace(tzinfo=None),
@@ -356,7 +370,7 @@ class TipArchive(webapp.RequestHandler):
                     # if a league is not valid then we skip, still want to update the archive date though
                     if league_worksheet is None:
                         skipped_update = True
-                        logging.info('Skipping '+date_MST_MDY_string+' '+league_key+' tips due to invalid league')
+#                         logging.info('Skipping '+date_MST_MDY_string+' '+league_key+' tips due to invalid league')
                         continue
                     
                     # ensure last league archived tip date is less than new archive tip date
@@ -446,6 +460,11 @@ class TipArchive(webapp.RequestHandler):
             logging.info('Updating archive date to '+new_date_string)
             info_worksheet.update_acell(self.SPREADSHEET_MODIFIED_DATE_CELL, new_date_string)
             number_of_updated_cells += 1
+            
+            # only queue up another task if the archive date was updated (possible loop otherwise if a day doesn't have an event to archive)
+            if additional_task_required is True:
+                logging.info('Queuing additional task to archive queue to update archive to current date.')
+                taskqueue.add(queue_name='archive', url='/archive')
                 
         logging.debug('Total number of cells updated: '+str(number_of_updated_cells))
         
@@ -487,12 +506,14 @@ class TipArchive(webapp.RequestHandler):
         nine_pm_UTC = (date_MST - timedelta(days = 1)).replace(hour=21, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
         eight_am_UTC = date_MST.replace(hour=8, minute=0, second=0, microsecond=0).astimezone(pytz.utc)
         eleven_am_UTC = date_MST.replace(hour=11, minute=30, second=0, microsecond=0).astimezone(pytz.utc)
+        two_pm_UTC = date_MST.replace(hour=14, minute=00, second=0, microsecond=0).astimezone(pytz.utc)
         
         # see BET_TIME class constants
         dates_to_archive = {
                             BET_TIME_NIGHT : nine_pm_UTC,
                             BET_TIME_MORNING : eight_am_UTC,
                             BET_TIME_NOON : eleven_am_UTC,
+                            BET_TIME_AFTERNOON : two_pm_UTC,
                             BET_TIME_LATEST : 'latest',
                             }
         

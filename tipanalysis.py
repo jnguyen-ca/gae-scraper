@@ -140,6 +140,43 @@ def get_line(line_dates, **kwargs):
 class TipAnalysis(webapp.RequestHandler):
     def get(self):
         pass
+#                 if not league_key in display_seasons.keys():
+#                     continue
+#                 
+#                 self.html.append("<div class='league_key'><b>%(league_key)s</b></div>" % locals())
+#                 
+#                 dateRanges = {}
+#                 for dateRange, checked in display_seasons[league_key].iteritems():
+#                     if checked:
+#                         dateValues = dateRange.partition('-')
+#                         fromDate = datetime.strptime(dateValues[0] + ' 00:00:00','%m.%d.%Y %H:%M:%S') + timedelta(hours = 4)
+#                         toDate = datetime.strptime(dateValues[2] + ' 23:59:59','%m.%d.%Y %H:%M:%S') + timedelta(hours = 4)
+#                         
+#                         if fromDate in dateRanges:
+#                             if dateRanges[fromDate] > toDate:
+#                                 continue
+#                             
+#                         dateRanges[fromDate] = toDate
+#                 
+#                 self.html.append("<span class='league-dates'>")
+#                 
+#                 for fromDate in sorted(dateRanges):
+#                     self.html.append("<span class='league-date'><span class='from-date'>"+fromDate.strftime('%m.%d.%Y')+"</span>-<span class='to-date'>"+dateRanges[fromDate].strftime('%m.%d.%Y')+"</span></span>")
+#                     
+#                     query = Tip.gql('WHERE date >= :1 AND date <= :2 AND archived = True AND game_league = :3 ORDER BY date ASC', fromDate, dateRanges[fromDate], league_key)
+#                     
+#                     for tip_instance in query:
+#                         if not league_key in self.datastore:
+#                             self.datastore[league_key] = []
+#                             
+#                         self.datastore[league_key].append(tip_instance)
+#                 
+#                 self.html.append("</span>")
+                
+#                 if not league_key in self.datastore:
+#                     continue
+                        
+#                 self.display_wettpoint_results(league_key)
     
     def display_wettpoint_results(self, league):
         team_list = self.team_wettpoint_stake_result(league)

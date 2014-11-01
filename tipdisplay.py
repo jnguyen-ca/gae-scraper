@@ -35,11 +35,11 @@ class TipDisplay(webapp.RequestHandler):
 # '''<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>''')
         self.styleheader.append(
 '''<style>
-    .game_time-MST {width: 10%;}
+    .game_time-MST {width: 12%;}
     .upcoming_game {margin: 6px 0;}
-    .upcoming_game > span {display: inline-block; margin-right: 12px; min-width: 50px;}
+    .upcoming_game > span {display: inline-block; margin-right: 12px; min-width: 60px;}
     .upcoming_game .participants {width: 22%; text-overflow: ellipsis;}
-    .upcoming_game .tip-team {width: 13%; text-overflow: ellipsis;}
+    .upcoming_game .tip-team {text-overflow: ellipsis;}
     .upcoming_game .tip-date {width: 10%;}
     .upcoming_game .tip-line-adjusted_win, .upcoming_game .tip-line-adjusted_loss {background: lightgrey; text-align: center;}
     .upcoming_game .today {font-weight: bold;}
@@ -134,44 +134,6 @@ class TipDisplay(webapp.RequestHandler):
             # display all non-archived tips
             self.html.append("<div class='league_key'><b>%(league_key)s</b> <a href='%(wettpoint_table)s'>Table</a></div>" % locals())
             self.html.append(list_next_games(league_key, not_archived_tips_values))
-                
-#                 if not league_key in display_seasons.keys():
-#                     continue
-#                 
-#                 self.html.append("<div class='league_key'><b>%(league_key)s</b></div>" % locals())
-#                 
-#                 dateRanges = {}
-#                 for dateRange, checked in display_seasons[league_key].iteritems():
-#                     if checked:
-#                         dateValues = dateRange.partition('-')
-#                         fromDate = datetime.strptime(dateValues[0] + ' 00:00:00','%m.%d.%Y %H:%M:%S') + timedelta(hours = 4)
-#                         toDate = datetime.strptime(dateValues[2] + ' 23:59:59','%m.%d.%Y %H:%M:%S') + timedelta(hours = 4)
-#                         
-#                         if fromDate in dateRanges:
-#                             if dateRanges[fromDate] > toDate:
-#                                 continue
-#                             
-#                         dateRanges[fromDate] = toDate
-#                 
-#                 self.html.append("<span class='league-dates'>")
-#                 
-#                 for fromDate in sorted(dateRanges):
-#                     self.html.append("<span class='league-date'><span class='from-date'>"+fromDate.strftime('%m.%d.%Y')+"</span>-<span class='to-date'>"+dateRanges[fromDate].strftime('%m.%d.%Y')+"</span></span>")
-#                     
-#                     query = Tip.gql('WHERE date >= :1 AND date <= :2 AND archived = True AND game_league = :3 ORDER BY date ASC', fromDate, dateRanges[fromDate], league_key)
-#                     
-#                     for tip_instance in query:
-#                         if not league_key in self.datastore:
-#                             self.datastore[league_key] = []
-#                             
-#                         self.datastore[league_key].append(tip_instance)
-#                 
-#                 self.html.append("</span>")
-                
-#                 if not league_key in self.datastore:
-#                     continue
-                        
-#                 self.display_wettpoint_results(league_key)
         
         self.html.append('</body></html>')    
             
@@ -226,17 +188,8 @@ def list_next_games(league, not_archived_tips):
         wettpoint_total = tip_instance.wettpoint_tip_total
         
         latest_line, latest_date = tipanalysis.get_line(tip_instance.team_lines)
-        
-        total_no = False
-        if tip_instance.total_no:
-            totals = json.loads(tip_instance.total_no)
-            if latest_date:
-                latest_date_string = latest_date.strftime('%d.%m.%Y %H:%M')
-            else:
-                sorted_total_dates = sorted(totals, key=lambda x: datetime.strptime(x, '%d.%m.%Y %H:%M'))
-                latest_date_string = sorted_total_dates[-1]
-            if latest_date_string in totals:
-                total_no = totals[latest_date_string]
+        spread_no = tipanalysis.get_line(tip_instance.spread_no)[0]
+        total_no = tipanalysis.get_line(tip_instance.total_no)[0]
         
         if latest_date:
             latest_date = latest_date.replace(tzinfo=pytz.utc).astimezone(local_timezone)
@@ -250,6 +203,7 @@ def list_next_games(league, not_archived_tips):
         next_games_html.append('<span class="tip-stake">%(wettpoint_stake)s</span>' % locals())
         next_games_html.append('<span class="tip-team">%(wettpoint_team)s</span>' % locals())
         next_games_html.append('<span class="tip-line">%(latest_line)s</span>' % locals())
+        next_games_html.append('<span class="tip-line">%(spread_no)s</span>' % locals())
         next_games_html.append('<span class="tip-date">%(latest_date)s</span>' % locals())
         next_games_html.append('<span class="tip-total">%(wettpoint_total)s</span>' % locals())
         next_games_html.append('<span class="tip-total_no">%(total_no)s</span>' % locals())

@@ -35,6 +35,11 @@ def get_team_aliases(sport, league, team_name):
 
 class Scraper(webapp.RequestHandler):
     WETTPOINT_DATETIME_FORMAT = '%d.%m.%Y %H:%M'
+    WETTPOINT_TABLE_MINUTES_BEFORE_EVENT_EXPIRE = 15
+    
+    TIME_CRON_SCHEDULE_MINUTES_APART = 30
+    TIME_ERROR_MARGIN_MINUTES_BEFORE = -65
+    TIME_ERROR_MARGIN_MINUTES_AFTER = 90
     
     def get(self):
         self.DATASTORE_PUTS = 0
@@ -411,7 +416,11 @@ class Scraper(webapp.RequestHandler):
                         
                         # row should have same time (30 minute error window) and team names
                         time_difference = row_game_time - scoreboard_game_time
-                        if abs(divmod(time_difference.total_seconds(), 60)[0]) <= 15:
+                        time_difference_minutes = divmod(time_difference.total_seconds(), 60)[0]
+                        if (
+                            self.TIME_ERROR_MARGIN_MINUTES_BEFORE <= time_difference_minutes 
+                            and self.TIME_ERROR_MARGIN_MINUTES_AFTER >= time_difference_minutes
+                        ):
                             if row_away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
                                 if row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
                                     row_game_status = row_columns[score_row_key_indices['Stat']].get_text().strip()
@@ -474,7 +483,7 @@ class Scraper(webapp.RequestHandler):
                     # if tip is not archived and it's over a day old... something is probably wrong
                     if (
                         tip_instance.archived != True 
-                        and (datetime.now() - tip_instance.date).total_seconds() > 86400
+                        and (datetime.now() - tip_instance.date).total_seconds() > 64800
                         ):
                         if self.PPD_MAIL_BODY is False:
                             self.PPD_MAIL_BODY = ''
@@ -558,7 +567,11 @@ class Scraper(webapp.RequestHandler):
                 
                 # row should have same time (30 minute error window) and team names
                 time_difference = row_game_time - scoreboard_game_time
-                if abs(divmod(time_difference.total_seconds(), 60)[0]) <= 15:
+                time_difference_minutes = divmod(time_difference.total_seconds(), 60)[0]
+                if (
+                    self.TIME_ERROR_MARGIN_MINUTES_BEFORE <= time_difference_minutes 
+                    and self.TIME_ERROR_MARGIN_MINUTES_AFTER >= time_difference_minutes
+                ):
                     if row_away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
                         if row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
                             
@@ -576,7 +589,7 @@ class Scraper(webapp.RequestHandler):
             # if tip is not archived and it's over a day old... something is probably wrong
             if (
                 tip_instance.archived != True 
-                and (datetime.now() - tip_instance.date).total_seconds() > 86400
+                and (datetime.now() - tip_instance.date).total_seconds() > 64800
                 ):
                 if self.PPD_MAIL_BODY is False:
                     self.PPD_MAIL_BODY = ''
@@ -657,13 +670,14 @@ class Scraper(webapp.RequestHandler):
                     tip_stake_changed = False
                     minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
                     
-                    if tip_instance.wettpoint_tip_stake is not None:
+                    if (
+                        tip_instance.wettpoint_tip_stake is not None 
+                        and tip_instance.wettpoint_tip_stake >= 1.0
+                    ):
                         if tip_instance.elapsed is True:
                             continue
-                        elif minutes_until_start < 20:
+                        elif minutes_until_start <= (abs(self.TIME_ERROR_MARGIN_MINUTES_BEFORE) + self.WETTPOINT_TABLE_MINUTES_BEFORE_EVENT_EXPIRE):
                             # tip has already been filled out and table updated past tip time, move on to next to avoid resetting tip to 0
-                            continue
-                        elif minutes_until_start <= 30 and tip_instance.wettpoint_tip_stake >= 1.0:
                             continue
                     
                     if not 'wettpoint' in constants.LEAGUES[tip_instance.game_sport][tip_instance.game_league]:
@@ -725,7 +739,10 @@ class Scraper(webapp.RequestHandler):
                         # if the league is correct then does the time match (30 minute error window)    
                         if (
                             correct_league is True 
-                            and abs(row_minutes_past_start) <= 15
+                            and (
+                                 self.TIME_ERROR_MARGIN_MINUTES_BEFORE <= row_minutes_past_start 
+                                 and self.TIME_ERROR_MARGIN_MINUTES_AFTER >= row_minutes_past_start
+                                 )
                             ):
                             index = team_names.find(' - ')
                             home_team = team_names[0:index].strip()
@@ -836,7 +853,7 @@ class Scraper(webapp.RequestHandler):
                                     self.WARNING_MAIL += "\n"
                                 self.WARNING_MAIL += 'Probable ' + home_team + ' WETTPOINT NAMES for ' + tip_instance.game_league + ', ' + tip_instance.game_sport + ' MISMATCH!' + "\n"
                         # tip has passed this object (i.e. no tip upcoming for this event therefore tip stake = 0)
-                        elif row_minutes_past_start > 15:
+                        elif self.TIME_ERROR_MARGIN_MINUTES_AFTER < row_minutes_past_start:
                             if (
                                 tip_instance.wettpoint_tip_stake is not None 
                                 and tip_instance.wettpoint_tip_stake >= 1.0
@@ -862,10 +879,11 @@ class Scraper(webapp.RequestHandler):
                                 tip_instance.wettpoint_tip_stake = None
                                 tip_stake_changed = False
                         
+                        last_window_minutes = (abs(self.TIME_CRON_SCHEDULE_MINUTES_APART) * 1.5) + 5
                         if ((
                             tip_instance.wettpoint_tip_stake is None 
                             and (
-                                 minutes_until_start <= (45 + 5) 
+                                 minutes_until_start <= last_window_minutes 
                                  or (
                                      matchup_finalized 
                                      and tip_instance.wettpoint_tip_team is None 
@@ -882,14 +900,14 @@ class Scraper(webapp.RequestHandler):
 #                             )
                         ):
                             nolimit = False
-                            if minutes_until_start <= (45 + 5):
+                            if minutes_until_start <= last_window_minutes:
                                 nolimit = True
                             try:
-                                h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
+                                h2h_total, h2h_team, h2h_risk = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
                             except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
                                 logging.warning('wettpoint '+sport_key+' H2H down, skipping all H2H fetches (2)')
                                 logging.warning(str(request_error))
-                                h2h_total = h2h_team = h2h_stake = False
+                                h2h_total = h2h_team = h2h_risk = False
                                 H2H_sport_issue = True
                                 tip_instance.wettpoint_tip_stake = None
                         
@@ -912,13 +930,13 @@ class Scraper(webapp.RequestHandler):
                                     tip_instance.spread_lines = None
                                 tip_instance.wettpoint_tip_team = h2h_team
                            
-                            if h2h_stake is not False:
+                            if h2h_risk is not False:
                                 if h2h_team is not False:
-                                    tip_instance.wettpoint_tip_stake = (10.0 - h2h_stake) * -1
-                                elif tip_instance.wettpoint_tip_stake == 0.0 or minutes_until_start <= (45 + 5):
-                                    h2h_stake = (10.0 - h2h_stake) / 10.0
+                                    tip_instance.wettpoint_tip_stake = (10.0 - h2h_risk) * -1
+                                elif tip_instance.wettpoint_tip_stake == 0.0 or minutes_until_start <= last_window_minutes:
+                                    h2h_stake = (10.0 - h2h_risk) / 10.0
                                     tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
-                            elif minutes_until_start <= (45 + 5):
+                            elif minutes_until_start <= last_window_minutes:
                                 tip_instance.wettpoint_tip_stake = 0.0
                             elif self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] is True and tip_instance.wettpoint_tip_stake == 0.0:
                                 tip_instance.wettpoint_tip_stake = None
@@ -987,7 +1005,7 @@ class Scraper(webapp.RequestHandler):
         
         sport = constants.SPORTS[sport_key]['wettpoint']
         
-        h2h_total, h2h_team, h2h_stake = False, False, False
+        h2h_total, h2h_team, h2h_risk = False, False, False
         
         # wettpoint h2h link is home team - away team
         h2h_link = 'http://'+sport+'.'+constants.WETTPOINT_FEED+'/h2h/'+team_home_id+'-'+team_away_id+'.html'
@@ -1026,13 +1044,18 @@ class Scraper(webapp.RequestHandler):
             if h2h_team_text:
                 h2h_team = h2h_team_text.find_next_sibling('b').get_text().strip()
                 
-            h2h_stake_text = h2h_header.find_next_sibling(text=re.compile('Risikofaktor'))
-            if h2h_stake_text:
-                h2h_stake_text = h2h_stake_text.find_next_sibling('b').get_text().strip()
+            h2h_risk_text = h2h_header.find_next_sibling(text=re.compile('Risikofaktor'))
+            if h2h_risk_text:
+                h2h_risk_text = h2h_risk_text.find_next_sibling('b').get_text().strip()
                 try:
-                    h2h_stake = float(h2h_stake_text)
+                    h2h_risk = float(h2h_risk_text)
+                    
+                    if h2h_risk == 10.0:
+                        h2h_risk = 9.9
+                    elif h2h_risk == 0.0:
+                        h2h_risk = 0.1
                 except ValueError:
-                    h2h_stake = False
+                    h2h_risk = False
         else:
             if self.WARNING_MAIL is False:
                 self.WARNING_MAIL = ''
@@ -1041,16 +1064,16 @@ class Scraper(webapp.RequestHandler):
             logging.warning('Probable '+team_away+'('+team_away_id+') @ '+team_home+'('+team_home_id+') wettpoint H2H ids for ' + league_key + ' MISMATCH!')
             self.WARNING_MAIL += 'Probable '+team_away+'('+team_away_id+') @ '+team_home+'('+team_home_id+') wettpoint H2H ids for ' + league_key + ' MISMATCH!' + "\n"
         
-        return h2h_total, h2h_team, h2h_stake
+        return h2h_total, h2h_team, h2h_risk
     
     def add_wettpoint_h2h_details(self, tip_instance):
-        h2h_total, h2h_team, h2h_stake = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away)
+        h2h_total, h2h_team, h2h_risk = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away)
         
         new_wettpoint_stake = tip_instance.wettpoint_tip_stake
         
         mail_warning = ''
-        if h2h_stake is not False:
-            h2h_stake = (10.0 - h2h_stake) / 10.0
+        if h2h_risk is not False:
+            h2h_stake = (10.0 - h2h_risk) / 10.0
             
             if round(h2h_stake * 10) != tip_instance.wettpoint_tip_stake:
                 mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' STAKE DISCREPANCY' + "\n"
@@ -1382,6 +1405,7 @@ class Scraper(webapp.RequestHandler):
         for sport_key, possible_ppd_tips_by_league in possible_ppd_tips_by_sport_league.iteritems():
             for league_key, possible_ppd_tips in possible_ppd_tips_by_league.iteritems():
                 for key_string, tip_instance in possible_ppd_tips.iteritems():
+                    #TODO: reduce duplicate check index size
                     self.DATASTORE_READS += 1
                     query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND date = :3 AND game_team_away = :4 AND game_team_home = :5 AND rot_away = :6 AND rot_home = :7 AND pinnacle_game_no != :8',
                             tip_instance.game_sport,

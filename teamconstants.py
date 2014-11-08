@@ -680,7 +680,7 @@ TEAMS = {
                         '14994'     : ['DAL MAVERICKS'],
                         '14996'     : ['HOU ROCKETS'],
                         '14998'     : ['MEM GRIZZLIES'],
-                        '14992'     : ['NO PELICANS'],
+                        '14992'     : ['NO PELICANS', 'New Orleans Hornets'],
                         '15000'     : ['SA SPURS'],
                         # Northwest
                         '14995'     : ['DEN NUGGETS'],

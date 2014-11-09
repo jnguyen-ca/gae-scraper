@@ -33,6 +33,31 @@ import models
 def get_team_aliases(sport, league, team_name):
     return teamconstants.get_team_aliases(sport, league, team_name)
 
+def add_mail(mail_object, mail_title, mail_message, **kwargs):
+    if 'logging' in kwargs:
+        try:
+            getattr(logging, kwargs['logging'])(mail_message.strip())
+        except (AttributeError, TypeError):
+            logging.error('logging function not found "%s" (%s)' % (kwargs['logging'], mail_message))
+        
+    try:
+        if mail_title not in mail_object:
+            mail_object[mail_title] = ''
+            
+        mail_object[mail_title] += mail_message
+    except TypeError:
+        mail_object = {mail_title : mail_message}
+        
+    return mail_object
+
+def send_all_mail(mail_object):
+    try:
+        ADMIN_EMAIL = 'BlackCanine@gmail.com'
+        for mail_title, mail_message in mail_object.iteritems():
+            mail.send_mail(ADMIN_EMAIL, ADMIN_EMAIL, mail_title, mail_message.strip())
+    except TypeError:
+        pass
+
 class Scraper(webapp.RequestHandler):
     WETTPOINT_DATETIME_FORMAT = '%d.%m.%Y %H:%M'
     WETTPOINT_TABLE_MINUTES_BEFORE_EVENT_EXPIRE = 15
@@ -41,6 +66,10 @@ class Scraper(webapp.RequestHandler):
     TIME_ERROR_MARGIN_MINUTES_BEFORE = -65
     TIME_ERROR_MARGIN_MINUTES_AFTER = 90
     
+    MAIL_TEAM_ERROR = 'Team Error'
+    MAIL_TIP_WARNING = 'Game Warning'
+    MAIL_GENERIC_WARNING = 'Warning Notice'
+    
     def get(self):
         self.DATASTORE_PUTS = 0
         self.DATASTORE_READS = 0
@@ -48,15 +77,12 @@ class Scraper(webapp.RequestHandler):
         self.REQUEST_COUNT = {constants.PINNACLE_FEED : 0, constants.WETTPOINT_FEED: 0, constants.XSCORES_FEED : 0, constants.BACKUP_SCORES_FEED : 0}
         self.EXECUTION_LOGS = {}
         self.DEBUG_EXECUTION_LOGS = {}
+        self.MAIL_OBJECT = None
         #sys.stderr.write("ARRRRGHH")
         #sys.stderr.write("\n")
         #reload(sys)
         #sys.setdefaultencoding('utf-8')
         #sys.stderr = codecs.getwriter('utf8')(sys.stderr)
-        
-        self.WARNING_MAIL = False
-        self.MAIL_BODY = False
-        self.PPD_MAIL_BODY = False
         
         urlfetch.set_default_fetch_deadline(15)
         logging.getLogger('requests').setLevel(logging.WARNING) # disable requests library info and debug messages (to replace with my own)
@@ -79,14 +105,7 @@ class Scraper(webapp.RequestHandler):
         
         self.EXECUTION_LOGS['update_tips'] = time.time() - self.EXECUTION_LOGS['update_tips']
         
-        if self.WARNING_MAIL != False:
-            mail.send_mail('BlackCanine@gmail.com', 'BlackCanine@gmail.com', 'WARNING Notice', self.WARNING_MAIL)
-            
-        if self.MAIL_BODY != False:
-            mail.send_mail('BlackCanine@gmail.com', 'BlackCanine@gmail.com', 'Tip Change Notice', self.MAIL_BODY)
-            
-        if self.PPD_MAIL_BODY != False:
-            mail.send_mail('BlackCanine@gmail.com', 'BlackCanine@gmail.com', 'Tip Limbo Notice', self.PPD_MAIL_BODY)
+        send_all_mail(self.MAIL_OBJECT)
         
         self.response.out.write('<br />')
         logging_info = ''
@@ -468,29 +487,19 @@ class Scraper(webapp.RequestHandler):
                                     archived_tips[unicode(tip_instance.key.urlsafe())] = tip_instance
                                     break
                                 else:
-                                    if self.WARNING_MAIL is False:
-                                        self.WARNING_MAIL = ''
-                                    else:
-                                        self.WARNING_MAIL += "\n"
-                                    self.WARNING_MAIL += 'Probable ' + str(row_home_team) + ' SCOREBOARD NAMES for ' + league_key + ', ' + sport_key + ' MISMATCH!' + "\n"
+                                    mail_message = 'Probable '+str(row_home_team)+' SCOREBOARD NAMES for '+league_key+', '+sport_key+' MISMATCH!'+"\n"
+                                    self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TEAM_ERROR, mail_message, logging='warning')
                             elif row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
-                                if self.WARNING_MAIL is False:
-                                    self.WARNING_MAIL = ''
-                                else:
-                                    self.WARNING_MAIL += "\n"
-                                self.WARNING_MAIL += 'Probable ' + str(row_away_team) + ' SCOREBOARD NAMES for ' + league_key + ', ' + sport_key + ' MISMATCH!' + "\n"
+                                mail_message = 'Probable '+str(row_away_team)+' SCOREBOARD NAMES for '+league_key+', '+sport_key+' MISMATCH!'+"\n"
+                                self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TEAM_ERROR, mail_message, logging='warning')
                             
                     # if tip is not archived and it's over a day old... something is probably wrong
                     if (
                         tip_instance.archived != True 
                         and (datetime.now() - tip_instance.date).total_seconds() > 64800
                         ):
-                        if self.PPD_MAIL_BODY is False:
-                            self.PPD_MAIL_BODY = ''
-                        else:
-                            self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + "\n\n"
-                            
-                        self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
+                        mail_message = (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p')+" "+tip_instance.game_team_away+" @ "+tip_instance.game_team_home+"\n"
+                        self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TIP_WARNING, mail_message, logging='warning')
                         
         return archived_tips
     
@@ -591,12 +600,8 @@ class Scraper(webapp.RequestHandler):
                 tip_instance.archived != True 
                 and (datetime.now() - tip_instance.date).total_seconds() > 64800
                 ):
-                if self.PPD_MAIL_BODY is False:
-                    self.PPD_MAIL_BODY = ''
-                else:
-                    self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + "\n\n"
-                    
-                self.PPD_MAIL_BODY = self.PPD_MAIL_BODY + (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home
+                mail_message = (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p')+" "+tip_instance.game_team_away+" @ "+tip_instance.game_team_home+"\n"
+                self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TIP_WARNING, mail_message, logging='warning')
         
         return archived_tips, scores_by_date
 
@@ -841,17 +846,11 @@ class Scraper(webapp.RequestHandler):
                             # one of the team names matches but the other doesn't, send admin mail to check team names
                             # could either be 1) team name missing or 2) wettpoint has wrong game listed
                             elif home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
-                                if self.WARNING_MAIL is False:
-                                    self.WARNING_MAIL = ''
-                                else:
-                                    self.WARNING_MAIL += "\n"
-                                self.WARNING_MAIL += 'Probable ' + away_team + ' WETTPOINT NAMES for ' + tip_instance.game_league + ', ' + tip_instance.game_sport + ' MISMATCH!' + "\n"
+                                mail_message = 'Probable '+away_team+' WETTPOINT NAMES for '+tip_instance.game_league+', '+tip_instance.game_sport+' MISMATCH!'+"\n"
+                                self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TEAM_ERROR, mail_message, logging='warning')
                             elif away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
-                                if self.WARNING_MAIL is False:
-                                    self.WARNING_MAIL = ''
-                                else:
-                                    self.WARNING_MAIL += "\n"
-                                self.WARNING_MAIL += 'Probable ' + home_team + ' WETTPOINT NAMES for ' + tip_instance.game_league + ', ' + tip_instance.game_sport + ' MISMATCH!' + "\n"
+                                mail_message = 'Probable '+home_team+' WETTPOINT NAMES for '+tip_instance.game_league+', '+tip_instance.game_sport+' MISMATCH!'+"\n"
+                                self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TEAM_ERROR, mail_message, logging='warning')
                         # tip has passed this object (i.e. no tip upcoming for this event therefore tip stake = 0)
                         elif self.TIME_ERROR_MARGIN_MINUTES_AFTER < row_minutes_past_start:
                             if (
@@ -1051,18 +1050,18 @@ class Scraper(webapp.RequestHandler):
                     h2h_risk = float(h2h_risk_text)
                     
                     if h2h_risk == 10.0:
+                        mail_message = 'Special case of risk factor ('+str(h2h_risk_text)+') : '+team_away+' @ '+team_home+"\n\n"
+                        self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TIP_WARNING, mail_message, logging='warning')
                         h2h_risk = 9.9
                     elif h2h_risk == 0.0:
+                        mail_message = 'Special case of risk factor ('+str(h2h_risk_text)+') : '+team_away+' @ '+team_home+"\n\n"
+                        self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TIP_WARNING, mail_message, logging='warning')
                         h2h_risk = 0.1
                 except ValueError:
                     h2h_risk = False
         else:
-            if self.WARNING_MAIL is False:
-                self.WARNING_MAIL = ''
-            else:
-                self.WARNING_MAIL += "\n"
-            logging.warning('Probable '+team_away+'('+team_away_id+') @ '+team_home+'('+team_home_id+') wettpoint H2H ids for ' + league_key + ' MISMATCH!')
-            self.WARNING_MAIL += 'Probable '+team_away+'('+team_away_id+') @ '+team_home+'('+team_home_id+') wettpoint H2H ids for ' + league_key + ' MISMATCH!' + "\n"
+            mail_message = 'Probable '+team_away+'('+team_away_id+') @ '+team_home+'('+team_home_id+') wettpoint H2H ids for '+league_key+' MISMATCH!'+"\n"
+            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TEAM_ERROR, mail_message, logging='warning')
         
         return h2h_total, h2h_team, h2h_risk
     
@@ -1115,26 +1114,20 @@ class Scraper(webapp.RequestHandler):
                 h2h_stake += models.TIP_STAKE_TEAM_NONE / 1000.0
             
         if len(mail_warning) > 0:
-            if self.WARNING_MAIL is False:
-                self.WARNING_MAIL = ''+tip_instance.game_league+"\n"+mail_warning
-            else:
-                self.WARNING_MAIL += "\n"+tip_instance.game_league+"\n"+mail_warning
+            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_GENERIC_WARNING, mail_warning)
                     
         new_wettpoint_stake += h2h_stake
         return new_wettpoint_stake
                                     
     def create_tip_change_object(self, tip_instance, ctype, line, create_mail):
         if create_mail is True:
-            if self.MAIL_BODY is False:
-                self.MAIL_BODY = ''
-            else:
-                self.MAIL_BODY = self.MAIL_BODY + "\n\n"
-            
-            self.MAIL_BODY = self.MAIL_BODY + (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home + "\n"
-            self.MAIL_BODY = self.MAIL_BODY + str(tip_instance.wettpoint_tip_stake) + " " + str(tip_instance.wettpoint_tip_team) + " " + str(tip_instance.wettpoint_tip_total) 
-            self.MAIL_BODY = self.MAIL_BODY + "\n" + ctype + " (" + line + ")"
+            mail_message = "\n"+(tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home + "\n"
+            mail_message += str(tip_instance.wettpoint_tip_stake) + " " + str(tip_instance.wettpoint_tip_team) + " " + str(tip_instance.wettpoint_tip_total) + "\n"
+            mail_message += ctype + " (" + line + ")\n"
+            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, 'Tip Change Notice', "\n\n"+mail_message)
         else:
-            self.MAIL_BODY = self.MAIL_BODY + "\n" + ctype + " (" + line + ")"
+            mail_message = ctype + " (" + line + ")\n"
+            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, 'Tip Change Notice', mail_message)
         
         key_string = unicode(tip_instance.key.urlsafe())
         
@@ -1385,11 +1378,8 @@ class Scraper(webapp.RequestHandler):
                                 and datetime.now().minute < 30
                                 )
                             ):
-                            if self.WARNING_MAIL is False:
-                                self.WARNING_MAIL = ''
-                            else:
-                                self.WARNING_MAIL += "\n"
-                            self.WARNING_MAIL += 'Missing '+tip_instance.date.strftime('%m/%d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home
+                            mail_message = 'Missing '+tip_instance.date.strftime('%m/%d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home+"\n"
+                            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TIP_WARNING, mail_message)
                         
                         if tip_instance.game_sport not in possible_ppd_tips_by_sport_league:
                             possible_ppd_tips_by_sport_league[tip_instance.game_sport] = {}
@@ -1420,12 +1410,9 @@ class Scraper(webapp.RequestHandler):
                     
                     if query.count(limit=1) != 0:
                         self.DATASTORE_READS += 1
-                        if self.WARNING_MAIL is False:
-                            self.WARNING_MAIL = ''
-                        else:
-                            self.WARNING_MAIL += "\n"
                         
-                        self.WARNING_MAIL += 'Setting duplicate for '+tip_instance.date.strftime('%m %d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home+' ('+tip_instance.pinnacle_game_no+')'
+                        mail_message = 'Setting duplicate for '+tip_instance.date.strftime('%m %d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home+' ('+tip_instance.pinnacle_game_no+')'+"\n"
+                        self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TIP_WARNING, mail_message)
                         
                         tip_instance.pinnacle_game_no = 'OTB '+tip_instance.pinnacle_game_no
                         tip_instance.game_team_away = 'OTB '+tip_instance.game_team_away
@@ -1655,12 +1642,8 @@ class Scraper(webapp.RequestHandler):
                                             break
                                 
                                 if team_name_exists is False:
-                                    if self.WARNING_MAIL is False:
-                                        self.WARNING_MAIL = ''
-                                    else:
-                                        self.WARNING_MAIL += "\n"
-                                    logging.warning(participant_name + ' for ' + league_key + ', ' + sport_key + ' does not exist!')
-                                    self.WARNING_MAIL += participant_name + ' for ' + league_key + ', ' + sport_key + ' does not exist!' + "\n"
+                                    mail_message = participant_name+' for '+league_key+', '+sport_key+' does not exist!'+"\n"
+                                    self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TEAM_ERROR, mail_message, logging='warning')
                     
                     self.DATASTORE_READS += 1
                     # do a search of the datastore to see if current tip object already created based on game number, sport, league, and team name

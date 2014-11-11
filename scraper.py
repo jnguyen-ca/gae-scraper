@@ -770,7 +770,7 @@ class Scraper(webapp.RequestHandler):
                                     tip_instance.wettpoint_tip_team is not None 
                                     and tip_instance.wettpoint_tip_team != tip_team
                                     ):
-                                    tip_instance = self.create_tip_change_object(tip_instance, 'team', 'team_general', not tip_change_created)
+                                    tip_instance = self.create_tip_change_object(tip_instance, 'team', 'team_general', not tip_change_created, new_team_selection=tip_team)
                                     tip_change_created = True
                                 
                                 tip_instance.wettpoint_tip_team = tip_team
@@ -782,7 +782,7 @@ class Scraper(webapp.RequestHandler):
                                         tip_instance.total_lines is not None 
                                         and tip_instance.wettpoint_tip_total != models.TIP_SELECTION_TOTAL_OVER
                                         ):
-                                        tip_instance = self.create_tip_change_object(tip_instance, 'total', 'total_over', not tip_change_created)
+                                        tip_instance = self.create_tip_change_object(tip_instance, 'total', 'total_over', not tip_change_created, new_total_selection=models.TIP_SELECTION_TOTAL_OVER)
                                         tip_change_created = True
                                     
                                     tip_instance.wettpoint_tip_total = models.TIP_SELECTION_TOTAL_OVER
@@ -793,7 +793,7 @@ class Scraper(webapp.RequestHandler):
                                         tip_instance.wettpoint_tip_total is not None 
                                         and tip_instance.wettpoint_tip_total != models.TIP_SELECTION_TOTAL_UNDER
                                         ):
-                                        tip_instance = self.create_tip_change_object(tip_instance, 'total', 'total_under', not tip_change_created)
+                                        tip_instance = self.create_tip_change_object(tip_instance, 'total', 'total_under', not tip_change_created, new_total_selection=models.TIP_SELECTION_TOTAL_UNDER)
                                         tip_change_created = True
                                     
                                     tip_instance.wettpoint_tip_total = models.TIP_SELECTION_TOTAL_UNDER
@@ -991,8 +991,7 @@ class Scraper(webapp.RequestHandler):
 #             logging.debug('Upcoming connection counts towards limit. Standing at '+str(self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)))
             if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) > 5:
                 logging.debug('wettpoint limit H2H reached')
-                if sport_key in self.wettpoint_tables_memcache:
-                    self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] = True
+                self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] = True
                 return False, False, False
         else:
             logging.debug('NOLIMIT fetch')
@@ -1069,6 +1068,9 @@ class Scraper(webapp.RequestHandler):
     def add_wettpoint_h2h_details(self, tip_instance):
         h2h_total, h2h_team, h2h_risk = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away)
         
+        if self.wettpoint_tables_memcache[tip_instance.game_sport]['h2h_limit_reached'] is True:
+            return tip_instance.wettpoint_tip_stake
+        
         new_wettpoint_stake = tip_instance.wettpoint_tip_stake
         
         mail_warning = ''
@@ -1120,7 +1122,7 @@ class Scraper(webapp.RequestHandler):
         new_wettpoint_stake += h2h_stake
         return new_wettpoint_stake
                                     
-    def create_tip_change_object(self, tip_instance, ctype, line, create_mail):
+    def create_tip_change_object(self, tip_instance, ctype, line, create_mail, new_team_selection=None, new_total_selection=None):
         if create_mail is True:
             mail_message = "\n"+(tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home + "\n"
             mail_message += str(tip_instance.wettpoint_tip_stake) + " " + str(tip_instance.wettpoint_tip_team) + " " + str(tip_instance.wettpoint_tip_total) + "\n"
@@ -1156,28 +1158,80 @@ class Scraper(webapp.RequestHandler):
         tip_change_object.wettpoint_tip_stake = tip_instance.wettpoint_tip_stake
         
         if ctype == 'team':
+            if (
+                tip_instance.wettpoint_tip_stake is not None 
+                and tip_instance.wettpoint_tip_stake >= 1.0 
+            ):
+                tip_instance.wettpoint_tip_stake = float(int(tip_instance.wettpoint_tip_stake))
+            
+            if tip_instance.team_lines:
+                if (
+                    new_team_selection is not None 
+                    and tip_change_object.wettpoint_tip_team == new_team_selection
+                ):
+                    original_lines = tip_change_object.team_lines
+                else:
+                    original_lines = None
+                    
+                tip_change_object.team_lines = tip_instance.team_lines
+                tip_instance.team_lines = original_lines
+            if tip_instance.spread_no:
+                if (
+                    new_team_selection is not None 
+                    and tip_change_object.wettpoint_tip_team == new_team_selection
+                ):
+                    original_lines = tip_change_object.spread_no
+                else:
+                    original_lines = None
+                
+                tip_change_object.spread_no = tip_instance.spread_no
+                tip_instance.spread_no = original_lines
+            if tip_instance.spread_lines:
+                if (
+                    new_team_selection is not None 
+                    and tip_change_object.wettpoint_tip_team == new_team_selection
+                ):
+                    original_lines = tip_change_object.spread_lines
+                else:
+                    original_lines = None
+                
+                tip_change_object.spread_lines = tip_instance.spread_lines
+                tip_instance.spread_lines = original_lines
             if tip_instance.wettpoint_tip_team:
                 tip_change_object.wettpoint_tip_team = tip_instance.wettpoint_tip_team
                 tip_instance.wettpoint_tip_team = None
-            if tip_instance.team_lines:
-                tip_change_object.team_lines = tip_instance.team_lines
-                tip_instance.team_lines = None
-            if tip_instance.spread_no:
-                tip_change_object.spread_no = tip_instance.spread_no
-                tip_instance.spread_no = None
-            if tip_instance.spread_lines:
-                tip_change_object.spread_lines = tip_instance.spread_lines
-                tip_instance.spread_lines = None
         elif ctype == 'total':
+            if (
+                tip_instance.wettpoint_tip_stake is not None 
+                and tip_instance.wettpoint_tip_stake >= 1.0 
+            ):
+                tip_instance.wettpoint_tip_stake = float(int(tip_instance.wettpoint_tip_stake))
+            
+            if tip_instance.total_no:
+                if (
+                    new_total_selection is not None 
+                    and tip_change_object.wettpoint_tip_total == new_total_selection
+                ):
+                    original_lines = tip_change_object.total_no
+                else:
+                    original_lines = None
+                
+                tip_change_object.total_no = tip_instance.total_no
+                tip_instance.total_no = original_lines
+            if tip_instance.total_lines:
+                if (
+                    new_total_selection is not None 
+                    and tip_change_object.wettpoint_tip_total == new_total_selection
+                ):
+                    original_lines = tip_change_object.total_lines
+                else:
+                    original_lines = None
+                
+                tip_change_object.total_lines = tip_instance.total_lines
+                tip_instance.total_lines = original_lines
             if tip_instance.wettpoint_tip_total:
                 tip_change_object.wettpoint_tip_total = tip_instance.wettpoint_tip_total
                 tip_instance.wettpoint_tip_total = None
-            if tip_instance.total_no:
-                tip_change_object.total_no = tip_instance.total_no
-                tip_instance.total_no = None
-            if tip_instance.total_lines:
-                tip_change_object.total_lines = tip_instance.total_lines
-                tip_instance.total_lines = None
         
         self.temp_holder = tip_change_object
         return tip_instance

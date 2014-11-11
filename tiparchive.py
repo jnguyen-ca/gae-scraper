@@ -539,10 +539,6 @@ class TipArchive(webapp.RequestHandler):
         
         original_league_value = default_row_values[self.LEAGUE_INDEX]
         
-        event_with_draw = True
-        if original_league_value in constants.LEAGUES_OT_INCLUDED:
-            event_with_draw = False
-        
         # get closing line for comparison data
         closing_line = tipanalysis.get_line(team_lines)[0]
         closing_spread_no = tipanalysis.get_line(spread_no)[0]
@@ -680,7 +676,7 @@ class TipArchive(webapp.RequestHandler):
                                 BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG,
                                 ]
                 ):
-                    bet_result = tipanalysis.calculate_event_score_result(score_away, score_home, regulation_only=event_with_draw, draw_lose=event_with_draw, spread_modifier=spread_mod)
+                    bet_result = tipanalysis.calculate_event_score_result(original_league_value, score_away, score_home, draw=tipanalysis.BET_RESULT_LOSS, spread_modifier=spread_mod)
                 # home team bet
                 elif (
                     bet_type in [
@@ -698,14 +694,14 @@ class TipArchive(webapp.RequestHandler):
                                 BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG,
                                 ]
                 ):
-                    bet_result = tipanalysis.calculate_event_score_result(score_home, score_away, regulation_only=event_with_draw, draw_lose=event_with_draw, spread_modifier=spread_mod)
+                    bet_result = tipanalysis.calculate_event_score_result(original_league_value, score_home, score_away, draw=tipanalysis.BET_RESULT_LOSS, spread_modifier=spread_mod)
                 # draw bet
                 elif (
                       bet_type in [
                                 BET_TYPE_SIDE_DRAW,
                                 ]
                 ):
-                    bet_result = tipanalysis.calculate_event_score_result(score_home, score_away, regulation_only=event_with_draw, draw_result=True)
+                    bet_result = tipanalysis.calculate_event_score_result(original_league_value, score_home, score_away, draw=tipanalysis.BET_RESULT_WIN)
                     
                 new_row_values[self.RESULT_INDEX] = bet_result
                 
@@ -736,15 +732,7 @@ class TipArchive(webapp.RequestHandler):
             total_score = None
         # otherwise get total score to compare against total no bet
         else:
-            # only certain leagues include extra time in bet calculations
-            if default_row_values[self.LEAGUE_INDEX] in constants.LEAGUES_OT_INCLUDED:
-                total_score = float(score_away.split('(', 1)[0]) + float(score_home.split('(', 1)[0])
-            else:
-                score_away = score_away.split('(', 1)
-                if len(score_away) > 1:
-                    total_score = float(score_away[1].rstrip(')')) + float(score_home.split('(', 1)[1].rstrip(')'))
-                else:
-                    total_score = float(score_away[0]) + float(score_home)
+            total_score = float(tipanalysis.strip_score(original_league_value, score_away)) + float(tipanalysis.strip_score(original_league_value, score_home))
         
         closing_total_no = tipanalysis.get_line(total_no)[0]
         closing_total_line = tipanalysis.get_line(total_lines)[0]
@@ -762,13 +750,13 @@ class TipArchive(webapp.RequestHandler):
             # get bet result
             if total_selection == models.TIP_SELECTION_TOTAL_OVER:
                 bet_type = BET_TYPE_TOTAL_OVER
-                bet_result = tipanalysis.calculate_event_score_result(total_score, archive_total_no)
+                bet_result = tipanalysis.calculate_event_score_result(original_league_value, total_score, archive_total_no)
             elif total_selection == models.TIP_SELECTION_TOTAL_UNDER:
                 bet_type = BET_TYPE_TOTAL_UNDER
-                bet_result = tipanalysis.calculate_event_score_result(archive_total_no, total_score)
+                bet_result = tipanalysis.calculate_event_score_result(original_league_value, archive_total_no, total_score)
             else:
                 bet_type = BET_TYPE_TOTAL_NONE
-                bet_result = tipanalysis.calculate_event_score_result(archive_total_no, total_score)
+                bet_result = tipanalysis.calculate_event_score_result(original_league_value, archive_total_no, total_score)
             
             new_row_values[self.LEAGUE_INDEX] = original_league_value + ' Total'
             new_row_values[self.TYPE_INDEX] = bet_type

@@ -8,6 +8,8 @@ import json
 from datetime import datetime
 
 import re
+
+import constants
 import models
 
 # .teams, .totals, .over, .under, .none, .total_side .header {display: inline-block; width: 150px; text-align: right;}
@@ -26,26 +28,26 @@ BET_RESULT_SPLIT = 'H'
 BET_RESULT_HALF_WIN = 'HW'
 BET_RESULT_HALF_LOSS = 'HL'
 
-def calculate_event_score_result(backing_score, opposition_score, **kwargs):
+def strip_score(league_key, score_string):
+    if isinstance(score_string, basestring):
+        if '(' in score_string:
+            if league_key in constants.LEAGUES_OT_INCLUDED:
+                return score_string.split('(', 1)[0].strip()
+            else:
+                return score_string.split('(', 1)[1].rstrip(')')
+    
+    return score_string
+
+def calculate_event_score_result(league_key, backing_score, opposition_score, draw=BET_RESULT_PUSH, spread_modifier=None):
     if backing_score is None or opposition_score is None:
         return BET_RESULT_NONE
-    elif isinstance(backing_score, basestring):
-        if '(' in backing_score:
-            if (
-                'regulation_only' in kwargs 
-                and kwargs['regulation_only'] is True 
-                ):
-                backing_score = re.sub('.+\(', '', backing_score).rstrip(')')
-                opposition_score = re.sub('.+\(', '', opposition_score).rstrip(')')
-            else:
-                backing_score = re.sub('\s+.*', '', backing_score)
-                opposition_score = re.sub('\s+.*', '', opposition_score)
     
-    backing_score = float(backing_score)
-    opposition_score = float(opposition_score)
+    backing_score = float(strip_score(league_key, backing_score))
+    opposition_score = float(strip_score(league_key, opposition_score))
     
-    if 'spread_modifier' in kwargs and kwargs['spread_modifier'] is not None:
-        spread_modifier = float(kwargs['spread_modifier'])
+    if spread_modifier is not None:
+        # spread
+        spread_modifier = float(spread_modifier)
         
         if spread_modifier % 0.5 == 0:
             if opposition_score < (backing_score + spread_modifier):
@@ -55,6 +57,7 @@ def calculate_event_score_result(backing_score, opposition_score, **kwargs):
             else:
                 return BET_RESULT_PUSH
         else:
+            # asian handicap modifier
             backing_score_low_modifier = backing_score + spread_modifier - 0.25
             backing_score_high_modifier = backing_score + spread_modifier + 0.25
             
@@ -67,18 +70,22 @@ def calculate_event_score_result(backing_score, opposition_score, **kwargs):
             elif backing_score_high_modifier == opposition_score:
                 return BET_RESULT_HALF_LOSS
     else:
-        if 'draw_result' in kwargs and kwargs['draw_result'] is True:
+        # money line or total
+        if draw == BET_RESULT_WIN:
+            # betting for a draw, every other result loses
             if backing_score == opposition_score:
                 return BET_RESULT_WIN
             else:
                 return BET_RESULT_LOSS
         else:
+            # backing one team over the other
             if backing_score > opposition_score:
                 return BET_RESULT_WIN
             elif backing_score < opposition_score:
                 return BET_RESULT_LOSS
             else:
-                if 'draw_lose' in kwargs and kwargs['draw_lose'] is True:
+                # draw may result in a loss (e.g. 1X2 money line) or a push (e.g. totals)
+                if draw == BET_RESULT_LOSS:
                     return BET_RESULT_LOSS
                 else:
                     return BET_RESULT_PUSH

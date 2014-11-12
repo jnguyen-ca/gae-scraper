@@ -8,8 +8,8 @@ from google.appengine.api import users, memcache
 
 from models import DisplaySession
 from scraper import Scraper
-from tipdisplay import TipDisplay
 from tiparchive import TipArchive
+import tipdisplay
 
 import re
 import json
@@ -17,7 +17,11 @@ import constants
 
 class AwaitAction(webapp.RequestHandler):
     def get(self):
-        self.TEMPLATE_TAGS = {}
+        self.TEMPLATE_TAGS = {
+                              'display_value_input_name' : tipdisplay.DISPLAY_INPUT_NAME,
+                              'display_value_upcoming' : tipdisplay.DISPLAY_VALUE_UPCOMING,
+                              'display_value_results' : tipdisplay.DISPLAY_VALUE_RESULTS,
+                              }
         
 #         session_cookie = self.request.cookies.get('DisplaySessionCookie')
         session_cookie = memcache.get('DisplaySessionCookie')
@@ -82,7 +86,7 @@ class AwaitAction(webapp.RequestHandler):
                             
 application = webapp.WSGIApplication([('/', AwaitAction), 
                                       ('/scrape', Scraper), 
-                                      ('/display', TipDisplay),
+                                      ('/display', tipdisplay.TipDisplay),
                                       ('/archive', TipArchive),
                                     ], 
                                     debug=True)

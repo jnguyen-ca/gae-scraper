@@ -7,7 +7,7 @@ sys.path.insert(0, 'libs')
 sys.path.append('libs/pytz-2014.7')
 
 from google.appengine.ext import webapp, ndb
-from google.appengine.api import mail, urlfetch, memcache
+from google.appengine.api import mail, urlfetch, memcache, taskqueue
 
 # from _symtable import LOCAL
 
@@ -60,6 +60,8 @@ def send_all_mail(mail_object):
         pass
 
 class Scraper(webapp.RequestHandler):
+    TASK_RETRY_LIMIT = 2
+    
     WETTPOINT_DATETIME_FORMAT = '%d.%m.%Y %H:%M'
     WETTPOINT_TABLE_MINUTES_BEFORE_EVENT_EXPIRE = 15
     
@@ -72,6 +74,11 @@ class Scraper(webapp.RequestHandler):
     MAIL_TITLE_GENERIC_WARNING = 'Warning Notice'
     
     def get(self):
+        self.response.out.write('Hello<br />')
+        taskqueue.add(queue_name='scraper', url='/scrape', name='scrapeTaskScraper')
+        self.response.out.write('<br />Goodbye')
+    
+    def post(self):
         self.DATASTORE_PUTS = 0
         self.DATASTORE_READS = 0
         self.FEED = {}
@@ -93,14 +100,19 @@ class Scraper(webapp.RequestHandler):
         new_or_updated_tips = {}
         try:
             new_or_updated_tips = self.find_games()
-        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
-            logging.warning('Pinnacle XML feed down')
-            logging.warning(str(request_error))
+        except:
+            task_execution_count = int(self.request.headers['X-AppEngine-TaskExecutionCount'])
+            
+            # if there are retries for the queue left, re-raise exception to retry; otherwise complete without pinnacle lines
+            if self.TASK_RETRY_LIMIT > task_execution_count:
+                logging.warning('Pinnacle XML feed down; Retrying (%d)' % (task_execution_count+1))
+                raise
+            else:
+                logging.warning('Pinnacle XML feed down; Retry limit reached, continuing on')
             
         self.EXECUTION_LOGS['find_games'] = time.time() - find_games_start_time
             
         update_tips = self.fill_games(new_or_updated_tips)
-        #self.response.out.write(self.print_items())
          
         self.commit_tips(update_tips)
         
@@ -108,16 +120,13 @@ class Scraper(webapp.RequestHandler):
         
         send_all_mail(self.MAIL_OBJECT)
         
-        self.response.out.write('<br />')
         logging_info = ''
         for x in self.REQUEST_COUNT:
             logging_info += x + ' : ' + str(self.REQUEST_COUNT[x]) + '; '
-            self.response.out.write(x + ' : ' + str(self.REQUEST_COUNT[x]))
             
             if int(self.REQUEST_COUNT[x]) > 20:
                 mail.send_mail('BlackCanine@gmail.com', 'BlackCanine@gmail.com', 'Scrape Abuse WARNING', x + ' being hit: ' + str(self.REQUEST_COUNT[x]))
             
-            self.response.out.write('<br />')
         logging.info(logging_info)
         
         logging_info = ''

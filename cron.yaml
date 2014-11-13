@@ -1,7 +1,7 @@
 cron:
 - description: scraper
   url: /scrape
-  schedule: every 30 mins
+  schedule: every 30 mins from 00:20 to 23:59
 - description: daily archive
   url: /archive
   schedule: every day 00:00

@@ -74,11 +74,12 @@ class Scraper(webapp.RequestHandler):
     MAIL_TITLE_GENERIC_WARNING = 'Warning Notice'
     
     def get(self):
-        self.response.out.write('Hello<br />')
-        taskqueue.add(queue_name='scraper', url='/scrape', name='scrapeTaskScraper')
-        self.response.out.write('<br />Goodbye')
+        taskqueue.add(queue_name='scraper', url='/scrape')
+        self.response.out.write('Goodbye')
     
     def post(self):
+        self.utc_task_start = datetime.utcnow()
+        
         self.DATASTORE_PUTS = 0
         self.DATASTORE_READS = 0
         self.FEED = {}
@@ -197,7 +198,7 @@ class Scraper(webapp.RequestHandler):
                 self.DATASTORE_READS += 1
                 key_string = unicode(tip_instance.key.urlsafe())
                 
-                minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
+                minutes_until_start = divmod((tip_instance.date - self.utc_task_start).total_seconds(), 60)[0]
                 
                 if (
                     tip_instance.pinnacle_game_no.startswith('OTB ') 
@@ -506,7 +507,7 @@ class Scraper(webapp.RequestHandler):
                     # if tip is not archived and it's over a day old... something is probably wrong
                     if (
                         tip_instance.archived != True 
-                        and (datetime.now() - tip_instance.date).total_seconds() > 64800
+                        and (datetime.utcnow() - tip_instance.date).total_seconds() > 64800
                         ):
                         mail_message = (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p')+" "+tip_instance.game_team_away+" @ "+tip_instance.game_team_home+"\n"
                         self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TIP_WARNING, mail_message, logging='warning')
@@ -608,7 +609,7 @@ class Scraper(webapp.RequestHandler):
             # if tip is not archived and it's over a day old... something is probably wrong
             if (
                 tip_instance.archived != True 
-                and (datetime.now() - tip_instance.date).total_seconds() > 64800
+                and (datetime.utcnow() - tip_instance.date).total_seconds() > 64800
                 ):
                 mail_message = (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p')+" "+tip_instance.game_team_away+" @ "+tip_instance.game_team_home+"\n"
                 self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TIP_WARNING, mail_message, logging='warning')
@@ -622,8 +623,6 @@ class Scraper(webapp.RequestHandler):
             
         wettpoint_timezone = pytz.timezone(constants.TIMEZONE_WETTPOINT)
         
-        wettpoint_current_time = datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(wettpoint_timezone)
-        wettpoint_current_date = wettpoint_current_time.strftime('%d.%m.%Y')
         # go through all our sports
         for sport_key in constants.SPORTS:
             if sport_key not in not_elapsed_tips_by_sport_league or sport_key not in wettpoint_check_tables_sport:
@@ -641,6 +640,8 @@ class Scraper(webapp.RequestHandler):
             
             try:
                 html = requests.get(feed, headers=constants.get_header())
+                wettpoint_current_time = datetime.utcnow()
+                wettpoint_current_date = wettpoint_current_time.replace(tzinfo=pytz.utc).astimezone(wettpoint_timezone).strftime('%d.%m.%Y')
             except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
                 logging.warning('wettpoint tables down')
                 logging.warning(str(request_error))
@@ -669,7 +670,7 @@ class Scraper(webapp.RequestHandler):
             
             self.wettpoint_tables_memcache[sport_key] = {
                                                     'first_event_time' : last_event_time,
-                                                    'time_updated' : datetime.utcnow().strftime(self.WETTPOINT_DATETIME_FORMAT),
+                                                    'time_updated' : wettpoint_current_time.strftime(self.WETTPOINT_DATETIME_FORMAT),
                                                     'tip_changed' : False,
                                                     'minutes_between_checks' : 120,
                                                     'h2h_limit_reached' : False,
@@ -683,7 +684,7 @@ class Scraper(webapp.RequestHandler):
                 # now let's fill out those tips!
                 for tip_instance in not_elapsed_tips_by_sport_league[sport_key][league_key].values():
                     tip_stake_changed = False
-                    minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
+                    minutes_until_start = divmod((tip_instance.date - wettpoint_current_time).total_seconds(), 60)[0]
                     
                     if (
                         tip_instance.wettpoint_tip_stake is not None 
@@ -1136,7 +1137,7 @@ class Scraper(webapp.RequestHandler):
             mail_message = "\n"+(tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home + "\n"
             mail_message += str(tip_instance.wettpoint_tip_stake) + " " + str(tip_instance.wettpoint_tip_team) + " " + str(tip_instance.wettpoint_tip_total) + "\n"
             mail_message += ctype + " (" + line + ")\n"
-            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, 'Tip Change Notice', "\n\n"+mail_message)
+            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, 'Tip Change Notice', mail_message)
         else:
             mail_message = ctype + " (" + line + ")\n"
             self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, 'Tip Change Notice', mail_message)
@@ -1161,7 +1162,7 @@ class Scraper(webapp.RequestHandler):
             tip_change_object.changes += 1
             tip_change_object.type = tip_change_object.type + ctype
             
-        tip_change_object.date = datetime.now()
+        tip_change_object.date = datetime.utcnow()
         tip_change_object.tip_key = key_string
             
         tip_change_object.wettpoint_tip_stake = tip_instance.wettpoint_tip_stake
@@ -1274,20 +1275,20 @@ class Scraper(webapp.RequestHandler):
                     elif tip_instance.game_league not in self.FEED[sport_key]:
                         continue
                     
-                    minutes_until_start = divmod((tip_instance.date - datetime.now()).total_seconds(), 60)[0]
+                    minutes_until_start = divmod((tip_instance.date - self.utc_task_start).total_seconds(), 60)[0]
                     if tip_instance.pinnacle_game_no in self.FEED[sport_key][tip_instance.game_league]:
                         # games more than 24 hours from start, only fill lines 3 times daily
                         if minutes_until_start >= 1440:
-                            if datetime.now().hour % 9 != 0 or datetime.now().minute >= 30:
+                            if self.utc_task_start.hour % 9 != 0 or self.utc_task_start.minute >= 30:
                                 continue
                         elif minutes_until_start > 720:
-                            if datetime.now().minute >= 30:
+                            if self.utc_task_start.minute >= 30:
                                 continue
                         
                         # successful pinnacle call + game line exists
                         event_tag = self.FEED[sport_key][tip_instance.game_league][tip_instance.pinnacle_game_no]
                         
-                        line_date = datetime.now().strftime(models.TIP_HASH_DATETIME_FORMAT)
+                        line_date = self.utc_task_start.strftime(models.TIP_HASH_DATETIME_FORMAT)
                         for period in event_tag.xpath('./periods/period'):
                             # currently only interested in full game lines
                             if (
@@ -1438,8 +1439,8 @@ class Scraper(webapp.RequestHandler):
                         if (
                             minutes_until_start <= 60 
                             or (
-                                datetime.now().hour % 2 == 0 
-                                and datetime.now().minute < 30
+                                self.utc_task_start.hour % 2 == 0 
+                                and self.utc_task_start.minute < 30
                                 )
                             ):
                             mail_message = 'Missing '+tip_instance.date.strftime('%m/%d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home+"\n"
@@ -1551,7 +1552,7 @@ class Scraper(webapp.RequestHandler):
                     participants = event_tag.xpath('./participants/participant')
                     
                     # game already elapsed, move on to next
-                    if (date_GMT - datetime.now()).total_seconds() < 0:
+                    if (date_GMT - self.utc_task_start).total_seconds() < 0:
                         continue
                     
                     # store team information in tip object - first initialization of tip object

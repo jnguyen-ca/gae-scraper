@@ -1174,42 +1174,42 @@ class Scraper(webapp.RequestHandler):
             ):
                 tip_instance.wettpoint_tip_stake = float(int(tip_instance.wettpoint_tip_stake))
             
-            if tip_instance.team_lines:
-                if (
-                    new_team_selection is not None 
-                    and tip_change_object.wettpoint_tip_team == new_team_selection
-                ):
-                    original_lines = tip_change_object.team_lines
-                else:
-                    original_lines = None
-                    
-                tip_change_object.team_lines = tip_instance.team_lines
-                tip_instance.team_lines = original_lines
-            if tip_instance.spread_no:
-                if (
-                    new_team_selection is not None 
-                    and tip_change_object.wettpoint_tip_team == new_team_selection
-                ):
-                    original_lines = tip_change_object.spread_no
-                else:
-                    original_lines = None
+            if (
+                new_team_selection is not None 
+                and tip_change_object.wettpoint_tip_team == new_team_selection
+            ):
+                logging.info('Transferring team lines from existing TipChange object to Tip for %s @ %s' % (tip_instance.game_team_away, tip_instance.game_team_home))
+                original_lines = tip_change_object.team_lines
+            else:
+                original_lines = None
                 
-                tip_change_object.spread_no = tip_instance.spread_no
-                tip_instance.spread_no = original_lines
-            if tip_instance.spread_lines:
-                if (
-                    new_team_selection is not None 
-                    and tip_change_object.wettpoint_tip_team == new_team_selection
-                ):
-                    original_lines = tip_change_object.spread_lines
-                else:
-                    original_lines = None
-                
-                tip_change_object.spread_lines = tip_instance.spread_lines
-                tip_instance.spread_lines = original_lines
-            if tip_instance.wettpoint_tip_team:
-                tip_change_object.wettpoint_tip_team = tip_instance.wettpoint_tip_team
-                tip_instance.wettpoint_tip_team = None
+            tip_change_object.team_lines = tip_instance.team_lines
+            tip_instance.team_lines = original_lines
+            
+            if (
+                new_team_selection is not None 
+                and tip_change_object.wettpoint_tip_team == new_team_selection
+            ):
+                original_lines = tip_change_object.spread_no
+            else:
+                original_lines = None
+            
+            tip_change_object.spread_no = tip_instance.spread_no
+            tip_instance.spread_no = original_lines
+            
+            if (
+                new_team_selection is not None 
+                and tip_change_object.wettpoint_tip_team == new_team_selection
+            ):
+                original_lines = tip_change_object.spread_lines
+            else:
+                original_lines = None
+            
+            tip_change_object.spread_lines = tip_instance.spread_lines
+            tip_instance.spread_lines = original_lines
+            
+            tip_change_object.wettpoint_tip_team = tip_instance.wettpoint_tip_team
+            tip_instance.wettpoint_tip_team = None
         elif ctype == 'total':
             if (
                 tip_instance.wettpoint_tip_stake is not None 
@@ -1217,31 +1217,31 @@ class Scraper(webapp.RequestHandler):
             ):
                 tip_instance.wettpoint_tip_stake = float(int(tip_instance.wettpoint_tip_stake))
             
-            if tip_instance.total_no:
-                if (
-                    new_total_selection is not None 
-                    and tip_change_object.wettpoint_tip_total == new_total_selection
-                ):
-                    original_lines = tip_change_object.total_no
-                else:
-                    original_lines = None
-                
-                tip_change_object.total_no = tip_instance.total_no
-                tip_instance.total_no = original_lines
-            if tip_instance.total_lines:
-                if (
-                    new_total_selection is not None 
-                    and tip_change_object.wettpoint_tip_total == new_total_selection
-                ):
-                    original_lines = tip_change_object.total_lines
-                else:
-                    original_lines = None
-                
-                tip_change_object.total_lines = tip_instance.total_lines
-                tip_instance.total_lines = original_lines
-            if tip_instance.wettpoint_tip_total:
-                tip_change_object.wettpoint_tip_total = tip_instance.wettpoint_tip_total
-                tip_instance.wettpoint_tip_total = None
+            if (
+                new_total_selection is not None 
+                and tip_change_object.wettpoint_tip_total == new_total_selection
+            ):
+                logging.info('Transferring total lines from existing TipChange object to Tip for %s @ %s' % (tip_instance.game_team_away, tip_instance.game_team_home))
+                original_lines = tip_change_object.total_no
+            else:
+                original_lines = None
+            
+            tip_change_object.total_no = tip_instance.total_no
+            tip_instance.total_no = original_lines
+            
+            if (
+                new_total_selection is not None 
+                and tip_change_object.wettpoint_tip_total == new_total_selection
+            ):
+                original_lines = tip_change_object.total_lines
+            else:
+                original_lines = None
+            
+            tip_change_object.total_lines = tip_instance.total_lines
+            tip_instance.total_lines = original_lines
+            
+            tip_change_object.wettpoint_tip_total = tip_instance.wettpoint_tip_total
+            tip_instance.wettpoint_tip_total = None
         
         self.temp_holder = tip_change_object
         return tip_instance

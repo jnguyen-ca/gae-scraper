@@ -357,7 +357,7 @@ class TipDisplay(webapp.RequestHandler):
             score_away = tip_instance.score_away
             
             moneyline_result = None
-            if len(wettpoint_team) == 1:
+            if wettpoint_team is not None and len(wettpoint_team) == 1:
                 if models.TIP_SELECTION_TEAM_HOME == wettpoint_team:
                     moneyline_result = tipanalysis.calculate_event_score_result(league_key, score_home, score_away, draw=tipanalysis.BET_RESULT_LOSS)
                 elif models.TIP_SELECTION_TEAM_AWAY == wettpoint_team:
@@ -372,11 +372,12 @@ class TipDisplay(webapp.RequestHandler):
             else:
                 moneyline_win_loss_draw[2] += 1
             
-            spread_result = None    
-            if models.TIP_SELECTION_TEAM_HOME in wettpoint_team:
-                spread_result = tipanalysis.calculate_event_score_result(league_key, score_home, score_away, spread_modifier=spread_no)
-            elif models.TIP_SELECTION_TEAM_AWAY in wettpoint_team:
-                spread_result = tipanalysis.calculate_event_score_result(league_key, score_away, score_home, spread_modifier=spread_no)
+            spread_result = None
+            if wettpoint_team is not None:
+                if models.TIP_SELECTION_TEAM_HOME in wettpoint_team:
+                    spread_result = tipanalysis.calculate_event_score_result(league_key, score_home, score_away, spread_modifier=spread_no)
+                elif models.TIP_SELECTION_TEAM_AWAY in wettpoint_team:
+                    spread_result = tipanalysis.calculate_event_score_result(league_key, score_away, score_home, spread_modifier=spread_no)
             
             if tipanalysis.BET_RESULT_WIN == spread_result:
                 spread_win_loss_draw[0] += 1

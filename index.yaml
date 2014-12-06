@@ -66,8 +66,6 @@ indexes:
   - name: game_sport
   - name: game_team_away
   - name: game_team_home
-  - name: rot_away
-  - name: rot_home
   - name: pinnacle_game_no
 
 ####### END SCRAPER.CHECK_FOR_DUPLICATE_TIP #######

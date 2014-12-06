@@ -692,9 +692,6 @@ class Scraper(webapp.RequestHandler):
                     ):
                         if tip_instance.elapsed is True:
                             continue
-                        elif minutes_until_start <= (abs(self.TIME_ERROR_MARGIN_MINUTES_BEFORE) + self.WETTPOINT_TABLE_MINUTES_BEFORE_EVENT_EXPIRE):
-                            # tip has already been filled out and table updated past tip time, move on to next to avoid resetting tip to 0
-                            continue
                     
                     if not 'wettpoint' in constants.LEAGUES[tip_instance.game_sport][tip_instance.game_league]:
                         # constant missing league identifier?
@@ -868,6 +865,10 @@ class Scraper(webapp.RequestHandler):
                                 tip_instance.wettpoint_tip_stake is not None 
                                 and tip_instance.wettpoint_tip_stake >= 1.0
                                 ):
+                                if minutes_until_start <= (abs(self.TIME_ERROR_MARGIN_MINUTES_BEFORE) + self.WETTPOINT_TABLE_MINUTES_BEFORE_EVENT_EXPIRE):
+                                    # tip has already been filled out and table updated past tip time, move on to next to avoid resetting tip to 0
+                                    break
+                                
 #                                 tip_instance = self.create_tip_change_object(tip_instance, 'team', 'stake_team_all', not tip_change_created)
 #                                 tip_instance = self.create_tip_change_object(tip_instance, 'total', 'stake_total_all', not tip_change_created)
                                 tip_instance = self.create_tip_change_object(tip_instance, 'stake', 'stake_all', not tip_change_created)
@@ -1462,14 +1463,12 @@ class Scraper(webapp.RequestHandler):
                 for key_string, tip_instance in possible_ppd_tips.iteritems():
                     #TODO: reduce duplicate check index size
                     self.DATASTORE_READS += 1
-                    query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND date = :3 AND game_team_away = :4 AND game_team_home = :5 AND rot_away = :6 AND rot_home = :7 AND pinnacle_game_no != :8',
+                    query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND date = :3 AND game_team_away = :4 AND game_team_home = :5 AND pinnacle_game_no != :6',
                             tip_instance.game_sport,
                             tip_instance.game_league,
                             tip_instance.date,
                             tip_instance.game_team_away,
                             tip_instance.game_team_home,
-                            tip_instance.rot_away,
-                            tip_instance.rot_home,
                             tip_instance.pinnacle_game_no
                             )
                     

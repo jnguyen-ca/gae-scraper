@@ -52,9 +52,14 @@ def add_mail(mail_object, mail_title, mail_message, **kwargs):
 
 def send_all_mail(mail_object):
     try:
-        ADMIN_EMAIL = 'BlackCanine@gmail.com'
+        SENDER = 'noreply@binkscraper.appspotmail.com'
+        
+        mail_count = 0
         for mail_title, mail_message in mail_object.iteritems():
-            mail.send_mail(ADMIN_EMAIL, ADMIN_EMAIL, mail_title, mail_message.strip())
+            mail.send_mail_to_admins(SENDER, mail_title, mail_message.strip())
+            mail_count += 1
+            
+        logging.debug('%d mail sent.' % (mail_count))
     except (TypeError, AttributeError):
         # if mail_object is not iterable or not a dict do nothing
         pass

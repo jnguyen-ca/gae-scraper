@@ -84,6 +84,7 @@ class Scraper(webapp.RequestHandler):
     
     def post(self):
         self.utc_task_start = datetime.utcnow()
+        self.pinnacle_feed_time = None
         
         self.DATASTORE_PUTS = 0
         self.DATASTORE_READS = 0
@@ -117,7 +118,7 @@ class Scraper(webapp.RequestHandler):
                 logging.warning('Pinnacle XML feed down; Retry limit reached, continuing on')
             
         self.EXECUTION_LOGS['find_games'] = time.time() - find_games_start_time
-            
+        
         update_tips = self.fill_games(new_or_updated_tips)
          
         self.commit_tips(update_tips)
@@ -1294,7 +1295,12 @@ class Scraper(webapp.RequestHandler):
                         # successful pinnacle call + game line exists
                         event_tag = self.FEED[sport_key][tip_instance.game_league][tip_instance.pinnacle_game_no]
                         
-                        line_date = self.utc_task_start.strftime(models.TIP_HASH_DATETIME_FORMAT)
+                        if isinstance(self.pinnacle_feed_time, datetime):
+                            line_date = self.pinnacle_feed_time.strftime(models.TIP_HASH_DATETIME_FORMAT)
+                        else:
+                            line_date = self.utc_task_start.strftime(models.TIP_HASH_DATETIME_FORMAT)
+                            logging.warning('PinnacleFeedTime was not correctly determined and converted into datetime!')
+                            
                         for period in event_tag.xpath('./periods/period'):
                             # currently only interested in full game lines
                             if (
@@ -1524,6 +1530,13 @@ class Scraper(webapp.RequestHandler):
             logging.debug('Pinnacle Status Code: '+str(pinnacle_xml.status_code))
             
         lxml_tree = etree.fromstring(pinnacle_xml.content, etree_parser)
+        
+        try:
+            feed_epoch_time = float(lxml_tree.xpath("/pinnacle_line_feed/PinnacleFeedTime/text()")[0])
+            self.pinnacle_feed_time = datetime.fromtimestamp(feed_epoch_time / 1000.0)
+        except IndexError:
+            self.pinnacle_feed_time = self.utc_task_start
+            logging.warning('PinnacleFeedTime tag text was not found in the feed!')
         
         # get sports we're interested in listed in constant SPORTS
         for sport_key, sport_values in constants.SPORTS.iteritems():

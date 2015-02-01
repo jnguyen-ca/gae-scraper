@@ -524,7 +524,7 @@ TEAMS = {
                         '216748'    : ['Yugra Khanty-Mansiysk', 'HC YUGRA', 'Ugra', 'HC Ugra'],
                         # Chernyshev division
                         '99844'     : ['AVANGARD'],
-                        '300725'    : ['Admiral Vladivostok', 'ADMIRAL VL.'],
+                        '300725'    : ['Admiral Vladivostok', 'ADMIRAL VL.', 'Vladivostok'],
                         '132277'    : ['HC Amur', 'AMUR'],
                         '174551'    : ['BARYS A.', 'HC Barys Astana'],
                         '99841'     : ['METALLURG NK', 'Novokuznetsk'],
@@ -555,7 +555,7 @@ TEAMS = {
                         '100315'    : ['HC Litvinov', 'HC V LITVINOV', 'HC Benzina Litvinov'],
                         '100318'    : ['HC E KARLOVY VARY', 'HC Energie Karlove Vary', 'HC Karlovy Vary'],
                         '100311'    : ['Bili Tygri Liberec', 'BT LIBEREC', 'HC Liberec'],
-                        '100319'    : ['HC O TRINEC', 'HC Trinec'],
+                        '100319'    : ['HC O TRINEC', 'HC Trinec', 'Trinec'],
                         '100309'    : ['HC CSOB PARDUBICE', 'HC CSOB Pojistovna Pardubice', 'HC Pardubice'],
                         '100310'    : ['HC Sparta Prague'],
                         '100314'    : ['HC S. PLZEN', 'HC Plzen', 'HC Škoda Plzen'],
@@ -583,6 +583,7 @@ TEAMS = {
             'values' : {
                         '4651'  : ['Kärpät'],
                         '4647'  : ['IFK Helsinki'],
+                        '4654'  : ['Salpa'],
                         '4657'  : ['Ässät'],
                         '4650'  : ['Jyvaskyla'],
                         '6441'  : ['Vaasan Sport', 'Sport Vaasa'],

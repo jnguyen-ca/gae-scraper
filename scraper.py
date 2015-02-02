@@ -1296,10 +1296,16 @@ class Scraper(webapp.RequestHandler):
                         event_tag = self.FEED[sport_key][tip_instance.game_league][tip_instance.pinnacle_game_no]
                         
                         if isinstance(self.pinnacle_feed_time, datetime):
-                            line_date = self.pinnacle_feed_time.strftime(models.TIP_HASH_DATETIME_FORMAT)
+                            line_date = self.pinnacle_feed_time
                         else:
-                            line_date = self.utc_task_start.strftime(models.TIP_HASH_DATETIME_FORMAT)
+                            line_date = self.utc_task_start
                             logging.warning('PinnacleFeedTime was not correctly determined and converted into datetime!')
+                            
+                        # round line_date to nearest minute for store
+                        if line_date.second >= 30:
+                            line_date += timedelta(minutes=1)
+                            
+                        line_date = line_date.strftime(models.TIP_HASH_DATETIME_FORMAT)
                             
                         for period in event_tag.xpath('./periods/period'):
                             # currently only interested in full game lines
@@ -1533,7 +1539,7 @@ class Scraper(webapp.RequestHandler):
         
         try:
             feed_epoch_time = float(lxml_tree.xpath("/pinnacle_line_feed/PinnacleFeedTime/text()")[0])
-            self.pinnacle_feed_time = datetime.fromtimestamp(feed_epoch_time / 1000.0)
+            self.pinnacle_feed_time = datetime.utcfromtimestamp(feed_epoch_time / 1000.0)
         except IndexError:
             self.pinnacle_feed_time = self.utc_task_start
             logging.warning('PinnacleFeedTime tag text was not found in the feed!')

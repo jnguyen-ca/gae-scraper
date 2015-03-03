@@ -3,19 +3,25 @@
 from __future__ import unicode_literals
 
 from google.appengine.ext import webapp
-from google.appengine.ext.webapp.util import run_wsgi_app
 from google.appengine.api import users, memcache
 
 from models import DisplaySession
-from scraper import Scraper
-from tiparchive import TipArchive
 import tipdisplay
 
 import re
 import json
 import constants
 
-class AwaitAction(webapp.RequestHandler):
+def replace_template_tags(line, templates):
+    template_tags = re.finditer('\[template:(\S+)\]', line)
+    if template_tags:
+        for match in template_tags:
+            if match.group(1) in templates:
+                line = line.replace(match.group(0), templates[match.group(1)])
+    
+    return line
+
+class FrontPage(webapp.RequestHandler):
     def get(self):
         self.TEMPLATE_TAGS = {
                               'display_value_input_name' : tipdisplay.DISPLAY_INPUT_NAME,
@@ -71,28 +77,5 @@ class AwaitAction(webapp.RequestHandler):
         
         with open('frontpage.html') as f:
             for line in f:
-                template_tags = re.finditer('\[template:(\S+)\]', line)
-                if template_tags:
-                    line = self.replace_template_tags(line, template_tags)
-                    
+                line = replace_template_tags(line, self.TEMPLATE_TAGS)
                 self.response.out.write(line)
-                
-    def replace_template_tags(self, line, template_tags):
-        for match in template_tags:
-            if match.group(1) in self.TEMPLATE_TAGS:
-                line = line.replace(match.group(0), self.TEMPLATE_TAGS[match.group(1)])
-        
-        return line
-                            
-application = webapp.WSGIApplication([('/', AwaitAction), 
-                                      ('/scrape', Scraper), 
-                                      ('/display', tipdisplay.TipDisplay),
-                                      ('/archive', TipArchive),
-                                    ], 
-                                    debug=True)
-
-def main():
-    run_wsgi_app(application)
-
-if __name__ == "__main__":
-    main()

@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+class ScrapeException(Exception):
+    """Base exception for site traversal"""
+
 import sys
 sys.path.insert(0, 'libs')
 sys.path.append('libs/pytz-2014.7')
@@ -1004,7 +1007,11 @@ class Scraper(webapp.RequestHandler):
         return True
     
     def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away, **kwargs):
-        if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
+        if (
+            constants.is_local() 
+            or 'nolimit' not in kwargs 
+            or kwargs['nolimit'] is not True
+        ):
 #             logging.debug('Upcoming connection counts towards limit. Standing at '+str(self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)))
             if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)) > 5:
                 logging.debug('wettpoint limit H2H reached')
@@ -1283,15 +1290,15 @@ class Scraper(webapp.RequestHandler):
                         continue
                     
                     minutes_until_start = divmod((tip_instance.date - self.utc_task_start).total_seconds(), 60)[0]
+                    # games more than 24 hours from start, only fill lines 3 times daily
+                    if minutes_until_start >= 1440:
+                        if self.utc_task_start.hour % 9 != 0 or self.utc_task_start.minute >= 30:
+                            continue
+                    elif minutes_until_start > 720:
+                        if self.utc_task_start.minute >= 30:
+                            continue
+                    
                     if tip_instance.pinnacle_game_no in self.FEED[sport_key][tip_instance.game_league]:
-                        # games more than 24 hours from start, only fill lines 3 times daily
-                        if minutes_until_start >= 1440:
-                            if self.utc_task_start.hour % 9 != 0 or self.utc_task_start.minute >= 30:
-                                continue
-                        elif minutes_until_start > 720:
-                            if self.utc_task_start.minute >= 30:
-                                continue
-                        
                         # successful pinnacle call + game line exists
                         event_tag = self.FEED[sport_key][tip_instance.game_league][tip_instance.pinnacle_game_no]
                         
@@ -1311,144 +1318,146 @@ class Scraper(webapp.RequestHandler):
                             # currently only interested in full game lines
                             if (
                                 (
-                                 period.find('period_number').text.isdigit() 
-                                 and int(period.find('period_number').text) == 0
+                                 not period.find('period_number').text.isdigit() 
+                                 or int(period.find('period_number').text) != 0
                                  ) 
-                                or unicode(period.find('period_description').text) in ['Game','Match']
-                                ):
-                                # get the total lines
-                                period_total = period.find('total')
-                                if period_total is not None:
-                                    # get actual total number
-                                    if tip_instance.total_no:
-                                        hash1 = json.loads(tip_instance.total_no)
-                                    else:
-                                        hash1 = {}
-                                        
-                                    hash1[line_date] = unicode(period_total.find('total_points').text)
-                                    tip_instance.total_no = json.dumps(hash1)
+                                and unicode(period.find('period_description').text) not in ['Game','Match']
+                            ):
+                                continue
+                            
+                            # get the total lines
+                            period_total = period.find('total')
+                            if period_total is not None:
+                                # get actual total number
+                                if tip_instance.total_no:
+                                    hash1 = json.loads(tip_instance.total_no)
+                                else:
+                                    hash1 = {}
                                     
-                                    # get the total odds line
-                                    if tip_instance.total_lines:
-                                        hash1 = json.loads(tip_instance.total_lines)
-                                    else:
-                                        hash1 = {}
-                                    
-                                    if tip_instance.wettpoint_tip_total == models.TIP_SELECTION_TOTAL_OVER:
-                                        hash1[line_date] = unicode(period_total.find('over_adjust').text)
-                                    else:
-                                        hash1[line_date] = unicode(period_total.find('under_adjust').text)
-                                        
-                                    tip_instance.total_lines = json.dumps(hash1)
-                                # get the moneyline
-                                period_moneyline = period.find('moneyline')
-                                if period_moneyline is not None:
-                                    if tip_instance.team_lines:
-                                        hash1 = json.loads(tip_instance.team_lines)
-                                    else:
-                                        hash1 = {}
-                                    
-                                    period_moneyline_home = period_moneyline.find('moneyline_home')
-                                    period_moneyline_visiting = period_moneyline.find('moneyline_visiting')
-                                    period_moneyline_draw = period_moneyline.find('moneyline_draw')
-                                    
-                                    if period_moneyline_home is not None:
-                                        period_moneyline_home = unicode(period_moneyline_home.text)
-                                    if period_moneyline_visiting is not None:
-                                        period_moneyline_visiting = unicode(period_moneyline_visiting.text)
-                                    if period_moneyline_draw is not None:
-                                        period_moneyline_draw = unicode(period_moneyline_draw.text)
-                                    
-                                    # get tip team line
-                                    if tip_instance.wettpoint_tip_team is not None:
-                                        moneyline = ''
-                                        for i in tip_instance.wettpoint_tip_team:
-                                            if i == models.TIP_SELECTION_TEAM_HOME:
-                                                moneyline += period_moneyline_home + models.TIP_SELECTION_LINE_SEPARATOR
-                                            elif i == models.TIP_SELECTION_TEAM_DRAW:
-                                                moneyline += period_moneyline_draw + models.TIP_SELECTION_LINE_SEPARATOR
-                                            elif i == models.TIP_SELECTION_TEAM_AWAY:
-                                                moneyline += period_moneyline_visiting + models.TIP_SELECTION_LINE_SEPARATOR
-                                        
-                                        if (
-                                            period_moneyline_draw 
-                                            and len(tip_instance.wettpoint_tip_team) < 2
-                                            ):
-                                            if tip_instance.wettpoint_tip_team == models.TIP_SELECTION_TEAM_DRAW:
-                                                moneyline += period_moneyline_home
-                                            else:
-                                                moneyline += period_moneyline_draw
-                                            
-                                        moneyline = moneyline.rstrip(models.TIP_SELECTION_LINE_SEPARATOR)
-                                        hash1[line_date] = moneyline
-                                    else:
-                                        # if no tip team, get favourite line
-                                        moneyline = ''
-                                        if float(period_moneyline_visiting) < float(period_moneyline_home):
-                                            tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_AWAY
-                                            moneyline = period_moneyline_visiting
-                                        else:
-                                            tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_HOME
-                                            moneyline = period_moneyline_home
-                                            
-                                        if period_moneyline_draw:
-                                            moneyline += models.TIP_SELECTION_LINE_SEPARATOR+period_moneyline_draw
-                                            
-                                        hash1[line_date] = moneyline
-                                            
-                                    tip_instance.team_lines = json.dumps(hash1)
-                                    
-                                period_spread = period.find('spread')
-                                if period_spread is not None:
-                                    if tip_instance.spread_no:
-                                        hash1 = json.loads(tip_instance.spread_no)
-                                    else:
-                                        hash1 = {}
-                                        
-                                    if tip_instance.spread_lines:
-                                        hash2 = json.loads(tip_instance.spread_lines)
-                                    else:
-                                        hash2 = {}
-                                        
-                                    period_spread_home = unicode(period_spread.find('spread_home').text)
-                                    period_spread_visiting = unicode(period_spread.find('spread_visiting').text)
-                                    period_spread_adjust_home = unicode(period_spread.find('spread_adjust_home').text)
-                                    period_spread_adjust_visiting = unicode(period_spread.find('spread_adjust_visiting').text)
-                                        
-                                    if tip_instance.wettpoint_tip_team is not None:
-                                        if tip_instance.wettpoint_tip_team.find(models.TIP_SELECTION_TEAM_HOME) != -1 or tip_instance.wettpoint_tip_team == models.TIP_SELECTION_TEAM_DRAW:
-                                            hash1[line_date] = period_spread_home
-                                            hash2[line_date] = period_spread_adjust_home
-                                        elif tip_instance.wettpoint_tip_team.find(models.TIP_SELECTION_TEAM_AWAY) != -1:
-                                            hash1[line_date] = period_spread_visiting
-                                            hash2[line_date] = period_spread_adjust_visiting
-                                    else:
-                                        if (
-                                            float(period_spread_visiting) < float(period_spread_home) 
-                                            or (
-                                                float(period_spread_visiting) == float(period_spread_home) 
-                                                and float(period_spread_adjust_visiting) < float(period_spread_adjust_home)
-                                            )
-                                        ):
-                                            tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_AWAY
-                                            hash1[line_date] = period_spread_visiting
-                                            hash2[line_date] = period_spread_adjust_visiting
-                                        elif (
-                                              float(period_spread_visiting) > float(period_spread_home) 
-                                              or (
-                                                  float(period_spread_visiting) == float(period_spread_home) 
-                                                  and float(period_spread_adjust_visiting) >= float(period_spread_adjust_home)
-                                              )
-                                        ):
-                                            tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_HOME
-                                            hash1[line_date] = period_spread_home
-                                            hash2[line_date] = period_spread_adjust_home
-                                        
-                                    tip_instance.spread_no = json.dumps(hash1)
-                                    tip_instance.spread_lines = json.dumps(hash2)
+                                hash1[line_date] = unicode(period_total.find('total_points').text)
+                                tip_instance.total_no = json.dumps(hash1)
                                 
-                                not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
-                                break
+                                # get the total odds line
+                                if tip_instance.total_lines:
+                                    hash1 = json.loads(tip_instance.total_lines)
+                                else:
+                                    hash1 = {}
+                                
+                                if tip_instance.wettpoint_tip_total == models.TIP_SELECTION_TOTAL_OVER:
+                                    hash1[line_date] = unicode(period_total.find('over_adjust').text)
+                                else:
+                                    hash1[line_date] = unicode(period_total.find('under_adjust').text)
+                                    
+                                tip_instance.total_lines = json.dumps(hash1)
+                            # get the moneyline
+                            period_moneyline = period.find('moneyline')
+                            if period_moneyline is not None:
+                                if tip_instance.team_lines:
+                                    hash1 = json.loads(tip_instance.team_lines)
+                                else:
+                                    hash1 = {}
+                                
+                                period_moneyline_home = period_moneyline.find('moneyline_home')
+                                period_moneyline_visiting = period_moneyline.find('moneyline_visiting')
+                                period_moneyline_draw = period_moneyline.find('moneyline_draw')
+                                
+                                if period_moneyline_home is not None:
+                                    period_moneyline_home = unicode(period_moneyline_home.text)
+                                if period_moneyline_visiting is not None:
+                                    period_moneyline_visiting = unicode(period_moneyline_visiting.text)
+                                if period_moneyline_draw is not None:
+                                    period_moneyline_draw = unicode(period_moneyline_draw.text)
+                                
+                                # get tip team line
+                                if tip_instance.wettpoint_tip_team is not None:
+                                    moneyline = ''
+                                    for i in tip_instance.wettpoint_tip_team:
+                                        if i == models.TIP_SELECTION_TEAM_HOME:
+                                            moneyline += period_moneyline_home + models.TIP_SELECTION_LINE_SEPARATOR
+                                        elif i == models.TIP_SELECTION_TEAM_DRAW:
+                                            moneyline += period_moneyline_draw + models.TIP_SELECTION_LINE_SEPARATOR
+                                        elif i == models.TIP_SELECTION_TEAM_AWAY:
+                                            moneyline += period_moneyline_visiting + models.TIP_SELECTION_LINE_SEPARATOR
+                                    
+                                    if (
+                                        period_moneyline_draw 
+                                        and len(tip_instance.wettpoint_tip_team) < 2
+                                        ):
+                                        if tip_instance.wettpoint_tip_team == models.TIP_SELECTION_TEAM_DRAW:
+                                            moneyline += period_moneyline_home
+                                        else:
+                                            moneyline += period_moneyline_draw
+                                        
+                                    moneyline = moneyline.rstrip(models.TIP_SELECTION_LINE_SEPARATOR)
+                                    hash1[line_date] = moneyline
+                                else:
+                                    # if no tip team, get favourite line
+                                    moneyline = ''
+                                    if float(period_moneyline_visiting) < float(period_moneyline_home):
+                                        tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_AWAY
+                                        moneyline = period_moneyline_visiting
+                                    else:
+                                        tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_HOME
+                                        moneyline = period_moneyline_home
+                                        
+                                    if period_moneyline_draw:
+                                        moneyline += models.TIP_SELECTION_LINE_SEPARATOR+period_moneyline_draw
+                                        
+                                    hash1[line_date] = moneyline
+                                        
+                                tip_instance.team_lines = json.dumps(hash1)
+                                
+                            period_spread = period.find('spread')
+                            if period_spread is not None:
+                                if tip_instance.spread_no:
+                                    hash1 = json.loads(tip_instance.spread_no)
+                                else:
+                                    hash1 = {}
+                                    
+                                if tip_instance.spread_lines:
+                                    hash2 = json.loads(tip_instance.spread_lines)
+                                else:
+                                    hash2 = {}
+                                    
+                                period_spread_home = unicode(period_spread.find('spread_home').text)
+                                period_spread_visiting = unicode(period_spread.find('spread_visiting').text)
+                                period_spread_adjust_home = unicode(period_spread.find('spread_adjust_home').text)
+                                period_spread_adjust_visiting = unicode(period_spread.find('spread_adjust_visiting').text)
+                                    
+                                if tip_instance.wettpoint_tip_team is not None:
+                                    if tip_instance.wettpoint_tip_team.find(models.TIP_SELECTION_TEAM_HOME) != -1 or tip_instance.wettpoint_tip_team == models.TIP_SELECTION_TEAM_DRAW:
+                                        hash1[line_date] = period_spread_home
+                                        hash2[line_date] = period_spread_adjust_home
+                                    elif tip_instance.wettpoint_tip_team.find(models.TIP_SELECTION_TEAM_AWAY) != -1:
+                                        hash1[line_date] = period_spread_visiting
+                                        hash2[line_date] = period_spread_adjust_visiting
+                                else:
+                                    if (
+                                        float(period_spread_visiting) < float(period_spread_home) 
+                                        or (
+                                            float(period_spread_visiting) == float(period_spread_home) 
+                                            and float(period_spread_adjust_visiting) < float(period_spread_adjust_home)
+                                        )
+                                    ):
+                                        tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_AWAY
+                                        hash1[line_date] = period_spread_visiting
+                                        hash2[line_date] = period_spread_adjust_visiting
+                                    elif (
+                                          float(period_spread_visiting) > float(period_spread_home) 
+                                          or (
+                                              float(period_spread_visiting) == float(period_spread_home) 
+                                              and float(period_spread_adjust_visiting) >= float(period_spread_adjust_home)
+                                          )
+                                    ):
+                                        tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_HOME
+                                        hash1[line_date] = period_spread_home
+                                        hash2[line_date] = period_spread_adjust_home
+                                    
+                                tip_instance.spread_no = json.dumps(hash1)
+                                tip_instance.spread_lines = json.dumps(hash2)
+                            
+                            not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
+                            break
                     else:
                         # either game was taken off the board (for any number of reasons) - could be temporary
                         # or game is a duplicate (something changed that i didn't account for)
@@ -1471,7 +1480,7 @@ class Scraper(webapp.RequestHandler):
                         possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league][key_string] = tip_instance
                     
         return not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league
-        
+    
     def check_for_duplicate_tip(self, not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league):
         keys_to_remove = {}
         
@@ -1577,6 +1586,11 @@ class Scraper(webapp.RequestHandler):
                     # game already elapsed, move on to next
                     if (date_GMT - self.utc_task_start).total_seconds() < 0:
                         continue
+                    
+                    # when testing only scrape games within couple days
+                    if constants.is_local():
+                        if 172800 < (date_GMT - self.utc_task_start).total_seconds():
+                            continue
                     
                     # store team information in tip object - first initialization of tip object
                     tip_instance = False

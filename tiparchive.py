@@ -23,42 +23,96 @@ import models
 import teamconstants
 import tipanalysis
 
-BET_TYPE_AWAY_UNDERDOG = 'Away Underdog'
-BET_TYPE_AWAY_FAVOURITE = 'Away Favourite'
-BET_TYPE_HOME_UNDERDOG = 'Home Underdog'
-BET_TYPE_HOME_FAVOURITE = 'Home Favourite'
+# spreadsheet column information row and col indices
+SPREADSHEET_DATE_COL = 1
+SPREADSHEET_LEAGUE_COL = 3
+SPREADSHEET_SELECTION_COL = 4
+SPREADSHEET_TYPE_COL = 5
+SPREADSHEET_FILTERA_COL = 6
+SPREADSHEET_FILTERB_COL = 7
+SPREADSHEET_ODDS_COL = 12
+SPREADSHEET_RESULT_COL = 14
+SPREADSHEET_CLOSE_ODDS_COL = 20
+SPREADSHEET_LINE_COL = 21
+SPREADSHEET_CLOSE_LINE_COL = 22
 
-BET_TYPE_SPREAD_AWAY_UNDERDOG = 'Spread Away Underdog'
-BET_TYPE_SPREAD_AWAY_FAVOURITE = 'Spread Away Favourite'
-BET_TYPE_SPREAD_HOME_UNDERDOG = 'Spread Home Underdog'
-BET_TYPE_SPREAD_HOME_FAVOURITE = 'Spread Home Favourite'
+SPREADSHEET_MODIFIED_DATE_CELL = 'B2'
+SPREADSHEET_LIMIT_ROW = 3
+# list indices for row values
 
-BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG = 'Spread X2 Away Underdog'
-BET_TYPE_SPREAD_DRAW_AWAY_FAVOURITE = 'Spread X2 Away Favourite'
-BET_TYPE_SPREAD_DRAW_HOME_UNDERDOG = 'Spread 1X Home Underdog'
-BET_TYPE_SPREAD_DRAW_HOME_FAVOURITE = 'Spread 1X Home Favourite'
-BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG = 'Spread 12 Home Underdog'
-BET_TYPE_SPREAD_NO_DRAW_HOME_FAVOURITE = 'Spread 12 Home Favourite'
+SPREADSHEET_DATE_FORMAT = '%m/%d/%Y' # format for date stored in spreadsheet
 
-BET_TYPE_SIDE_DRAW = 'Side Draw'
-BET_TYPE_SIDE_DRAW_AWAY_UNDERDOG = 'Side X2 Away Underdog'
-BET_TYPE_SIDE_DRAW_AWAY_FAVOURITE = 'Side X2 Away Favourite'
-BET_TYPE_SIDE_DRAW_HOME_UNDERDOG = 'Side 1X Home Underdog'
-BET_TYPE_SIDE_DRAW_HOME_FAVOURITE = 'Side 1X Home Favourite'
-BET_TYPE_SIDE_NO_DRAW_AWAY_UNDERDOG = 'Side 12 Away Underdog'
-BET_TYPE_SIDE_NO_DRAW_AWAY_FAVOURITE = 'Side 12 Away Favourite'
-BET_TYPE_SIDE_NO_DRAW_HOME_UNDERDOG = 'Side 12 Home Underdog'
-BET_TYPE_SIDE_NO_DRAW_HOME_FAVOURITE = 'Side 12 Home Favourite'
+def get_client(obj=None):
+    if obj is None or not hasattr(obj, 'gclient'):
+        G_EMAIL = '260128773013-vineg4bdug5q27rlbdr3j9s7jlm4sp7l@developer.gserviceaccount.com'
+        
+        f = file('key-drive-gl-05.pem', 'r')
+        OAUTH_KEY = f.read()
+        f.close()
+        
+        OAUTH_SCOPE = 'https://spreadsheets.google.com/feeds'
+        
+        logging.info('Authorizing Google spreadsheet client...')
+        spreadsheet_oauth_credentials = SignedJwtAssertionCredentials(G_EMAIL, OAUTH_KEY, scope=OAUTH_SCOPE)
+        
+        gclient = gspread.authorize(spreadsheet_oauth_credentials)
+        if obj is not None:
+            obj.gclient = gclient
+    else:
+        gclient = obj.gclient
+    
+    return gclient
 
-BET_TYPE_TOTAL_OVER = models.TIP_SELECTION_TOTAL_OVER
-BET_TYPE_TOTAL_UNDER = models.TIP_SELECTION_TOTAL_UNDER
-BET_TYPE_TOTAL_NONE = 'None'
+def get_spreadsheet(obj=None):
+    if obj is None or not hasattr(obj, 'spreadsheet'):
+        if constants.is_local():
+            logging.info('Opening Test Tracking spreadsheet...')
+            spreadsheet = get_client(obj).open('Test Tracking')
+        else:
+            logging.info('Opening Tips Tracking spreadsheet...')
+            spreadsheet = get_client(obj).open('Tips Tracking')
+        
+        if obj is not None:
+            obj.spreadsheet = spreadsheet
+    else:
+        spreadsheet = obj.spreadsheet
+        
+    return spreadsheet
 
-BET_TIME_NIGHT = '9PM Day Before'
-BET_TIME_MORNING = '8AM Same Day'
-BET_TIME_NOON = '11:30AM Same Day'
-BET_TIME_AFTERNOON = '2PM Same Day'
-BET_TIME_LATEST = 'Latest'
+def get_league_worksheet(sport_key, league_key, obj=None, valid_leagues=None, get_or_create=True):
+    try:
+        if isinstance(teamconstants.TEAMS[sport_key][league_key], basestring):
+            league_key = teamconstants.TEAMS[sport_key][league_key]
+    except KeyError:
+        logging.warning('missing '+league_key+' teamconstant')
+    
+    if (
+        valid_leagues is not None 
+        and league_key not in valid_leagues
+    ):
+        return None
+    
+    if obj is not None and not hasattr(obj, 'league_worksheets'):
+        obj.league_worksheets = {}
+        
+    if obj is not None and league_key in obj.league_worksheets:
+        worksheet = obj.league_worksheets[league_key]
+    else:
+        try:
+            logging.debug('Retrieving worksheet for: '+league_key)
+            worksheet = get_spreadsheet(obj).worksheet(league_key)
+        except gspread.exceptions.WorksheetNotFound:
+            if get_or_create is True:
+                logging.info('Creating new worksheet for: '+league_key)
+                worksheet = get_spreadsheet(obj).add_worksheet(title=league_key, rows='1', cols='22')
+            else:
+                logging.info(league_key+' worksheet does not exist!')
+                return None
+            
+        if obj is not None:
+            obj.league_worksheets[league_key] = worksheet
+    
+    return worksheet
 
 def is_side_team_favourite(**kwargs):
     """To determine whether team A is the favourite or not
@@ -164,26 +218,55 @@ def is_side_team_favourite(**kwargs):
             return None
     else:
         return None
-    
+
 class TipArchive(webapp.RequestHandler):
-    # spreadsheet column information row and col indices
-    SPREADSHEET_MODIFIED_DATE_CELL = 'B2'
-    SPREADSHEET_DATE_COL = 1
-    SPREADSHEET_LEAGUE_COL = 3
-    SPREADSHEET_LIMIT_ROW = 3
-    
     # list indices for row values
-    LEAGUE_INDEX = 2
-    SELECTION_INDEX = 3
-    TYPE_INDEX = 4
-    TIME_INDEX = 6
-    ODDS_INDEX = 11
-    RESULT_INDEX = 13
-    CLOSE_ODDS_INDEX = 19
-    LINE_INDEX = 20
-    CLOSE_LINE_INDEX = 21
+    LEAGUE_INDEX = SPREADSHEET_LEAGUE_COL-1
+    SELECTION_INDEX = SPREADSHEET_SELECTION_COL-1
+    TYPE_INDEX = SPREADSHEET_TYPE_COL-1
+    TIME_INDEX = SPREADSHEET_FILTERB_COL-1
+    ODDS_INDEX = SPREADSHEET_ODDS_COL-1
+    RESULT_INDEX = SPREADSHEET_RESULT_COL-1
+    CLOSE_ODDS_INDEX = SPREADSHEET_CLOSE_ODDS_COL-1
+    LINE_INDEX = SPREADSHEET_LINE_COL-1
+    CLOSE_LINE_INDEX = SPREADSHEET_CLOSE_LINE_COL-1
     
-    DATE_FORMAT = '%m/%d/%Y' # format for date stored in spreadsheet
+    BET_TYPE_AWAY_UNDERDOG = 'Away Underdog'
+    BET_TYPE_AWAY_FAVOURITE = 'Away Favourite'
+    BET_TYPE_HOME_UNDERDOG = 'Home Underdog'
+    BET_TYPE_HOME_FAVOURITE = 'Home Favourite'
+    
+    BET_TYPE_SPREAD_AWAY_UNDERDOG = 'Spread Away Underdog'
+    BET_TYPE_SPREAD_AWAY_FAVOURITE = 'Spread Away Favourite'
+    BET_TYPE_SPREAD_HOME_UNDERDOG = 'Spread Home Underdog'
+    BET_TYPE_SPREAD_HOME_FAVOURITE = 'Spread Home Favourite'
+    
+    BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG = 'Spread X2 Away Underdog'
+    BET_TYPE_SPREAD_DRAW_AWAY_FAVOURITE = 'Spread X2 Away Favourite'
+    BET_TYPE_SPREAD_DRAW_HOME_UNDERDOG = 'Spread 1X Home Underdog'
+    BET_TYPE_SPREAD_DRAW_HOME_FAVOURITE = 'Spread 1X Home Favourite'
+    BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG = 'Spread 12 Home Underdog'
+    BET_TYPE_SPREAD_NO_DRAW_HOME_FAVOURITE = 'Spread 12 Home Favourite'
+    
+    BET_TYPE_SIDE_DRAW = 'Side Draw'
+    BET_TYPE_SIDE_DRAW_AWAY_UNDERDOG = 'Side X2 Away Underdog'
+    BET_TYPE_SIDE_DRAW_AWAY_FAVOURITE = 'Side X2 Away Favourite'
+    BET_TYPE_SIDE_DRAW_HOME_UNDERDOG = 'Side 1X Home Underdog'
+    BET_TYPE_SIDE_DRAW_HOME_FAVOURITE = 'Side 1X Home Favourite'
+    BET_TYPE_SIDE_NO_DRAW_AWAY_UNDERDOG = 'Side 12 Away Underdog'
+    BET_TYPE_SIDE_NO_DRAW_AWAY_FAVOURITE = 'Side 12 Away Favourite'
+    BET_TYPE_SIDE_NO_DRAW_HOME_UNDERDOG = 'Side 12 Home Underdog'
+    BET_TYPE_SIDE_NO_DRAW_HOME_FAVOURITE = 'Side 12 Home Favourite'
+    
+    BET_TYPE_TOTAL_OVER = models.TIP_SELECTION_TOTAL_OVER
+    BET_TYPE_TOTAL_UNDER = models.TIP_SELECTION_TOTAL_UNDER
+    BET_TYPE_TOTAL_NONE = 'None'
+    
+    BET_TIME_NIGHT = '9PM Day Before'
+    BET_TIME_MORNING = '8AM Same Day'
+    BET_TIME_NOON = '11:30AM Same Day'
+    BET_TIME_AFTERNOON = '2PM Same Day'
+    BET_TIME_LATEST = 'Latest'
     
     def get(self):
         self.response.out.write('Hello<br />')
@@ -201,78 +284,23 @@ class TipArchive(webapp.RequestHandler):
         
         logging.debug('Total Reads: '+str(self.DATASTORE_READS))
         
-    def get_client(self):
-        if not hasattr(self, 'gclient'):
-            G_EMAIL = '260128773013-vineg4bdug5q27rlbdr3j9s7jlm4sp7l@developer.gserviceaccount.com'
-            
-            f = file('key-drive-gl-05.pem', 'r')
-            OAUTH_KEY = f.read()
-            f.close()
-            
-            OAUTH_SCOPE = 'https://spreadsheets.google.com/feeds'
-            
-            logging.info('Authorizing Google spreadsheet client...')
-            spreadsheet_oauth_credentials = SignedJwtAssertionCredentials(G_EMAIL, OAUTH_KEY, scope=OAUTH_SCOPE)
-            self.gclient = gspread.authorize(spreadsheet_oauth_credentials)
-        
-        return self.gclient
-    
-    def get_spreadsheet(self):
-        if not hasattr(self, 'spreadsheet'):
-            if constants.is_local():
-                logging.info('Opening Test Tracking spreadsheet...')
-                self.spreadsheet = self.get_client().open('Test Tracking')
-            else:
-                logging.info('Opening Tips Tracking spreadsheet...')
-                self.spreadsheet = self.get_client().open('Tips Tracking')
-            
-        return self.spreadsheet
-    
-    def get_league_worksheet(self, sport_key, league_key, **kwargs):
-        try:
-            if isinstance(teamconstants.TEAMS[sport_key][league_key], basestring):
-                league_key = teamconstants.TEAMS[sport_key][league_key]
-        except KeyError:
-            logging.warning('missing '+league_key+' teamconstant')
-        
-        if 'valid_leagues' in kwargs and kwargs['valid_leagues'] is not None:
-            if league_key not in kwargs['valid_leagues']:
-                return None
-        
-        if not hasattr(self, 'league_worksheets'):
-            self.league_worksheets = {}
-            
-        if league_key in self.league_worksheets:
-            worksheet = self.league_worksheets[league_key]
-        else:
-            try:
-                logging.debug('Retrieving worksheet for: '+league_key)
-                worksheet = self.get_spreadsheet().worksheet(league_key)
-            except gspread.exceptions.WorksheetNotFound:
-                logging.info('Creating new worksheet for: '+league_key)
-                worksheet = self.get_spreadsheet().add_worksheet(title=league_key, rows='1', cols='22')
-                
-            self.league_worksheets[league_key] = worksheet
-        
-        return worksheet
-    
     def update_archive(self, day_limit):
         local_timezone = pytz.timezone(constants.TIMEZONE_LOCAL)
         
         # Information worksheet contains basic information such as date and valid values for certain columns
-        info_worksheet = self.get_spreadsheet().worksheet('Information')
+        info_worksheet = get_spreadsheet(self).worksheet('Information')
         
         # get last date archive was updated to
-        latest_MST_MDY_string = info_worksheet.acell(self.SPREADSHEET_MODIFIED_DATE_CELL).value
+        latest_MST_MDY_string = info_worksheet.acell(SPREADSHEET_MODIFIED_DATE_CELL).value
         if latest_MST_MDY_string == '':
             logging.error('No archive date given!')
             raise Exception('No archive date given!')
                 
         # archive entries can be filtered by time, get the valid times to archive
-        dates_to_archive_keys = [x.strip() for x in info_worksheet.cell(self.SPREADSHEET_LIMIT_ROW, self.SPREADSHEET_DATE_COL).value.split(';')]
+        dates_to_archive_keys = [x.strip() for x in info_worksheet.cell(SPREADSHEET_LIMIT_ROW, SPREADSHEET_DATE_COL).value.split(';')]
         
         # archive entries can be filtered by league, get the valid leagues to archive
-        leagues_to_archive_cell_value = info_worksheet.cell(self.SPREADSHEET_LIMIT_ROW, self.SPREADSHEET_LEAGUE_COL).value
+        leagues_to_archive_cell_value = info_worksheet.cell(SPREADSHEET_LIMIT_ROW, SPREADSHEET_LEAGUE_COL).value
         if leagues_to_archive_cell_value == '':
             leagues_to_archive_keys = None
         else:
@@ -317,7 +345,7 @@ class TipArchive(webapp.RequestHandler):
             
             # store tips in a list with date string keys so that a invalid date can be thrown away easily
             date_MST = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(local_timezone)
-            date_MST_MDY_string = date_MST.strftime(self.DATE_FORMAT)
+            date_MST_MDY_string = date_MST.strftime(SPREADSHEET_DATE_FORMAT)
             
             if tip_instance.archived is True:
                 # store by sport and league (so that league worksheet can be gotten and thrown away before accessing another)
@@ -342,7 +370,7 @@ class TipArchive(webapp.RequestHandler):
                 break
         
         # sort the list keys so that archive is ordered
-        tips_to_archive_date_order = sorted(tips_to_archive_by_date.keys(), key=lambda x: datetime.strptime(x, self.DATE_FORMAT))
+        tips_to_archive_date_order = sorted(tips_to_archive_by_date.keys(), key=lambda x: datetime.strptime(x, SPREADSHEET_DATE_FORMAT))
         
         latest_date_split = latest_MST_MDY_string.split('/')
         latest_date = date(int(latest_date_split[2]), int(latest_date_split[0]), int(latest_date_split[1]))
@@ -366,7 +394,7 @@ class TipArchive(webapp.RequestHandler):
                 
                 for league_key, tip_instances in tip_instances_by_league.iteritems():
                     #TODO: update by league first rather than by date to increase size of cell batch update
-                    league_worksheet = self.get_league_worksheet(sport_key, league_key, valid_leagues=leagues_to_archive_keys)
+                    league_worksheet = get_league_worksheet(sport_key, league_key, obj=self, valid_leagues=leagues_to_archive_keys)
                     # if a league is not valid then we skip, still want to update the archive date though
                     if league_worksheet is None:
                         skipped_update = True
@@ -375,7 +403,7 @@ class TipArchive(webapp.RequestHandler):
                     
                     # ensure last league archived tip date is less than new archive tip date
                     # if not, then there was a failure in previous run(s) and this league should skip this date
-                    league_latest_date_split = league_worksheet.cell(league_worksheet.row_count, self.SPREADSHEET_DATE_COL).value.split('/')
+                    league_latest_date_split = league_worksheet.cell(league_worksheet.row_count, SPREADSHEET_DATE_COL).value.split('/')
                     if len(league_latest_date_split) == 3:
                         if new_date <= date(int(league_latest_date_split[2]), int(league_latest_date_split[0]), int(league_latest_date_split[1])):
                             skipped_update = True
@@ -456,9 +484,9 @@ class TipArchive(webapp.RequestHandler):
                 )
             )
         ):
-            new_date_string = new_date.strftime(self.DATE_FORMAT)
+            new_date_string = new_date.strftime(SPREADSHEET_DATE_FORMAT)
             logging.info('Updating archive date to '+new_date_string)
-            info_worksheet.update_acell(self.SPREADSHEET_MODIFIED_DATE_CELL, new_date_string)
+            info_worksheet.update_acell(SPREADSHEET_MODIFIED_DATE_CELL, new_date_string)
             number_of_updated_cells += 1
             
             # only queue up another task if the archive date was updated (possible loop otherwise if a day doesn't have an event to archive)
@@ -478,7 +506,7 @@ class TipArchive(webapp.RequestHandler):
                         
         # certain values don't change per tip
         default_row_values = [
-                      date_MST.strftime(self.DATE_FORMAT),                  # DATE
+                      date_MST.strftime(SPREADSHEET_DATE_FORMAT),      # DATE
                       'Tracker',                                            # Bookmaker
                       tip_instance.game_league,                             # Sport / League
                       None,                                                 # Selection
@@ -510,11 +538,11 @@ class TipArchive(webapp.RequestHandler):
         
         # see BET_TIME class constants
         dates_to_archive = {
-                            BET_TIME_NIGHT : nine_pm_UTC,
-                            BET_TIME_MORNING : eight_am_UTC,
-                            BET_TIME_NOON : eleven_am_UTC,
-                            BET_TIME_AFTERNOON : two_pm_UTC,
-                            BET_TIME_LATEST : 'latest',
+                            self.BET_TIME_NIGHT : nine_pm_UTC,
+                            self.BET_TIME_MORNING : eight_am_UTC,
+                            self.BET_TIME_NOON : eleven_am_UTC,
+                            self.BET_TIME_AFTERNOON : two_pm_UTC,
+                            self.BET_TIME_LATEST : 'latest',
                             }
         
         # remove invalid archive time filters
@@ -564,23 +592,23 @@ class TipArchive(webapp.RequestHandler):
                 # draw result included
                 if models.TIP_SELECTION_TEAM_DRAW in team_selection:
                     if models.TIP_SELECTION_TEAM_AWAY in team_selection:
-                        bet_types[BET_TYPE_SIDE_DRAW] = [archive_split_lines[0], closing_split_line[0]]
+                        bet_types[self.BET_TYPE_SIDE_DRAW] = [archive_split_lines[0], closing_split_line[0]]
                         
                         if is_side_team_favourite(home=False,side=archive_split_lines[1],draw=archive_split_lines[0],spread_no=archive_spread_no,spread=archive_spread_line):
-                            bet_types[BET_TYPE_SIDE_DRAW_AWAY_FAVOURITE] = [archive_split_lines[1], closing_split_line[1]]
-                            bet_types[BET_TYPE_SPREAD_DRAW_AWAY_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SIDE_DRAW_AWAY_FAVOURITE] = [archive_split_lines[1], closing_split_line[1]]
+                            bet_types[self.BET_TYPE_SPREAD_DRAW_AWAY_FAVOURITE] = [archive_spread_line, archive_spread_no]
                         else:
-                            bet_types[BET_TYPE_SIDE_DRAW_AWAY_UNDERDOG] = [archive_split_lines[1], closing_split_line[1]]
-                            bet_types[BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SIDE_DRAW_AWAY_UNDERDOG] = [archive_split_lines[1], closing_split_line[1]]
+                            bet_types[self.BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG] = [archive_spread_line, archive_spread_no]
                     elif models.TIP_SELECTION_TEAM_HOME in team_selection:
-                        bet_types[BET_TYPE_SIDE_DRAW] = [archive_split_lines[1], closing_split_line[1]]
+                        bet_types[self.BET_TYPE_SIDE_DRAW] = [archive_split_lines[1], closing_split_line[1]]
                         
                         if is_side_team_favourite(home=True,side=archive_split_lines[0],draw=archive_split_lines[1],spread_no=archive_spread_no,spread=archive_spread_line):
-                            bet_types[BET_TYPE_SIDE_DRAW_HOME_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[BET_TYPE_SPREAD_DRAW_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SIDE_DRAW_HOME_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
+                            bet_types[self.BET_TYPE_SPREAD_DRAW_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
                         else:
-                            bet_types[BET_TYPE_SIDE_DRAW_HOME_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[BET_TYPE_SPREAD_DRAW_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SIDE_DRAW_HOME_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
+                            bet_types[self.BET_TYPE_SPREAD_DRAW_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
                     else:
                         logging.error('Encountered unsupported side draw team selection')
                         raise Exception('Encountered unsupported side draw team selection')
@@ -588,27 +616,27 @@ class TipArchive(webapp.RequestHandler):
                 else:
                     if team_selection == models.TIP_SELECTION_TEAM_AWAY:
                         if is_side_team_favourite(home=False,side=archive_split_lines[0],spread_no=archive_spread_no,spread=archive_spread_line):
-                            bet_types[BET_TYPE_AWAY_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[BET_TYPE_SPREAD_AWAY_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_AWAY_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
+                            bet_types[self.BET_TYPE_SPREAD_AWAY_FAVOURITE] = [archive_spread_line, archive_spread_no]
                         else:
-                            bet_types[BET_TYPE_AWAY_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[BET_TYPE_SPREAD_AWAY_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_AWAY_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
+                            bet_types[self.BET_TYPE_SPREAD_AWAY_UNDERDOG] = [archive_spread_line, archive_spread_no]
                     elif team_selection == models.TIP_SELECTION_TEAM_HOME:
                         if is_side_team_favourite(home=True,side=archive_split_lines[0],spread_no=archive_spread_no,spread=archive_spread_line):
-                            bet_types[BET_TYPE_HOME_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[BET_TYPE_SPREAD_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_HOME_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
+                            bet_types[self.BET_TYPE_SPREAD_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
                         else:
-                            bet_types[BET_TYPE_HOME_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[BET_TYPE_SPREAD_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_HOME_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
+                            bet_types[self.BET_TYPE_SPREAD_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
                     elif team_selection == (models.TIP_SELECTION_TEAM_HOME + models.TIP_SELECTION_TEAM_AWAY):
                         if float(archive_split_lines[0]) <= float(archive_split_lines[1]):
-                            bet_types[BET_TYPE_SIDE_NO_DRAW_HOME_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[BET_TYPE_SIDE_NO_DRAW_AWAY_UNDERDOG] = [archive_split_lines[1], closing_split_line[1]]
-                            bet_types[BET_TYPE_SPREAD_NO_DRAW_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SIDE_NO_DRAW_HOME_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
+                            bet_types[self.BET_TYPE_SIDE_NO_DRAW_AWAY_UNDERDOG] = [archive_split_lines[1], closing_split_line[1]]
+                            bet_types[self.BET_TYPE_SPREAD_NO_DRAW_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
                         else:
-                            bet_types[BET_TYPE_SIDE_NO_DRAW_HOME_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[BET_TYPE_SIDE_NO_DRAW_AWAY_FAVOURITE] = [archive_split_lines[1], closing_split_line[1]]
-                            bet_types[BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SIDE_NO_DRAW_HOME_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
+                            bet_types[self.BET_TYPE_SIDE_NO_DRAW_AWAY_FAVOURITE] = [archive_split_lines[1], closing_split_line[1]]
+                            bet_types[self.BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
                     else:
                         logging.error('Encountered unsupported side only team selection')
                         raise Exception('Encountered unsupported side only team selection')
@@ -616,18 +644,18 @@ class TipArchive(webapp.RequestHandler):
             else:
                 if team_selection == models.TIP_SELECTION_TEAM_AWAY:
                     if is_side_team_favourite(home=False,side=archive_team_line,spread_no=archive_spread_no,spread=archive_spread_line):
-                        bet_types[BET_TYPE_AWAY_FAVOURITE] = [archive_team_line, closing_line]
-                        bet_types[BET_TYPE_SPREAD_AWAY_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                        bet_types[self.BET_TYPE_AWAY_FAVOURITE] = [archive_team_line, closing_line]
+                        bet_types[self.BET_TYPE_SPREAD_AWAY_FAVOURITE] = [archive_spread_line, archive_spread_no]
                     else:
-                        bet_types[BET_TYPE_AWAY_UNDERDOG] = [archive_team_line, closing_line]
-                        bet_types[BET_TYPE_SPREAD_AWAY_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                        bet_types[self.BET_TYPE_AWAY_UNDERDOG] = [archive_team_line, closing_line]
+                        bet_types[self.BET_TYPE_SPREAD_AWAY_UNDERDOG] = [archive_spread_line, archive_spread_no]
                 elif team_selection == models.TIP_SELECTION_TEAM_HOME:
                     if is_side_team_favourite(home=True,side=archive_team_line,spread_no=archive_spread_no,spread=archive_spread_line):
-                        bet_types[BET_TYPE_HOME_FAVOURITE] = [archive_team_line, closing_line]
-                        bet_types[BET_TYPE_SPREAD_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                        bet_types[self.BET_TYPE_HOME_FAVOURITE] = [archive_team_line, closing_line]
+                        bet_types[self.BET_TYPE_SPREAD_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
                     else:
-                        bet_types[BET_TYPE_HOME_UNDERDOG] = [archive_team_line, closing_line]
-                        bet_types[BET_TYPE_SPREAD_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                        bet_types[self.BET_TYPE_HOME_UNDERDOG] = [archive_team_line, closing_line]
+                        bet_types[self.BET_TYPE_SPREAD_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
                 else:
                     logging.error('Encountered unsupported single team selection')
                     raise Exception('Encountered unsupported single team selection')
@@ -646,16 +674,16 @@ class TipArchive(webapp.RequestHandler):
                 spread_mod = None
                 if (
                     bet_type in [
-                                BET_TYPE_SPREAD_AWAY_FAVOURITE,
-                                BET_TYPE_SPREAD_AWAY_UNDERDOG,
-                                BET_TYPE_SPREAD_DRAW_AWAY_FAVOURITE,
-                                BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG,
-                                BET_TYPE_SPREAD_HOME_FAVOURITE,
-                                BET_TYPE_SPREAD_HOME_UNDERDOG,
-                                BET_TYPE_SPREAD_DRAW_HOME_FAVOURITE,
-                                BET_TYPE_SPREAD_DRAW_HOME_UNDERDOG,
-                                BET_TYPE_SPREAD_NO_DRAW_HOME_FAVOURITE,
-                                BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG,
+                                self.BET_TYPE_SPREAD_AWAY_FAVOURITE,
+                                self.BET_TYPE_SPREAD_AWAY_UNDERDOG,
+                                self.BET_TYPE_SPREAD_DRAW_AWAY_FAVOURITE,
+                                self.BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG,
+                                self.BET_TYPE_SPREAD_HOME_FAVOURITE,
+                                self.BET_TYPE_SPREAD_HOME_UNDERDOG,
+                                self.BET_TYPE_SPREAD_DRAW_HOME_FAVOURITE,
+                                self.BET_TYPE_SPREAD_DRAW_HOME_UNDERDOG,
+                                self.BET_TYPE_SPREAD_NO_DRAW_HOME_FAVOURITE,
+                                self.BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG,
                                 ]
                 ):
                     spread_mod = bet_odds[1]
@@ -664,41 +692,41 @@ class TipArchive(webapp.RequestHandler):
                 # away team bet
                 if (
                     bet_type in [
-                                BET_TYPE_AWAY_FAVOURITE, 
-                                BET_TYPE_AWAY_UNDERDOG, 
-                                BET_TYPE_SIDE_DRAW_AWAY_FAVOURITE, 
-                                BET_TYPE_SIDE_DRAW_AWAY_UNDERDOG,
-                                BET_TYPE_SIDE_NO_DRAW_AWAY_FAVOURITE,
-                                BET_TYPE_SIDE_NO_DRAW_AWAY_UNDERDOG,
-                                BET_TYPE_SPREAD_AWAY_FAVOURITE,
-                                BET_TYPE_SPREAD_AWAY_UNDERDOG,
-                                BET_TYPE_SPREAD_DRAW_AWAY_FAVOURITE,
-                                BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG,
+                                self.BET_TYPE_AWAY_FAVOURITE, 
+                                self.BET_TYPE_AWAY_UNDERDOG, 
+                                self.BET_TYPE_SIDE_DRAW_AWAY_FAVOURITE, 
+                                self.BET_TYPE_SIDE_DRAW_AWAY_UNDERDOG,
+                                self.BET_TYPE_SIDE_NO_DRAW_AWAY_FAVOURITE,
+                                self.BET_TYPE_SIDE_NO_DRAW_AWAY_UNDERDOG,
+                                self.BET_TYPE_SPREAD_AWAY_FAVOURITE,
+                                self.BET_TYPE_SPREAD_AWAY_UNDERDOG,
+                                self.BET_TYPE_SPREAD_DRAW_AWAY_FAVOURITE,
+                                self.BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG,
                                 ]
                 ):
                     bet_result = tipanalysis.calculate_event_score_result(original_league_value, score_away, score_home, draw=tipanalysis.BET_RESULT_LOSS, spread_modifier=spread_mod)
                 # home team bet
                 elif (
                     bet_type in [
-                                BET_TYPE_HOME_FAVOURITE, 
-                                BET_TYPE_HOME_UNDERDOG, 
-                                BET_TYPE_SIDE_DRAW_HOME_FAVOURITE, 
-                                BET_TYPE_SIDE_DRAW_HOME_UNDERDOG,
-                                BET_TYPE_SIDE_NO_DRAW_HOME_FAVOURITE,
-                                BET_TYPE_SIDE_NO_DRAW_HOME_UNDERDOG,
-                                BET_TYPE_SPREAD_HOME_FAVOURITE,
-                                BET_TYPE_SPREAD_HOME_UNDERDOG,
-                                BET_TYPE_SPREAD_DRAW_HOME_FAVOURITE,
-                                BET_TYPE_SPREAD_DRAW_HOME_UNDERDOG,
-                                BET_TYPE_SPREAD_NO_DRAW_HOME_FAVOURITE,
-                                BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG,
+                                self.BET_TYPE_HOME_FAVOURITE, 
+                                self.BET_TYPE_HOME_UNDERDOG, 
+                                self.BET_TYPE_SIDE_DRAW_HOME_FAVOURITE, 
+                                self.BET_TYPE_SIDE_DRAW_HOME_UNDERDOG,
+                                self.BET_TYPE_SIDE_NO_DRAW_HOME_FAVOURITE,
+                                self.BET_TYPE_SIDE_NO_DRAW_HOME_UNDERDOG,
+                                self.BET_TYPE_SPREAD_HOME_FAVOURITE,
+                                self.BET_TYPE_SPREAD_HOME_UNDERDOG,
+                                self.BET_TYPE_SPREAD_DRAW_HOME_FAVOURITE,
+                                self.BET_TYPE_SPREAD_DRAW_HOME_UNDERDOG,
+                                self.BET_TYPE_SPREAD_NO_DRAW_HOME_FAVOURITE,
+                                self.BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG,
                                 ]
                 ):
                     bet_result = tipanalysis.calculate_event_score_result(original_league_value, score_home, score_away, draw=tipanalysis.BET_RESULT_LOSS, spread_modifier=spread_mod)
                 # draw bet
                 elif (
                       bet_type in [
-                                BET_TYPE_SIDE_DRAW,
+                                self.BET_TYPE_SIDE_DRAW,
                                 ]
                 ):
                     bet_result = tipanalysis.calculate_event_score_result(original_league_value, score_home, score_away, draw=tipanalysis.BET_RESULT_WIN)
@@ -749,13 +777,13 @@ class TipArchive(webapp.RequestHandler):
             
             # get bet result
             if total_selection == models.TIP_SELECTION_TOTAL_OVER:
-                bet_type = BET_TYPE_TOTAL_OVER
+                bet_type = self.BET_TYPE_TOTAL_OVER
                 bet_result = tipanalysis.calculate_event_score_result(original_league_value, total_score, archive_total_no)
             elif total_selection == models.TIP_SELECTION_TOTAL_UNDER:
-                bet_type = BET_TYPE_TOTAL_UNDER
+                bet_type = self.BET_TYPE_TOTAL_UNDER
                 bet_result = tipanalysis.calculate_event_score_result(original_league_value, archive_total_no, total_score)
             else:
-                bet_type = BET_TYPE_TOTAL_NONE
+                bet_type = self.BET_TYPE_TOTAL_NONE
                 bet_result = tipanalysis.calculate_event_score_result(original_league_value, archive_total_no, total_score)
             
             new_row_values[self.LEAGUE_INDEX] = original_league_value + ' Total'

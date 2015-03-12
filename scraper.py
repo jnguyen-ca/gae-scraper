@@ -10,7 +10,7 @@ sys.path.insert(0, 'libs')
 sys.path.append('libs/pytz-2014.7')
 
 from google.appengine.ext import webapp, ndb
-from google.appengine.api import mail, urlfetch, memcache, taskqueue
+from google.appengine.api import mail, urlfetch, taskqueue
 
 # from _symtable import LOCAL
 
@@ -32,6 +32,7 @@ import requests
 import constants
 import teamconstants
 import models
+import memcache_util
 
 def get_team_aliases(sport, league, team_name):
     return teamconstants.get_team_aliases(sport, league, team_name)
@@ -169,7 +170,7 @@ class Scraper(webapp.RequestHandler):
         
         wettpoint_check_tables_sport = []
         wettpoint_check_tables_sport_debug = {}
-        wettpoint_tables_memcache = memcache.get('lastWettpointTablesInfo')
+        wettpoint_tables_memcache = memcache_util.get(memcache_util.MEMCACHE_KEY_SCRAPER_WETTPOINT_TABLE)
         
         if wettpoint_tables_memcache:
             for sport_key in constants.SPORTS:
@@ -626,7 +627,7 @@ class Scraper(webapp.RequestHandler):
         return archived_tips, scores_by_date
 
     def fill_wettpoint_tips(self, not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league, wettpoint_check_tables_sport):
-        self.wettpoint_tables_memcache = memcache.get('lastWettpointTablesInfo')
+        self.wettpoint_tables_memcache = memcache_util.get(memcache_util.MEMCACHE_KEY_SCRAPER_WETTPOINT_TABLE)
         if not self.wettpoint_tables_memcache:
             self.wettpoint_tables_memcache = {}
             
@@ -983,7 +984,7 @@ class Scraper(webapp.RequestHandler):
                     
                     not_elapsed_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
         
-        memcache.set('lastWettpointTablesInfo', self.wettpoint_tables_memcache)
+        memcache_util.set(memcache_util.MEMCACHE_KEY_SCRAPER_WETTPOINT_TABLE, self.wettpoint_tables_memcache)
         return not_elapsed_tips_by_sport_league
     
     def matchup_data_finalized(self, sport_key, team_list, matchup_date, possible_earlier_games):

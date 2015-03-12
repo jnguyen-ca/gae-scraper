@@ -21,6 +21,7 @@ import gspread
 import constants
 import models
 import teamconstants
+import memcache_util
 import tipanalysis
 
 # spreadsheet column information row and col indices
@@ -42,8 +43,9 @@ SPREADSHEET_LIMIT_ROW = 3
 
 SPREADSHEET_DATE_FORMAT = '%m/%d/%Y' # format for date stored in spreadsheet
 
-def get_client(obj=None):
-    if obj is None or not hasattr(obj, 'gclient'):
+def get_client():
+    gclient = memcache_util.get(memcache_util.MEMCACHE_KEY_TIPARCHIVE_CLIENT)
+    if gclient is None:
         G_EMAIL = '260128773013-vineg4bdug5q27rlbdr3j9s7jlm4sp7l@developer.gserviceaccount.com'
         
         f = file('key-drive-gl-05.pem', 'r')
@@ -56,26 +58,23 @@ def get_client(obj=None):
         spreadsheet_oauth_credentials = SignedJwtAssertionCredentials(G_EMAIL, OAUTH_KEY, scope=OAUTH_SCOPE)
         
         gclient = gspread.authorize(spreadsheet_oauth_credentials)
-        if obj is not None:
-            obj.gclient = gclient
+        memcache_util.set(memcache_util.MEMCACHE_KEY_TIPARCHIVE_CLIENT, gclient)
     else:
-        gclient = obj.gclient
+        logging.debug('Using Google client from memcache...')
     
     return gclient
 
-def get_spreadsheet(obj=None):
-    if obj is None or not hasattr(obj, 'spreadsheet'):
+def get_spreadsheet():
+    spreadsheet = memcache_util.get(memcache_util.MEMCACHE_KEY_TIPARCHIVE_SPREADSHEET)
+    if spreadsheet is None:
         if constants.is_local():
             logging.info('Opening Test Tracking spreadsheet...')
-            spreadsheet = get_client(obj).open('Test Tracking')
+            spreadsheet = get_client().open('Test Tracking')
         else:
             logging.info('Opening Tips Tracking spreadsheet...')
-            spreadsheet = get_client(obj).open('Tips Tracking')
+            spreadsheet = get_client().open('Tips Tracking')
         
-        if obj is not None:
-            obj.spreadsheet = spreadsheet
-    else:
-        spreadsheet = obj.spreadsheet
+        memcache_util.set(memcache_util.MEMCACHE_KEY_TIPARCHIVE_SPREADSHEET, spreadsheet)
         
     return spreadsheet
 
@@ -100,11 +99,11 @@ def get_league_worksheet(sport_key, league_key, obj=None, valid_leagues=None, ge
     else:
         try:
             logging.debug('Retrieving worksheet for: '+league_key)
-            worksheet = get_spreadsheet(obj).worksheet(league_key)
+            worksheet = get_spreadsheet().worksheet(league_key)
         except gspread.exceptions.WorksheetNotFound:
             if get_or_create is True:
                 logging.info('Creating new worksheet for: '+league_key)
-                worksheet = get_spreadsheet(obj).add_worksheet(title=league_key, rows='1', cols='22')
+                worksheet = get_spreadsheet().add_worksheet(title=league_key, rows='1', cols='22')
             else:
                 logging.info(league_key+' worksheet does not exist!')
                 return None
@@ -288,7 +287,7 @@ class TipArchive(webapp.RequestHandler):
         local_timezone = pytz.timezone(constants.TIMEZONE_LOCAL)
         
         # Information worksheet contains basic information such as date and valid values for certain columns
-        info_worksheet = get_spreadsheet(self).worksheet('Information')
+        info_worksheet = get_spreadsheet().worksheet('Information')
         
         # get last date archive was updated to
         latest_MST_MDY_string = info_worksheet.acell(SPREADSHEET_MODIFIED_DATE_CELL).value

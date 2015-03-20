@@ -1,4 +1,17 @@
 jQuery(document).ready(function($) {
+	$('form').submit(function() {
+		if ($(this).attr('method') == 'post')
+		{
+			var $sportColumns = $(this).find('.sport-columns')
+			if ($sportColumns.length > 0)
+			{
+				$sportColumns.remove()
+			}
+			
+			$('.sport-columns').clone().hide().appendTo(this);
+		}
+	})
+	
 	$('.month-input, .day-input, .year-input').on('keydown', function(e) {
 		// Allow: backspace, delete, tab, escape
         if ($.inArray(e.keyCode, [46, 8, 9, 27, 37, 39]) !== -1)

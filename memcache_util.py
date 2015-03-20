@@ -8,6 +8,7 @@ MEMCACHE_KEY_SCRAPER_WETTPOINT_TABLE = 'lastWettpointTablesInfo'
 MEMCACHE_KEY_TIPARCHIVE_SPREADSHEET = 'tipArchiveSpreadsheet'
 MEMCACHE_KEY_TIPARCHIVE_CLIENT = 'tipArchiveClient'
 MEMCACHE_KEY_DASHBOARD_SPREADSHEET_DATA = 'spreadsheetData'
+MEMCACHE_KEY_DASHBOARD_SPREADSHEET_FILTER_COLUMNS = 'spreadsheetFilterColumns'
 
 from google.appengine.api import memcache
 

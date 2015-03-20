@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Dashboard</title>
+		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+		<script src="/javascript/modules/dashboard.js"></script>
+		<style>
+			.hidden {display: none;}
+			.filter {display: inline-block; vertical-align: top;}
+			.label {display: inline-block; min-width: 50px;}
+		</style>
+	</head>
+	<body id="dashboard">
+		<div id="filter-template" class="hidden empty-template">
+			[template:filters_values]
+			<div class="filter-set">
+				[template:dashboard_filters]
+			</div>
+		</div>
+		<form id="filter-form">
+		
+		</form>
+	</body>
+</html>

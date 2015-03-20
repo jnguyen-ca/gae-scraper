@@ -6,21 +6,18 @@ import sys
 sys.path.append('libs/pytz-2014.7')
 
 from google.appengine.ext import webapp
-from google.appengine.api import users, memcache
+# from google.appengine.api import users, memcache
 
 from datetime import datetime, timedelta
 
-import json
+# import json
 import logging
 import constants
 import teamconstants
 import pytz
 import models
+import frontpage
 import tipanalysis
-
-DISPLAY_INPUT_NAME = 'display'
-DISPLAY_VALUE_UPCOMING = 'Upcoming'
-DISPLAY_VALUE_RESULTS = 'Results'
 
 RESULTS_DATETIME_INPUT_NAME = 'results-UTC-datetime'
 
@@ -106,13 +103,13 @@ class TipDisplay(webapp.RequestHandler):
 #         session.leagues = ds_json_string
         
         # determine display type (list upcoming games vs display day's results)
-        display_type = self.request.get(DISPLAY_INPUT_NAME)
+        display_type = self.request.get(frontpage.INPUT_NAME_TIPDISPLAY_TYPE)
         
         self.DATASTORE_READS += 1
-        if DISPLAY_VALUE_UPCOMING == display_type:
+        if frontpage.DISPLAY_VALUE_UPCOMING == display_type:
             # get all games whose scores have not been filled out
             query = models.Tip.gql('WHERE archived != True')
-        elif DISPLAY_VALUE_RESULTS == display_type:
+        elif frontpage.DISPLAY_VALUE_RESULTS == display_type:
             results_datetime = self.request.get(RESULTS_DATETIME_INPUT_NAME)
             
             local_timezone = pytz.timezone(constants.TIMEZONE_LOCAL)
@@ -151,8 +148,8 @@ class TipDisplay(webapp.RequestHandler):
                 ''' % (
                        previous_results_UTC_datetime_start.strftime(constants.DATETIME_ISO_8601_FORMAT),
                        RESULTS_DATETIME_INPUT_NAME,
-                       DISPLAY_VALUE_RESULTS,
-                       DISPLAY_INPUT_NAME,
+                       frontpage.DISPLAY_VALUE_RESULTS,
+                       frontpage.INPUT_NAME_TIPDISPLAY_TYPE,
                 )
              )
         else:
@@ -166,7 +163,7 @@ class TipDisplay(webapp.RequestHandler):
             
             # if displaying results, then only retrieve games which have completed
             if (
-                DISPLAY_VALUE_RESULTS == display_type 
+                frontpage.DISPLAY_VALUE_RESULTS == display_type 
                 and tip_instance.archived is not True
             ):
                 break
@@ -211,10 +208,10 @@ class TipDisplay(webapp.RequestHandler):
                 # display all non-archived tips
                 self.html.append("<div class='league_header'><b class='league_key'>%s</b>" % (league_key))
                 
-                if DISPLAY_VALUE_UPCOMING == display_type:
+                if frontpage.DISPLAY_VALUE_UPCOMING == display_type:
                     self.html.append("<a href='%s'>Table</a>" % (wettpoint_table))
                     self.list_next_games(tips_values)
-                elif DISPLAY_VALUE_RESULTS == display_type:
+                elif frontpage.DISPLAY_VALUE_RESULTS == display_type:
                     index = len(self.html)
                     moneyline_totals, spread_totals, total_totals = self.list_game_results(tips_values)
                     

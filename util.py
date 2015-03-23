@@ -2,7 +2,19 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+from google.appengine.ext import ndb
+import models
 import re
+import json
+import logging
+
+APPVAR_TEAM_NAMES = 'teamconstants'
+APPVAR_LEAGUE_NAMES = 'leagueconstants'
+
+VALID_APPVAR_LIST = [
+               APPVAR_TEAM_NAMES, 
+               APPVAR_LEAGUE_NAMES,
+               ]
 
 __TEMPLATE_TAGS__ = {}
 __CSS_STYLES__ = ''
@@ -97,6 +109,32 @@ def print_html(output, html=None):
                 output.write(line)
                 
     reset_all_meta()
+    
+def set_app_var(key, value):
+    if key not in VALID_APPVAR_LIST:
+        raise KeyError('Invalid application variable key ('+key+')')
+    
+    if not isinstance(value, basestring) and value is not None:
+        value = json.dumps(value)
+    elif not value:
+        value = None
+    
+    return models.ApplicationVariables(id=key, value=value).put()
+
+def get_or_set_app_var(key):
+    app_var = ndb.Key(models.ApplicationVariables, key).get()
+    if app_var is None:
+        logging.info('Creating new application variable ('+key+')!')
+        app_var = set_app_var(key, None).get()
+    value = app_var.value
+    
+    if value is not None:
+        try:
+            value = json.loads(value)
+        except ValueError:
+            pass
+    
+    return value
 
 def is_ajax(request):
     """Check if a request is from AJAX
@@ -122,3 +160,22 @@ def list_unique(seq, preserve_order=False):
         return [x for x in seq if x not in seen and not seen.add(x)]
     else:
         return list(set(seq))
+    
+def get_from_dict(dataDict, mapList):
+    '''Get a dictionary entry via a list of keys
+    
+    https://stackoverflow.com/questions/14692690/access-python-nested-dictionary-items-via-a-list-of-keys/14692747#14692747
+    '''
+    return reduce(lambda d, k: d[k], mapList, dataDict)
+
+def set_in_dict(dataDict, mapList, value):
+    '''Set a value for a dictionary entry via a list of keys
+    
+    https://stackoverflow.com/questions/14692690/access-python-nested-dictionary-items-via-a-list-of-keys/14692747#14692747
+    '''
+    get_from_dict(dataDict, mapList[:-1])[mapList[-1]] = value
+    
+def del_in_dict(dataDict, mapList):
+    '''Delete a element in a dictionary entry via a list of keys
+    '''
+    get_from_dict(dataDict, mapList[:-1]).pop(mapList[-1], None)

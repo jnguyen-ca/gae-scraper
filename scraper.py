@@ -442,7 +442,11 @@ class Scraper(webapp.RequestHandler):
                         row_columns = score_row.find_all('td', recursive=False)
                         
                         # should be the correct league
-                        row_league = row_columns[score_row_key_indices['League']].get_text().strip()
+                        try:
+                            row_league = row_columns[score_row_key_indices['League']].get_text().strip()
+                        except IndexError:
+                            continue
+                            
                         if isinstance(league, list):
                             if row_league not in league:
                                 continue
@@ -1644,18 +1648,7 @@ class Scraper(webapp.RequestHandler):
                     elif participant_name_visiting == '2nd Half Wagering' or participant_name_home == '2nd Half Wagering':
                         continue
                     
-                    if (
-                        sport_key in teamconstants.TEAMS 
-                        and league_key in teamconstants.TEAMS[sport_key]
-                        ):
-                        league_team_info = teamconstants.TEAMS[sport_key][league_key]
-                        if isinstance(league_team_info, basestring):
-                            # reference to another league information
-                            league_team_info = teamconstants.TEAMS[sport_key][league_team_info]
-                    # if team information hasn't been filled out for this league, can still store it but raise a warning
-                    else:
-                        logging.warning(league_key+', '+sport_key+' has no team information!')
-                        league_team_info = None
+                    league_team_info = teamconstants.get_league_teams(sport_key, league_key)
                     
                     participant_name_multi_visiting = participant_name_multi_home = False
                     for participant_name in [participant_name_visiting, participant_name_home]:

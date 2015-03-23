@@ -10,12 +10,15 @@ from scraper import Scraper
 from tiparchive import TipArchive
 import tipdisplay
 import dashboard
+import settings
 
-application = webapp.WSGIApplication([('/', frontpage.FrontPage), 
+application = webapp.WSGIApplication([
+                                      ('/', frontpage.FrontPage), 
                                       ('/scrape', Scraper), 
                                       ('/display', tipdisplay.TipDisplay),
                                       ('/archive', TipArchive),
                                       ('/dashboard', dashboard.Dashboard),
+                                      ('/appvars', settings.AppSettings),
                                     ], 
                                     debug=True)
 

@@ -83,3 +83,6 @@ class TipChange(ndb.Model):
     
     spread_no = ndb.TextProperty()
     spread_lines = ndb.TextProperty()
+    
+class ApplicationVariables(ndb.Model):
+    value = ndb.TextProperty()

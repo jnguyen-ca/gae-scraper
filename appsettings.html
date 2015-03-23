@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>Dashboard</title>
+		<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
+		<script src="/javascript/modules/appsettings.js"></script>
+		<style>
+			input[type="button"]:hover {cursor: pointer;}
+			.hidden {display: none;}
+			.styleless-button {background: none; border: none;}
+			.updated-highlight {border: 3px inset green; background: #FFFFBC;}
+			.error-highlight {border: 3px inset red; background: #FFF9F9;}
+			.dict-entry, .dict-level-controls {margin: 9px 0;}
+			.dict-entries {padding-left: 9px; border-left: 2px dotted #B0BFCB;}
+			.dict-level-0 {margin-left: 30px;}
+			.dict-level-1 {margin-left: 60px;}
+			.dict-level-2 {margin-left: 90px;}
+			.dict-level-3 {margin-left: 120px;}
+			.dict-level-4 {margin-left: 150px;}
+			.dict-level-5 {margin-left: 180px;}
+			.dict-level-controls input {border: 1px dotted black; padding: 6px;}
+			.dict-level-controls input:hover {background: #F1F1F1;}
+			.add-entry {width: 300px;}
+			.dict-key {display: inline-block;width: 350px;}
+			.dict-entry-controls {float: right;}
+			.list-entry {margin-right: 3px; border: 1px solid black; padding: 0 3px;}
+		</style>
+	</head>
+	<body id="appsettings">
+		<div id="form_templates" class="hidden">
+			[template:form_templates]
+		</div>
+		[template:app_vars_display]
+	</body>
+</html>

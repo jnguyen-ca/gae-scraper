@@ -79,11 +79,7 @@ def get_spreadsheet():
     return spreadsheet
 
 def get_league_worksheet(sport_key, league_key, obj=None, valid_leagues=None, get_or_create=True):
-    try:
-        if isinstance(teamconstants.TEAMS[sport_key][league_key], basestring):
-            league_key = teamconstants.TEAMS[sport_key][league_key]
-    except KeyError:
-        logging.warning('missing '+league_key+' teamconstant')
+    league_key = teamconstants.get_base_league_key(sport_key, league_key)
     
     if (
         valid_leagues is not None 

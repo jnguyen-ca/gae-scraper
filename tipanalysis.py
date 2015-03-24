@@ -19,7 +19,7 @@ BET_RESULT_HALF_LOSS = 'HL'
 def strip_score(league_key, score_string):
     if isinstance(score_string, basestring):
         if '(' in score_string:
-            if league_key in constants.LEAGUES_OT_INCLUDED:
+            if league_key in constants.get_leagues_ot_included_appvar():
                 return score_string.split('(', 1)[0].strip()
             else:
                 return score_string.split('(', 1)[1].rstrip(')')

@@ -40,8 +40,9 @@ class FrontPage(webapp.RequestHandler):
             session_leagues = json.loads(session_cookie)
             
         util.add_template_tag('display_leagues', '<div class="sport-columns">')
-        for sport in sorted(constants.LEAGUES):
-            leagues = constants.LEAGUES[sport]
+        sports = sorted(constants.get_league_names_appvar())
+        for sport in sports:
+            leagues = constants.get_league_names_appvar()[sport]
             util.add_template_tag('display_leagues', '<div class="sport-column">')
             util.add_template_tag('display_leagues', '<h3>'+sport+'</h3>')
             for league in sorted(leagues.keys()):

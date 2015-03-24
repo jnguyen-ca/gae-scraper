@@ -51,6 +51,7 @@ class AppSettings(webapp.RequestHandler):
                 # return error response due to incorrect formatting
                 self.response.set_status(400)
             else:
+                logging.debug('Request : (%s), AppVar : (%s), Keys : (%s)' % (request_type, app_key, str(entry_keys)))
                 # determine the request type
                 if request_type == self.REQUEST_TYPE_EDIT_SOURCE:
                     # set and dump to output so display source can be updated
@@ -152,14 +153,20 @@ class AppSettings(webapp.RequestHandler):
         '''Create a working display for an application variable based on the
         variable's object
         '''
-        html = ''
         if isinstance(app_var_value, dict):
             entries_html = self.display_dict_level(app_var_value)
-            html = '''
-            %s
-            ''' % (
-                   entries_html
-                   )
+        elif isinstance(app_var_value, list):
+            entries_html = self.display_list(app_var_value)
+        elif isinstance(app_var_value, basestring):
+            entries_html = self.display_string(app_var_value)
+        else:
+            entries_html = ''
+            
+        html = '''
+        %s
+        ''' % (
+               entries_html
+               )
         
         return html
     
@@ -210,15 +217,11 @@ class AppSettings(webapp.RequestHandler):
         '''
         # value must either be a list or a string, if it was a dict it shouldn't have got here
         if isinstance(value, list):
-            value_display = '<span class="list-entries">'
-            for x in value:
-                value_display += '<span class="list-entry">'+x+'</span>'
-            value_display += '</span>'
-            
+            value_display = self.display_list(value)
             # convert list to json string for output
             value = json.dumps(value, ensure_ascii=False)
         else:
-            value_display = '<span class="string-entry">'+value+'</span>'
+            value_display = self.display_string(value)
         
         value_html = '''
         <span class="dict-value">
@@ -233,3 +236,27 @@ class AppSettings(webapp.RequestHandler):
                )
         
         return value_html
+    
+    def display_list(self, dataList):
+        insert_breaks = False
+        
+        list_display = ''
+        for x in dataList:
+            list_display += '<span class="list-entry">'+x+'</span>'
+            
+            if len(x) >= 50:
+                insert_breaks = True
+            
+        value_display = '''
+        <span class="list-entries%s">
+            %s
+        </span>
+        ''' % (
+               ' list-bullets-format' if insert_breaks is True else '',
+               list_display
+               )
+            
+        return value_display
+    
+    def display_string(self, dataString):
+        return '<span class="string-entry">'+dataString+'</span>'

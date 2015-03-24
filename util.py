@@ -8,12 +8,23 @@ import re
 import json
 import logging
 
-APPVAR_TEAM_NAMES = 'teamconstants'
+APPVAR_SPORT_NAMES = 'sportconstants'
 APPVAR_LEAGUE_NAMES = 'leagueconstants'
+APPVAR_TEAM_NAMES = 'teamconstants'
+APPVAR_SPORTS_H2H_EXCLUDE = 'sportsh2hexclude'
+APPVAR_SPORTS_WEEKLY = 'sportsweekly'
+APPVAR_LEAGUES_OT_INCLUDED = 'leaguesotincluded'
+
+APPVAR_USER_AGENTS = 'header_user_agents'
 
 VALID_APPVAR_LIST = [
-               APPVAR_TEAM_NAMES, 
+               APPVAR_SPORT_NAMES,
                APPVAR_LEAGUE_NAMES,
+               APPVAR_TEAM_NAMES, 
+               APPVAR_SPORTS_H2H_EXCLUDE,
+               APPVAR_SPORTS_WEEKLY,
+               APPVAR_LEAGUES_OT_INCLUDED,
+               APPVAR_USER_AGENTS,
                ]
 
 __TEMPLATE_TAGS__ = {}

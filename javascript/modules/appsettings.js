@@ -154,6 +154,8 @@ jQuery(document).ready(function($) {
 	dictLevelControlsScripts()
 	entryLevelControlsScripts()
 	
+	$('.dict-level-0 > .dict-level-controls .minimize-dict-level').trigger('click')
+	
 	$('.edit-source').on('click', function() {
 		$(this).closest('.app-variable').find('.source_form').toggle()
 	});

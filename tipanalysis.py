@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import sys
+sys.path.append('utils')
+
 import json
 from datetime import datetime
+from utils import appvar_util
 
-import constants
 import models
 
 BET_RESULT_WIN = 'Y'
@@ -19,7 +22,7 @@ BET_RESULT_HALF_LOSS = 'HL'
 def strip_score(league_key, score_string):
     if isinstance(score_string, basestring):
         if '(' in score_string:
-            if league_key in constants.get_leagues_ot_included_appvar():
+            if league_key in appvar_util.get_leagues_ot_included_appvar():
                 return score_string.split('(', 1)[0].strip()
             else:
                 return score_string.split('(', 1)[1].rstrip(')')

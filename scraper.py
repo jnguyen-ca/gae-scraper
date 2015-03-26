@@ -8,6 +8,7 @@ class ScrapeException(Exception):
 import sys
 sys.path.insert(0, 'libs')
 sys.path.append('libs/pytz-2014.7')
+sys.path.append('utils')
 
 from google.appengine.ext import webapp, ndb
 from google.appengine.api import mail, urlfetch, taskqueue
@@ -21,6 +22,7 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from bs4.element import Tag as bs4_Tag
 from lxml import etree
+from utils import appvar_util, memcache_util, sys_util
 
 import re
 import json
@@ -32,7 +34,6 @@ import requests
 import constants
 import teamconstants
 import models
-import memcache_util
 
 def get_team_aliases(sport, league, team_name):
     return teamconstants.get_team_aliases(sport, league, team_name)
@@ -173,7 +174,7 @@ class Scraper(webapp.RequestHandler):
         wettpoint_tables_memcache = memcache_util.get(memcache_util.MEMCACHE_KEY_SCRAPER_WETTPOINT_TABLE)
         
         if wettpoint_tables_memcache:
-            for sport_key in constants.get_sport_names_appvar():
+            for sport_key in appvar_util.get_sport_names_appvar():
                 if sport_key not in wettpoint_check_tables_sport and sport_key in wettpoint_tables_memcache:
                     sport_wettpoint_memcache = wettpoint_tables_memcache[sport_key]
                     
@@ -194,14 +195,14 @@ class Scraper(webapp.RequestHandler):
                     wettpoint_check_tables_sport.append(sport_key)
         else:
             logging.debug('Checking all sports due to memcache expiration')
-            for sport_key in constants.get_sport_names_appvar():
+            for sport_key in appvar_util.get_sport_names_appvar():
                 if sport_key not in wettpoint_check_tables_sport:
                     wettpoint_check_tables_sport.append(sport_key)
         
         off_the_board_tips = {}
         # get all non-elapsed datastore entities so we can store current lines and wettpoint data
         not_elapsed_tips_by_sport_league = {}
-        for sport_key in constants.get_sport_names_appvar():
+        for sport_key in appvar_util.get_sport_names_appvar():
             self.DATASTORE_READS += 1
             query = models.Tip.gql('WHERE elapsed != True AND game_sport = :1', sport_key)
             for tip_instance in query:
@@ -255,7 +256,7 @@ class Scraper(webapp.RequestHandler):
                             wettpoint_check_tables_sport.append(sport_key)
                     
         not_archived_tips_by_sport_league = {}
-        for sport_key, sport_leagues in constants.get_league_names_appvar().iteritems():
+        for sport_key, sport_leagues in appvar_util.get_league_names_appvar().iteritems():
             for league_key in sport_leagues:
                 self.DATASTORE_READS += 1
                 query = models.Tip.gql('WHERE elapsed = True AND archived != True AND game_league = :1', league_key)
@@ -340,7 +341,7 @@ class Scraper(webapp.RequestHandler):
         scoreboard_timezone = pytz.timezone(constants.TIMEZONE_SCOREBOARD)
         
         archived_tips = {}
-        for sport_key, sport_leagues in constants.get_league_names_appvar().iteritems():
+        for sport_key, sport_leagues in appvar_util.get_league_names_appvar().iteritems():
             scores_by_date = {}
             score_row_key_indices = {}
             for league_key, values in sport_leagues.iteritems():
@@ -390,14 +391,14 @@ class Scraper(webapp.RequestHandler):
                         scores_by_date[scoreboard_date_string] = []
                         
 #                         logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
-                        feed_url = 'http://www.'+constants.XSCORES_FEED+'/'+constants.get_sport_names_appvar()[sport_key]['scoreboard']+'/finished_games/'+scoreboard_date_string
+                        feed_url = 'http://www.'+constants.XSCORES_FEED+'/'+appvar_util.get_sport_names_appvar()[sport_key]['scoreboard']+'/finished_games/'+scoreboard_date_string
                     
                         self.REQUEST_COUNT[constants.XSCORES_FEED] += 1
                         if self.REQUEST_COUNT[constants.XSCORES_FEED] > 1:
                             time.sleep(random.uniform(8.2, 15.5))
                         
                         logging.info('REQUESTING '+feed_url)
-                        feed_html = requests.get(feed_url, headers=constants.get_header())
+                        feed_html = requests.get(feed_url, headers=sys_util.get_header())
                         
                         if feed_html.status_code != 200:
                             logging.debug('Scores Status Code: '+str(feed_html.status_code))
@@ -539,14 +540,14 @@ class Scraper(webapp.RequestHandler):
                 scores_by_date[tip_instance.game_league] = []
                 
 #                 logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
-                feed_url = 'http://www.'+constants.BACKUP_SCORES_FEED+'/'+constants.get_sport_names_appvar()[sport_key]['scoreboard']+'/'+constants.get_league_names_appvar()[sport_key][league_key]['scoreboard']
+                feed_url = 'http://www.'+constants.BACKUP_SCORES_FEED+'/'+appvar_util.get_sport_names_appvar()[sport_key]['scoreboard']+'/'+appvar_util.get_league_names_appvar()[sport_key][league_key]['scoreboard']
             
                 self.REQUEST_COUNT[constants.BACKUP_SCORES_FEED] += 1
                 if self.REQUEST_COUNT[constants.BACKUP_SCORES_FEED] > 1:
                     time.sleep(random.uniform(8.2, 15.5))
                 
                 logging.info('REQUESTING '+feed_url)
-                feed_html = requests.get(feed_url, headers=constants.get_header())
+                feed_html = requests.get(feed_url, headers=sys_util.get_header())
                 
                 if feed_html.status_code != 200:
                     logging.debug('Handball Status Code: '+str(feed_html.status_code))
@@ -638,12 +639,12 @@ class Scraper(webapp.RequestHandler):
         wettpoint_timezone = pytz.timezone(constants.TIMEZONE_WETTPOINT)
         
         # go through all our sports
-        for sport_key in constants.get_sport_names_appvar():
+        for sport_key in appvar_util.get_sport_names_appvar():
             if sport_key not in not_elapsed_tips_by_sport_league or sport_key not in wettpoint_check_tables_sport:
                 continue
             
             # get wettpoint tip table page for particular sport
-            sport = constants.get_sport_names_appvar()[sport_key]['wettpoint']
+            sport = appvar_util.get_sport_names_appvar()[sport_key]['wettpoint']
             feed = 'http://www.forum.'+constants.WETTPOINT_FEED+'/fr_toptipsys.php?cat='+sport
             
             self.REQUEST_COUNT[constants.WETTPOINT_FEED] += 1
@@ -653,7 +654,7 @@ class Scraper(webapp.RequestHandler):
             logging.info('REQUESTING '+feed)
             
             try:
-                html = requests.get(feed, headers=constants.get_header())
+                html = requests.get(feed, headers=sys_util.get_header())
                 wettpoint_current_time = datetime.utcnow()
                 wettpoint_current_date = wettpoint_current_time.replace(tzinfo=pytz.utc).astimezone(wettpoint_timezone).strftime('%d.%m.%Y')
             except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
@@ -691,7 +692,7 @@ class Scraper(webapp.RequestHandler):
                                                     }
             
             H2H_sport_issue = False
-            for league_key in constants.get_league_names_appvar()[sport_key]:
+            for league_key in appvar_util.get_league_names_appvar()[sport_key]:
                 if league_key not in not_elapsed_tips_by_sport_league[sport_key]:
                     continue
                 
@@ -707,7 +708,7 @@ class Scraper(webapp.RequestHandler):
                         if tip_instance.elapsed is True:
                             continue
                     
-                    if not 'wettpoint' in constants.get_league_names_appvar()[tip_instance.game_sport][tip_instance.game_league]:
+                    if not 'wettpoint' in appvar_util.get_league_names_appvar()[tip_instance.game_sport][tip_instance.game_league]:
                         # constant missing league identifier?
                         logging.warning('no wettpoint scraping for '+tip_instance.game_league)
                         continue
@@ -755,7 +756,7 @@ class Scraper(webapp.RequestHandler):
                         correct_league = False
                         
                         # is it the league of the tip object?
-                        wettpoint_league_key = constants.get_league_names_appvar()[tip_instance.game_sport][tip_instance.game_league]['wettpoint']
+                        wettpoint_league_key = appvar_util.get_league_names_appvar()[tip_instance.game_sport][tip_instance.game_league]['wettpoint']
                         if isinstance(wettpoint_league_key, list):
                             if league_name.strip() in wettpoint_league_key:
                                 correct_league = True
@@ -843,7 +844,7 @@ class Scraper(webapp.RequestHandler):
                                     tip_instance.wettpoint_tip_stake = tip_stake
                                 
                                 if (
-                                    sport_key not in constants.get_h2h_excluded_sports_appvar() 
+                                    sport_key not in appvar_util.get_h2h_excluded_sports_appvar() 
                                     and tip_instance.wettpoint_tip_stake % 1 == 0 
                                     and matchup_finalized 
                                     and H2H_sport_issue is not True
@@ -898,7 +899,7 @@ class Scraper(webapp.RequestHandler):
                                 
                             break
                     
-                    if sport_key not in constants.get_h2h_excluded_sports_appvar() and H2H_sport_issue is not True:
+                    if sport_key not in appvar_util.get_h2h_excluded_sports_appvar() and H2H_sport_issue is not True:
                         if tip_instance.wettpoint_tip_stake == 0.0 and tip_stake_changed is True:
                             if not matchup_finalized:
                                 tip_instance.wettpoint_tip_stake = None
@@ -995,7 +996,7 @@ class Scraper(webapp.RequestHandler):
         for check_tip_instance in possible_earlier_games:
             if (
                 (
-                 sport_key not in constants.get_weekly_sports_appvar() 
+                 sport_key not in appvar_util.get_weekly_sports_appvar() 
                  and check_tip_instance.date < (matchup_date - timedelta(hours = 12)) 
                  )
                 or
@@ -1013,12 +1014,12 @@ class Scraper(webapp.RequestHandler):
     
     def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away, **kwargs):
         if (
-            constants.is_local() 
+            sys_util.is_local() 
             or 'nolimit' not in kwargs 
             or kwargs['nolimit'] is not True
         ):
 #             logging.debug('Upcoming connection counts towards limit. Standing at '+str(self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)))
-            if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.get_sport_names_appvar())) > 5:
+            if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(appvar_util.get_sport_names_appvar())) > 5:
                 logging.debug('wettpoint limit H2H reached')
                 self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] = True
                 return False, False, False
@@ -1031,7 +1032,7 @@ class Scraper(webapp.RequestHandler):
         if team_home_id is None or team_away_id is None:
             return False, False, False
         
-        sport = constants.get_sport_names_appvar()[sport_key]['wettpoint']
+        sport = appvar_util.get_sport_names_appvar()[sport_key]['wettpoint']
         
         h2h_total, h2h_team, h2h_risk = False, False, False
         
@@ -1269,10 +1270,10 @@ class Scraper(webapp.RequestHandler):
         possible_ppd_tips_by_sport_league = {}
         
         # go through all our sports
-        for sport_key in constants.get_sport_names_appvar():
+        for sport_key in appvar_util.get_sport_names_appvar():
             if sport_key not in not_elapsed_tips_by_sport_league:
                 continue
-            for league_key in constants.get_league_names_appvar()[sport_key]:
+            for league_key in appvar_util.get_league_names_appvar()[sport_key]:
                 if league_key not in not_elapsed_tips_by_sport_league[sport_key]:
                     continue
                 for tip_instance in not_elapsed_tips_by_sport_league[sport_key][league_key].values():
@@ -1559,9 +1560,9 @@ class Scraper(webapp.RequestHandler):
             logging.warning('PinnacleFeedTime tag text was not found in the feed!')
         
         # get sports we're interested in listed in constant SPORTS
-        for sport_key, sport_values in constants.get_sport_names_appvar().iteritems():
+        for sport_key, sport_values in appvar_util.get_sport_names_appvar().iteritems():
             self.FEED[sport_key] = {}
-            for league_key, league_values in constants.get_league_names_appvar()[sport_key].iteritems():
+            for league_key, league_values in appvar_util.get_league_names_appvar()[sport_key].iteritems():
                 # keep all tag information so don't have to scrape again if we need more information later
                 self.FEED[sport_key][league_key] = {}
                 
@@ -1593,7 +1594,7 @@ class Scraper(webapp.RequestHandler):
                         continue
                     
                     # when testing only scrape games within couple days
-                    if constants.is_local():
+                    if sys_util.is_local():
                         if 172800 < (date_GMT - self.utc_task_start).total_seconds():
                             continue
                     

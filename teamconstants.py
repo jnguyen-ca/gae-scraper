@@ -2,15 +2,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import sys
+sys.path.append('utils')
+
+from utils import appvar_util
+
 import re
 import logging
-import util
-
-def get_team_names_appvar():
-    return util.get_or_set_app_var(util.APPVAR_TEAM_NAMES)
 
 def get_base_league_key(sport, league):
-    appvar_team_names = get_team_names_appvar()
+    appvar_team_names = appvar_util.get_team_names_appvar()
     
     league_value = appvar_team_names[sport][league]
     if isinstance(league_value, basestring):
@@ -19,7 +20,7 @@ def get_base_league_key(sport, league):
     return league
 
 def get_league_teams(sport, league):
-    appvar_team_names = get_team_names_appvar()
+    appvar_team_names = appvar_util.get_team_names_appvar()
     
     league_teams = appvar_team_names[sport][league]
     if isinstance(league_teams, basestring):

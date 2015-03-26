@@ -5,13 +5,14 @@ from __future__ import unicode_literals
 from google.appengine.ext import webapp
 
 import sys
+sys.path.append('utils')
+
 from datetime import datetime
+from utils import html_util, memcache_util, sys_util
 
 import json
 import cgi
 import constants
-import util
-import memcache_util
 import tiparchive
 
 def replace_filter_col_with_name(spreadsheet=None, filter_cols=None):
@@ -109,7 +110,7 @@ class Dashboard(webapp.RequestHandler):
     
     def post(self):
 #         sys.stderr.write(str(self.request.headers['X-Requested-With'])+"\n")
-        if util.is_ajax(self.request):
+        if sys_util.is_ajax(self.request):
             sys.stderr.write("Doing AJAXy stuff\n")
         return
     
@@ -141,22 +142,22 @@ class Dashboard(webapp.RequestHandler):
         self.create_filter_set(filter_columns, spreadsheet_data['filters'])
         
         # print out the page line by line replacing template tags as you go
-        util.print_html(self.response.out, html='dashboard.html')
+        html_util.print_html(self.response.out, html='dashboard.html')
         
         return
     
     def create_filter_set(self, filter_keys, filter_data):
         # date filters (2 radio, 2 date menus)
-        util.add_template_tag('dashboard_filters', self.date_filter(filter_keys, filter_data))
+        html_util.add_template_tag('dashboard_filters', self.date_filter(filter_keys, filter_data))
         # C (sport/league) selection
-        util.add_template_tag('dashboard_filters', self.league_filter(filter_data))
+        html_util.add_template_tag('dashboard_filters', self.league_filter(filter_data))
         # E (bet type) selection
-        util.add_template_tag('dashboard_filters', self.create_select_filter(self.FILTER_KEY_TYPE, self.INPUT_NAME_TYPE_FILTER))
+        html_util.add_template_tag('dashboard_filters', self.create_select_filter(self.FILTER_KEY_TYPE, self.INPUT_NAME_TYPE_FILTER))
         # F & G selection
-        util.add_template_tag('dashboard_filters', self.create_select_filter(self.FILTER_KEY_FILTERA, self.INPUT_NAME_FILTERA_FILTER))
-        util.add_template_tag('dashboard_filters', self.create_select_filter(self.FILTER_KEY_FILTERB, self.INPUT_NAME_FILTERB_FILTER))
+        html_util.add_template_tag('dashboard_filters', self.create_select_filter(self.FILTER_KEY_FILTERA, self.INPUT_NAME_FILTERA_FILTER))
+        html_util.add_template_tag('dashboard_filters', self.create_select_filter(self.FILTER_KEY_FILTERB, self.INPUT_NAME_FILTERB_FILTER))
         
-        util.add_template_tag('filters_values', '<input type="hidden" class="filter-values" value="%s">' % (cgi.escape(json.dumps(filter_data), True)))
+        html_util.add_template_tag('filters_values', '<input type="hidden" class="filter-values" value="%s">' % (cgi.escape(json.dumps(filter_data), True)))
         return
     
     def date_filter(self, filter_keys, filter_data):

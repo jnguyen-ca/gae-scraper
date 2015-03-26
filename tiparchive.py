@@ -6,6 +6,7 @@ import sys
 sys.path.append('libs/oauth2client-1.3')
 sys.path.append('libs/gspread-0.2.2')
 sys.path.append('libs/pytz-2014.7')
+sys.path.append('utils')
 
 from google.appengine.ext import webapp
 from google.appengine.api import urlfetch, taskqueue
@@ -13,6 +14,7 @@ from oauth2client.client import SignedJwtAssertionCredentials
 
 from httplib import HTTPException
 from datetime import date, datetime, timedelta
+from utils import memcache_util, sys_util
 
 import string
 import logging
@@ -21,7 +23,6 @@ import gspread
 import constants
 import models
 import teamconstants
-import memcache_util
 import tipanalysis
 
 # spreadsheet column information row and col indices
@@ -67,7 +68,7 @@ def get_client():
 def get_spreadsheet():
     spreadsheet = memcache_util.get(memcache_util.MEMCACHE_KEY_TIPARCHIVE_SPREADSHEET)
     if spreadsheet is None:
-        if constants.is_local():
+        if sys_util.is_local():
             logging.info('Opening Test Tracking spreadsheet...')
             spreadsheet = get_client().open('Test Tracking')
         else:

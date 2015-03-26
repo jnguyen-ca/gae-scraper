@@ -2,12 +2,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import sys
+sys.path.append('utils')
+
 from google.appengine.ext import webapp
+from utils import appvar_util, html_util, sys_util
 
 import re
 import cgi
 import json
-import util
 import logging
 import ast
 
@@ -27,7 +30,7 @@ class AppSettings(webapp.RequestHandler):
         return
     
     def post(self):
-        if util.is_ajax(self.request):
+        if sys_util.is_ajax(self.request):
             request_type = self.request.get(self.INPUT_NAME_REQUEST_TYPE)
             app_key = self.request.get(self.INPUT_NAME_APP_VAR_KEY)
             request_entry = self.request.get(self.INPUT_NAME_APP_VAR_ENTRY)
@@ -55,13 +58,13 @@ class AppSettings(webapp.RequestHandler):
                 # determine the request type
                 if request_type == self.REQUEST_TYPE_EDIT_SOURCE:
                     # set and dump to output so display source can be updated
-                    util.set_app_var(app_key, request_value)
+                    appvar_util.set_app_var(app_key, request_value)
                     self.response.out.write(cgi.escape(json.dumps(request_value, ensure_ascii=False)))
                 elif request_type == self.REQUEST_TYPE_ADD_EDIT_ENTRY:
                     # modify the entry and overwrite the var
-                    app_var = util.get_or_set_app_var(app_key)
-                    util.set_in_dict(app_var, entry_keys, request_value)
-                    util.set_app_var(app_key, app_var)
+                    app_var = appvar_util.get_or_set_app_var(app_key)
+                    sys_util.set_in_dict(app_var, entry_keys, request_value)
+                    appvar_util.set_app_var(app_key, app_var)
                     # re-create the value display to replace old
                     
                     try:
@@ -71,9 +74,9 @@ class AppSettings(webapp.RequestHandler):
                     entry_html = self.display_dict_entry(entry_keys[-1], request_value, request_level)
                     self.response.out.write(entry_html)
                 elif request_type == self.REQUEST_TYPE_DELETE_ENTRY:
-                    app_var = util.get_or_set_app_var(app_key)
-                    util.del_in_dict(app_var, entry_keys)
-                    util.set_app_var(app_key, app_var)
+                    app_var = appvar_util.get_or_set_app_var(app_key)
+                    sys_util.del_in_dict(app_var, entry_keys)
+                    appvar_util.set_app_var(app_key, app_var)
                 
         return
     
@@ -81,9 +84,9 @@ class AppSettings(webapp.RequestHandler):
         '''Creates the settings display for application variables
         '''
         app_var_html = ''
-        for app_var_key in util.VALID_APPVAR_LIST:
+        for app_var_key in appvar_util.VALID_APPVAR_LIST:
             # if variable does not exist, create empty one
-            app_var_value = util.get_or_set_app_var(app_var_key)
+            app_var_value = appvar_util.get_or_set_app_var(app_var_key)
             formatted_display = self.app_vars_display(app_var_key, app_var_value)
             
             # each variable has its title (key), source (value), and working display (value)
@@ -115,15 +118,15 @@ class AppSettings(webapp.RequestHandler):
                    formatted_display
                    )
             
-        util.add_template_tag('app_vars_display', app_var_html)
+        html_util.add_template_tag('app_vars_display', app_var_html)
         
         # use form templates that can be copied for common ajax requests
         form_templates = self.create_form_template(self.REQUEST_TYPE_ADD_EDIT_ENTRY)
         form_templates += self.create_form_template(self.REQUEST_TYPE_DELETE_ENTRY)
         
-        util.add_template_tag('form_templates', form_templates)
+        html_util.add_template_tag('form_templates', form_templates)
         
-        util.print_html(self.response.out, html='appsettings.html')
+        html_util.print_html(self.response.out, html='appsettings.html')
         return
     
     def create_form_template(self, request_type, show_value=True):

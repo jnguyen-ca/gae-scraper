@@ -2,665 +2,124 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-class ScrapeException(Exception):
+import constants
+
+class ScrapeException(constants.ApplicationException):
     """Base exception for site traversal"""
+    
+class Scraper(object):
+    def scrape(self):
+        pass
+    
+class EventScrapeData(object):
+    def __init__(self):
+        self.sport = None
+        self.league = None
+        self.team_away = None
+        self.team_home = None
+
+# TODO: there should be an intermediate class between BookieScrapeDate and EventScrapeData
+# that specifies that BookieScrapeData has valid datastore values (e.g. team names)
+# while other classes that inherit from EventScrapeData do not (i.e. they're scraped data in their raw form) 
+class BookieScrapeData(EventScrapeData):
+    LINE_KEY_POINTS = 'points'
+    LINE_KEY_ODDS = 'odds'
+    
+    def __init__(self):
+        super(BookieScrapeData, self).__init__()
+        self.line_datetime = None
+        self.datetime = None
+        self.rot_away = None
+        self.rot_home = None
+        self.spread_away = None
+        self.spread_home = None
+        self.moneyline_away = None
+        self.moneyline_home = None
+        self.moneyline_draw = None
+        self.total_over = None
+        self.total_under = None
+        
+class ScoreRowData(EventScrapeData):
+    def __init__(self):
+        super(ScoreRowData, self).__init__()
+        self.datetime = None
+        self.status = None
+        self.regulation_score_away = None
+        self.regulation_score_home = None
+        self.final_score_away = None
+        self.final_score_home = None
+        self.extra_time = None
+
+class WettpointRowData(EventScrapeData):
+    def __init__(self):
+        super(WettpointRowData, self).__init__()
+        self.time_string = None
+        self.tip_team = None
+        self.tip_total = None
+        self.tip_stake = None
+
+from google.appengine.api import urlfetch
+from httplib import HTTPException
 
 import sys
-sys.path.insert(0, 'libs')
-sys.path.append('libs/pytz-2014.7')
 sys.path.append('utils')
+sys.path.append('libs/requests-2.3.0')
+sys.path.append('libs/BeautifulSoup-4.3.2')
 
-from google.appengine.ext import webapp, ndb
-from google.appengine.api import mail, urlfetch, taskqueue
-
-# from _symtable import LOCAL
-
-from httplib import HTTPException
-from requests.packages.urllib3.exceptions import ProtocolError
-from datetime import datetime, timedelta
-# from timeit import itertools
-from bs4 import BeautifulSoup
-from bs4.element import Tag as bs4_Tag
+from datetime import datetime
 from lxml import etree
-from utils import appvar_util, memcache_util, sys_util
+from utils import appvar_util, sys_util
+from bs4.element import Tag as bs4_Tag
+from bs4 import BeautifulSoup
+from requests.packages.urllib3.exceptions import ProtocolError
 
 import re
-import json
 import time
-import pytz
 import random
-import logging
 import requests
-import constants
+import logging
 import teamconstants
 import models
 
-def get_team_aliases(sport, league, team_name):
-    return teamconstants.get_team_aliases(sport, league, team_name)
+HTTP_EXCEPTION_TUPLE = (HTTPException, urlfetch.DeadlineExceededError, ProtocolError)
 
-def add_mail(mail_object, mail_title, mail_message, **kwargs):
-    if 'logging' in kwargs:
-        try:
-            getattr(logging, kwargs['logging'])(mail_message.strip())
-        except (AttributeError, TypeError):
-            logging.error('logging function not found "%s" (%s)' % (kwargs['logging'], mail_message))
-        
-    try:
-        if mail_title not in mail_object:
-            mail_object[mail_title] = ''
-            
-        mail_object[mail_title] += mail_message
-    except TypeError:
-        mail_object = {mail_title : mail_message}
-        
-    return mail_object
+__REQUEST_COUNT__ = {}
 
-def send_all_mail(mail_object):
-    try:
-        SENDER = 'noreply@binkscraper.appspotmail.com'
-        
-        mail_count = 0
-        for mail_title, mail_message in mail_object.iteritems():
-            mail.send_mail_to_admins(SENDER, mail_title, mail_message.strip())
-            mail_count += 1
-            
-        logging.debug('%d mail sent.' % (mail_count))
-    except (TypeError, AttributeError):
-        # if mail_object is not iterable or not a dict do nothing
-        pass
+def get_request_count():
+    return __REQUEST_COUNT__
 
-class Scraper(webapp.RequestHandler):
-    TASK_RETRY_LIMIT = 2
-    
-    WETTPOINT_DATETIME_FORMAT = '%d.%m.%Y %H:%M'
-    WETTPOINT_TABLE_MINUTES_BEFORE_EVENT_EXPIRE = 15
-    
-    TIME_CRON_SCHEDULE_MINUTES_APART = 30
-    TIME_ERROR_MARGIN_MINUTES_BEFORE = -65
-    TIME_ERROR_MARGIN_MINUTES_AFTER = 90
-    
-    MAIL_TITLE_TEAM_ERROR = 'Team Error'
-    MAIL_TITLE_TIP_WARNING = 'Game Warning'
-    MAIL_TITLE_GENERIC_WARNING = 'Warning Notice'
-    
-    def get(self):
-        taskqueue.add(queue_name='scraper', url='/scrape')
-        self.response.out.write('Goodbye')
-    
-    def post(self):
-        self.utc_task_start = datetime.utcnow()
-        self.pinnacle_feed_time = None
-        
-        self.DATASTORE_PUTS = 0
-        self.DATASTORE_READS = 0
-        self.FEED = {}
-        self.REQUEST_COUNT = {constants.PINNACLE_FEED : 0, constants.WETTPOINT_FEED: 0, constants.XSCORES_FEED : 0, constants.BACKUP_SCORES_FEED : 0}
-        self.EXECUTION_LOGS = {}
-        self.DEBUG_EXECUTION_LOGS = {}
-        self.MAIL_OBJECT = None
-        #sys.stderr.write("ARRRRGHH")
-        #sys.stderr.write("\n")
-        #reload(sys)
-        #sys.setdefaultencoding('utf-8')
-        #sys.stderr = codecs.getwriter('utf8')(sys.stderr)
-        
-        urlfetch.set_default_fetch_deadline(15)
-        logging.getLogger('requests').setLevel(logging.WARNING) # disable requests library info and debug messages (to replace with my own)
-        
-        find_games_start_time = time.time()
-        
-        new_or_updated_tips = {}
-        try:
-            new_or_updated_tips = self.find_games()
-        except:
-            task_execution_count = int(self.request.headers['X-AppEngine-TaskExecutionCount'])
-            
-            # if there are retries for the queue left, re-raise exception to retry; otherwise complete without pinnacle lines
-            if self.TASK_RETRY_LIMIT > task_execution_count:
-                logging.warning('Pinnacle XML feed down; Retrying (%d)' % (task_execution_count+1))
-                raise
-            else:
-                logging.warning('Pinnacle XML feed down; Retry limit reached, continuing on')
-            
-        self.EXECUTION_LOGS['find_games'] = time.time() - find_games_start_time
-        
-        update_tips = self.fill_games(new_or_updated_tips)
-         
-        self.commit_tips(update_tips)
-        
-        self.EXECUTION_LOGS['update_tips'] = time.time() - self.EXECUTION_LOGS['update_tips']
-        
-        send_all_mail(self.MAIL_OBJECT)
-        
-        logging_info = ''
-        for x in self.REQUEST_COUNT:
-            logging_info += x + ' : ' + str(self.REQUEST_COUNT[x]) + '; '
-            
-            if int(self.REQUEST_COUNT[x]) > 20:
-                mail.send_mail('BlackCanine@gmail.com', 'BlackCanine@gmail.com', 'Scrape Abuse WARNING', x + ' being hit: ' + str(self.REQUEST_COUNT[x]))
-            
-        logging.info(logging_info)
-        
-        logging_info = ''
-        for x in self.DEBUG_EXECUTION_LOGS:
-            debug_log_time = self.DEBUG_EXECUTION_LOGS[x]
-            if isinstance(self.DEBUG_EXECUTION_LOGS[x], list):
-                if self.DEBUG_EXECUTION_LOGS[x][1] > 0:
-                    debug_log_time = self.DEBUG_EXECUTION_LOGS[x][0] / self.DEBUG_EXECUTION_LOGS[x][1]
-                else:
-                    continue
-            logging_info += x + ' : ' + str("{0:.4f}".format(debug_log_time)) + '; '
-        if len(logging_info) > 0:
-            logging.debug(logging_info)
-        
-        logging_info = ''
-        for x in self.EXECUTION_LOGS:
-            logging_info += x + ' : ' + str("{0:.2f}".format(self.EXECUTION_LOGS[x])) + '; '
-        logging.debug(logging_info)
-        
-        logging.debug('Total Reads: '+str(self.DATASTORE_READS)+', Total Writes: '+str(self.DATASTORE_PUTS))
-    
-    def commit_tips(self, update_tips):
-        self.DATASTORE_PUTS += len(update_tips)
-        ndb.put_multi(update_tips.values())
-        
-    def fill_games(self, new_or_updated_tips):
-        """Now with all the games stored as incomplete Tip objects, fill out the lines and stuff
-        """
-        query_and_sort_tips_start_time = time.time()
-        
-        wettpoint_check_tables_sport = []
-        wettpoint_check_tables_sport_debug = {}
-        wettpoint_tables_memcache = memcache_util.get(memcache_util.MEMCACHE_KEY_SCRAPER_WETTPOINT_TABLE)
-        
-        if wettpoint_tables_memcache:
-            for sport_key in appvar_util.get_sport_names_appvar():
-                if sport_key not in wettpoint_check_tables_sport and sport_key in wettpoint_tables_memcache:
-                    sport_wettpoint_memcache = wettpoint_tables_memcache[sport_key]
-                    
-                    sport_updated = sport_wettpoint_memcache['time_updated']
-                    sport_minutes_between_checks = sport_wettpoint_memcache['minutes_between_checks']
-                    
-                    if sport_wettpoint_memcache['tip_changed'] is True:
-                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to last change'
-                        wettpoint_check_tables_sport.append(sport_key)
-                    elif sport_wettpoint_memcache['h2h_limit_reached'] is True:
-                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to H2H limit reached'
-                        wettpoint_check_tables_sport.append(sport_key)
-                    elif divmod((datetime.utcnow() - datetime.strptime(sport_updated, self.WETTPOINT_DATETIME_FORMAT)).total_seconds(), 60)[0] > sport_minutes_between_checks:
-                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to expiration ('+str(round(sport_minutes_between_checks))+'min since '+sport_updated+')'
-                        wettpoint_check_tables_sport.append(sport_key)
-                elif sport_key not in wettpoint_tables_memcache:
-                    wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to missing memcache key'
-                    wettpoint_check_tables_sport.append(sport_key)
-        else:
-            logging.debug('Checking all sports due to memcache expiration')
-            for sport_key in appvar_util.get_sport_names_appvar():
-                if sport_key not in wettpoint_check_tables_sport:
-                    wettpoint_check_tables_sport.append(sport_key)
-        
-        off_the_board_tips = {}
-        # get all non-elapsed datastore entities so we can store current lines and wettpoint data
-        not_elapsed_tips_by_sport_league = {}
-        for sport_key in appvar_util.get_sport_names_appvar():
-            self.DATASTORE_READS += 1
-            query = models.Tip.gql('WHERE elapsed != True AND game_sport = :1', sport_key)
-            for tip_instance in query:
-                self.DATASTORE_READS += 1
-                key_string = unicode(tip_instance.key.urlsafe())
-                
-                minutes_until_start = divmod((tip_instance.date - self.utc_task_start).total_seconds(), 60)[0]
-                
-                if (
-                    tip_instance.pinnacle_game_no.startswith('OTB ') 
-                    and tip_instance.game_team_away.startswith('OTB ') 
-                    and tip_instance.game_team_home.startswith('OTB ')
-                    ):
-                    if minutes_until_start < 0:
-                        tip_instance.elapsed = True
-                        off_the_board_tips[key_string] = tip_instance
-                    continue
-                
-                if sport_key not in not_elapsed_tips_by_sport_league:
-                    not_elapsed_tips_by_sport_league[sport_key] = {}
-                if tip_instance.game_league not in not_elapsed_tips_by_sport_league[sport_key]:
-                    not_elapsed_tips_by_sport_league[sport_key][tip_instance.game_league] = {}
-                    
-                # use cached entity if new or updated by pinnacle scrape
-                if key_string in new_or_updated_tips:
-                    tip_instance = new_or_updated_tips[key_string].get()
-                    
-                    if sport_key not in wettpoint_check_tables_sport:
-                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to new tip'
-                        wettpoint_check_tables_sport.append(sport_key)
-                
-                if minutes_until_start < 0:
-                    tip_instance.elapsed = True
-                  
-                not_elapsed_tips_by_sport_league[sport_key][tip_instance.game_league][key_string] = tip_instance
-                    
-                if sport_key not in wettpoint_check_tables_sport:
-                    if minutes_until_start <= 180:
-                        wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' starting within 3 hours'
-                        wettpoint_check_tables_sport.append(sport_key)
-                    elif tip_instance.wettpoint_tip_stake is None:
-                        if wettpoint_tables_memcache and sport_key in wettpoint_tables_memcache:
-                            if wettpoint_tables_memcache[sport_key]['first_event_time'] is not False:
-                                last_event_UTC_time = pytz.timezone(constants.TIMEZONE_WETTPOINT).localize(datetime.strptime(wettpoint_tables_memcache[sport_key]['first_event_time'], self.WETTPOINT_DATETIME_FORMAT)).astimezone(pytz.utc)
-                            
-                                if ((last_event_UTC_time - timedelta(minutes=15)) - datetime.utcnow().replace(tzinfo=pytz.utc)).total_seconds() <= 0:
-                                    wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' for updated table ('+last_event_UTC_time.strftime(self.WETTPOINT_DATETIME_FORMAT)+')'
-                                    wettpoint_check_tables_sport.append(sport_key)
-                        else:
-                            wettpoint_check_tables_sport_debug[sport_key] = 'Checking '+sport_key+' due to missing memcache key'
-                            wettpoint_check_tables_sport.append(sport_key)
-                    
-        not_archived_tips_by_sport_league = {}
-        for sport_key, sport_leagues in appvar_util.get_league_names_appvar().iteritems():
-            for league_key in sport_leagues:
-                self.DATASTORE_READS += 1
-                query = models.Tip.gql('WHERE elapsed = True AND archived != True AND game_league = :1', league_key)
-                for tip_instance in query:
-                    self.DATASTORE_READS += 1
-                    if sport_key not in not_archived_tips_by_sport_league:
-                        not_archived_tips_by_sport_league[sport_key] = {}
-                    if league_key not in not_archived_tips_by_sport_league[sport_key]:
-                        not_archived_tips_by_sport_league[sport_key][league_key] = {}
-                    not_archived_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
-                    
-        empty_sports_to_remove = []
-        for sport_key in wettpoint_check_tables_sport:
-            if sport_key not in not_elapsed_tips_by_sport_league:
-                empty_sports_to_remove.append(sport_key)
-            elif sport_key in wettpoint_check_tables_sport_debug:
-                logging.debug(wettpoint_check_tables_sport_debug[sport_key])
-            elif len(wettpoint_check_tables_sport_debug) > 0:
-                logging.debug('failed to find '+sport_key+' message')
-        
-        for sport_key in empty_sports_to_remove:
-            try:
-                wettpoint_check_tables_sport.remove(sport_key)
-            except ValueError:
-                logging.warning('Unexpected '+sport_key+' missing from table list before removal')
-        
-        self.EXECUTION_LOGS['query_tips'] = time.time() - query_and_sort_tips_start_time
-        
-        fill_wettpoint_tips_start_time = time.time()
-        not_elapsed_tips_by_sport_league = self.fill_wettpoint_tips(not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league, wettpoint_check_tables_sport)
-        self.EXECUTION_LOGS['fill_wettpoint_tips'] = time.time() - fill_wettpoint_tips_start_time
-        
-        fill_lines_start_time = time.time()
-        not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.fill_lines(not_elapsed_tips_by_sport_league)
-        self.EXECUTION_LOGS['fill_lines'] = time.time() - fill_lines_start_time
-        
-        check_for_duplicate_tip_start_time = time.time()
-        not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league = self.check_for_duplicate_tip(not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league)
-        self.EXECUTION_LOGS['check_duplicate'] = time.time() - check_for_duplicate_tip_start_time
-        
-        fill_scores_start_time = time.time()
-        
-        archived_tips = {}
-        try:
-            archived_tips = self.fill_scores(not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league)
-        except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
-            logging.warning('Scoreboard feed down')
-            logging.warning(str(request_error))
-            
-        self.EXECUTION_LOGS['fill_scores'] = time.time() - fill_scores_start_time
-        
-        self.EXECUTION_LOGS['update_tips'] = time.time()
-            
-        update_tips = {}
-        for not_elapsed_tips_by_league in not_elapsed_tips_by_sport_league.values():
-            for not_elapsed_tips in not_elapsed_tips_by_league.values():
-                for tip_instance_key, tip_instance in not_elapsed_tips.iteritems():
-                    if tip_instance_key in update_tips:
-                        logging.error(tip_instance_key+' appears more than once in not_elapsed_tips?!')
-                        raise Exception(tip_instance_key+' appears more than once in not_elapsed_tips?!')
-                    update_tips[tip_instance_key] = tip_instance
-        for tip_instance_key, tip_instance in archived_tips.iteritems():
-            if tip_instance_key in update_tips:
-                if (
-                    tip_instance.game_sport not in possible_ppd_tips_by_sport_league 
-                    or tip_instance.game_league not in possible_ppd_tips_by_sport_league[tip_instance.game_sport] 
-                    or tip_instance_key not in possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league]
-                    ):
-                    logging.error(tip_instance_key+' duplicate located in archived_tips?!')
-                    raise Exception(tip_instance_key+' duplicate located in archived_tips?!')
-                else:
-                    logging.info('overwriting not elapsed PPD game')
-            update_tips[tip_instance_key] = tip_instance
-        for tip_instance_key, tip_instance in off_the_board_tips.iteritems():
-            if tip_instance_key in update_tips:
-                logging.error(tip_instance_key+' duplicate located in off_the_board_tips?!')
-                raise Exception(tip_instance_key+' duplicate located in off_the_board_tips?!')
-            update_tips[tip_instance_key] = tip_instance
-        return update_tips
-        
-    def fill_scores(self, not_archived_tips_by_sport_league, possible_ppd_tips_by_sport_league):
-        scoreboard_timezone = pytz.timezone(constants.TIMEZONE_SCOREBOARD)
-        
-        archived_tips = {}
-        for sport_key, sport_leagues in appvar_util.get_league_names_appvar().iteritems():
-            scores_by_date = {}
-            score_row_key_indices = {}
-            for league_key, values in sport_leagues.iteritems():
-                if 'scoreboard' not in values:
-                    continue
-                
-                all_tip_check_scores_league_values = []
-                if (
-                    sport_key in not_archived_tips_by_sport_league 
-                    and league_key in not_archived_tips_by_sport_league[sport_key]
-                    ):
-                    all_tip_check_scores_league_values += not_archived_tips_by_sport_league[sport_key][league_key].values()
-                if (
-                    sport_key in possible_ppd_tips_by_sport_league 
-                    and league_key in possible_ppd_tips_by_sport_league[sport_key]
-                    ):
-                    all_tip_check_scores_league_values += possible_ppd_tips_by_sport_league[sport_key][league_key].values()
-                
-                league = values['scoreboard']
-                
-                if sport_key == 'Handball':
-                    archived_tips, scores_by_date = self.fill_handball_scores(
-                                                                              archived_tips, 
-                                                                              scores_by_date, 
-                                                                              sport_key, 
-                                                                              league_key, 
-                                                                              all_tip_check_scores_league_values
-                                                                              )
-                    continue
-                
-                # go through all non-archived tips that have already begun
-                for tip_instance in all_tip_check_scores_league_values:
-                    scoreboard_game_time = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(scoreboard_timezone)
-                    
-                    # have we gotten the scoreboard for this day before
-                    # only get it if we don't already have it
-                    scoreboard_date_string = scoreboard_game_time.strftime('%d-%m')
-                    
-                    if not scoreboard_date_string in scores_by_date:
-                        if (
-                            sport_key in possible_ppd_tips_by_sport_league 
-                            and league_key in possible_ppd_tips_by_sport_league[sport_key] 
-                            and unicode(tip_instance.key.urlsafe()) in possible_ppd_tips_by_sport_league[sport_key][league_key]
-                        ):
-                            continue
-                        
-                        scores_by_date[scoreboard_date_string] = []
-                        
-#                         logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
-                        feed_url = 'http://www.'+constants.XSCORES_FEED+'/'+appvar_util.get_sport_names_appvar()[sport_key]['scoreboard']+'/finished_games/'+scoreboard_date_string
-                    
-                        self.REQUEST_COUNT[constants.XSCORES_FEED] += 1
-                        if self.REQUEST_COUNT[constants.XSCORES_FEED] > 1:
-                            time.sleep(random.uniform(8.2, 15.5))
-                        
-                        logging.info('REQUESTING '+feed_url)
-                        feed_html = requests.get(feed_url, headers=sys_util.get_header())
-                        
-                        if feed_html.status_code != 200:
-                            logging.debug('Scores Status Code: '+str(feed_html.status_code))
-                        
-                        soup = BeautifulSoup(feed_html.text)
-                        
-                        scores_rows = None
-                        
-                        # get the results table
-                        score_header = soup.find('tbody', {'id' : 'scoretable'}).find('tr', {'id' : 'finHeader'})
-                        if len(score_row_key_indices) < 5:
-                            score_header_columns = score_header.find_all('td', recursive=False)
-                            index_offset = 0
-                            for index, score_header_column in enumerate(score_header_columns):
-                                if score_header_column.has_attr('colspan'):
-                                    index_offset += int(score_header_column['colspan']) - 1
-                                score_header_column_text = score_header_column.get_text().strip()
-                                if score_header_column_text in ['K/O', 'League', 'Stat', 'Home', 'Away', 'FT', 'FINAL', 'R']:
-                                    score_row_key_indices[score_header_column_text] = index + index_offset
-                        
-                        if len(score_row_key_indices) < 6:
-                            logging.warning(sport_key+' score header indices not adding up!')
-                            break
-                        
-                        scores_rows = score_header.find_next_siblings('tr')
-                        for score_row in scores_rows:
-                            if not score_row.has_attr('id'):
-                                continue
-                            
-                            scores_by_date[scoreboard_date_string].append(score_row)
-                            
-                    # get all team aliases
-                    team_home_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_home)[0]
-                    team_away_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_away)[0]
-                        
-                    # should now have the scoreboard for this date, if not something went wrong    
-                    score_date_rows = None
-                    if scoreboard_date_string in scores_by_date:
-                        score_date_rows = scores_by_date[scoreboard_date_string]
-                          
-                    for score_row in score_date_rows:
-                        row_columns = score_row.find_all('td', recursive=False)
-                        
-                        # should be the correct league
-                        try:
-                            row_league = row_columns[score_row_key_indices['League']].get_text().strip()
-                        except IndexError:
-                            continue
-                            
-                        if isinstance(league, list):
-                            if row_league not in league:
-                                continue
-                        else:
-                            if row_league != league:
-                                continue
-                        
-                        row_game_time = scoreboard_timezone.localize(datetime.strptime(scoreboard_game_time.strftime('%m-%d-%Y') + ' ' + row_columns[score_row_key_indices['K/O']].get_text().replace('(','').replace(')','').strip(), '%m-%d-%Y %H:%M'))
-                        row_home_team = row_columns[score_row_key_indices['Home']].get_text().strip()
-                        row_away_team = row_columns[score_row_key_indices['Away']].get_text().strip()
-                        
-                        # row should have same time (30 minute error window) and team names
-                        time_difference = row_game_time - scoreboard_game_time
-                        time_difference_minutes = divmod(time_difference.total_seconds(), 60)[0]
-                        if (
-                            self.TIME_ERROR_MARGIN_MINUTES_BEFORE <= time_difference_minutes 
-                            and self.TIME_ERROR_MARGIN_MINUTES_AFTER >= time_difference_minutes
-                        ):
-                            if row_away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
-                                if row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
-                                    row_game_status = row_columns[score_row_key_indices['Stat']].get_text().strip()
-                                    
-                                    if row_game_status == 'Fin':
-                                        if sport_key == 'Baseball':
-                                            if score_row_key_indices['Home'] < score_row_key_indices['Away']:
-                                                row_home_score = row_columns[score_row_key_indices['R'] - 1].get_text().strip()
-                                                row_away_score = row_columns[score_row_key_indices['R']].get_text().strip()
-                                            else:
-                                                row_home_score = row_columns[score_row_key_indices['R']].get_text().strip()
-                                                row_away_score = row_columns[score_row_key_indices['R'] - 1].get_text().strip()
-                                        else:
-                                            row_FT_score = row_columns[score_row_key_indices['FT']].get_text().strip()
-                                            row_FINAL_score = None
-                                            if 'FINAL' in score_row_key_indices:
-                                                row_FINAL_score = row_columns[score_row_key_indices['FINAL']].get_text().strip()
-                                                
-                                            row_FT_split_scores = row_FT_score.split('-')
-                                            if row_FINAL_score is not None and row_FINAL_score != row_FT_score:
-                                                row_FINAL_split_scores = row_FINAL_score.split('-')
-                                                if score_row_key_indices['Home'] < score_row_key_indices['Away']:
-                                                    row_home_score = row_FINAL_split_scores[0].strip() + ' ('+row_FT_split_scores[0].strip()+')'
-                                                    row_away_score = row_FINAL_split_scores[1].strip() + ' ('+row_FT_split_scores[1].strip()+')'
-                                                else:
-                                                    row_home_score = row_FINAL_split_scores[1].strip() + ' ('+row_FT_split_scores[1].strip()+')'
-                                                    row_away_score = row_FINAL_split_scores[0].strip() + ' ('+row_FT_split_scores[0].strip()+')'
-                                            else:
-                                                if score_row_key_indices['Home'] < score_row_key_indices['Away']:
-                                                    row_home_score = row_FT_split_scores[0].strip()
-                                                    row_away_score = row_FT_split_scores[1].strip()
-                                                else:
-                                                    row_home_score = row_FT_split_scores[1].strip()
-                                                    row_away_score = row_FT_split_scores[0].strip()
-                                                
-                                        tip_instance.score_home = row_home_score
-                                        tip_instance.score_away = row_away_score
-                                    elif row_game_status != 'Abd' and row_game_status != 'Post' and row_game_status != 'Canc':
-                                        break
-                                    
-                                    tip_instance.elapsed = True
-                                    tip_instance.archived = True
-                                    
-                                    # commit
-                                    archived_tips[unicode(tip_instance.key.urlsafe())] = tip_instance
-                                    break
-                                else:
-                                    mail_message = 'Probable '+str(row_home_team)+' SCOREBOARD NAMES for '+league_key+', '+sport_key+' MISMATCH!'+"\n"
-                                    self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
-                            elif row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
-                                mail_message = 'Probable '+str(row_away_team)+' SCOREBOARD NAMES for '+league_key+', '+sport_key+' MISMATCH!'+"\n"
-                                self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
-                            
-                    # if tip is not archived and it's over a day old... something is probably wrong
-                    if (
-                        tip_instance.archived != True 
-                        and (datetime.utcnow() - tip_instance.date).total_seconds() > 64800
-                        ):
-                        mail_message = (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p')+" "+tip_instance.game_team_away+" @ "+tip_instance.game_team_home+"\n"
-                        self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TIP_WARNING, mail_message, logging='warning')
-                        
-        return archived_tips
-    
-    def fill_handball_scores(self, archived_tips, scores_by_date, sport_key, league_key, all_tip_check_scores_league_values):
-        scoreboard_timezone = pytz.timezone(constants.TIMEZONE_BACKUP)
-        
-        for tip_instance in all_tip_check_scores_league_values:
-            scoreboard_game_time = tip_instance.date.replace(tzinfo=pytz.utc).astimezone(scoreboard_timezone)
-            scoreboard_date_string = scoreboard_game_time.strftime('%a %d %b %Y')
-                
-            if not tip_instance.game_league in scores_by_date:
-                scores_by_date[tip_instance.game_league] = []
-                
-#                 logging.debug('scraping scoreboard for '+scoreboard_game_time.strftime('%d-%m %H:%M')+' | '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home)
-                feed_url = 'http://www.'+constants.BACKUP_SCORES_FEED+'/'+appvar_util.get_sport_names_appvar()[sport_key]['scoreboard']+'/'+appvar_util.get_league_names_appvar()[sport_key][league_key]['scoreboard']
-            
-                self.REQUEST_COUNT[constants.BACKUP_SCORES_FEED] += 1
-                if self.REQUEST_COUNT[constants.BACKUP_SCORES_FEED] > 1:
-                    time.sleep(random.uniform(8.2, 15.5))
-                
-                logging.info('REQUESTING '+feed_url)
-                feed_html = requests.get(feed_url, headers=sys_util.get_header())
-                
-                if feed_html.status_code != 200:
-                    logging.debug('Handball Status Code: '+str(feed_html.status_code))
-                    
-                feed_html.encoding = 'utf-8'
-                soup = BeautifulSoup(feed_html.text)
-                
-                results_table = soup.find('div', {'id' : 'national'}).find('table')
-                score_tables = []
-                for results_table_row in results_table.next_siblings:
-                    if isinstance(results_table_row, bs4_Tag) and results_table_row.name == 'div':
-                        score_tables.append(results_table_row)
-                    elif isinstance(results_table_row, bs4_Tag) and results_table_row.name == 'table':
-                        break
-                
-                scores_by_date[tip_instance.game_league] = score_tables
-            else:
-                score_tables = scores_by_date[tip_instance.game_league]
-                
-            # get all team aliases
-            team_home_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_home)[0]
-            team_away_aliases = get_team_aliases(sport_key, league_key, tip_instance.game_team_away)[0]
-            
-            scores_rows = []
-            correct_date = False
-            for score_table_row in score_tables:
-                row_date = score_table_row.find('li', {'class' : 'ncet_date'})
-                if row_date:
-                    if correct_date is False:
-                        if row_date.get_text().strip() == scoreboard_date_string:
-                            correct_date = True
-                        elif len(scores_rows) > 0:
-                            break
-                    else:
-                        break
-                elif correct_date is True:
-                    if score_table_row.find('table'):
-                        scores_rows += score_table_row.find_all('table', recursive=False)
-                        correct_date = False
-            
-            for score_row in scores_rows:
-                row_status = score_row.find('td', {'class' : 'status'}).get_text().strip()
-                if row_status != 'FT' and row_status != 'Pst':
-                    continue
-                
-                row_game_time = scoreboard_timezone.localize(datetime.strptime(scoreboard_date_string + ' ' + score_row.find('td', {'class' : 'datetime'}).get_text().replace('(','').replace(')','').strip(), '%a %d %b %Y %H:%M'))
-                
-                row_teams = score_row.find_all('tr')
-                
-                row_home_team = row_teams[0].find('td', {'class' : 'hometeam'}).get_text().strip()
-                row_away_team = row_teams[1].find('td', {'class' : 'awayteam'}).get_text().strip()
-                
-                # row should have same time (30 minute error window) and team names
-                time_difference = row_game_time - scoreboard_game_time
-                time_difference_minutes = divmod(time_difference.total_seconds(), 60)[0]
-                if (
-                    self.TIME_ERROR_MARGIN_MINUTES_BEFORE <= time_difference_minutes 
-                    and self.TIME_ERROR_MARGIN_MINUTES_AFTER >= time_difference_minutes
-                ):
-                    if row_away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
-                        if row_home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
-                            
-                            if row_status == 'FT':
-                                tip_instance.score_home = row_teams[0].find('td', {'class' : 'ts_setB'}).get_text().strip()
-                                tip_instance.score_away = row_teams[1].find('td', {'class' : 'ts_setB'}).get_text().strip()
-                            
-                            tip_instance.elapsed = True
-                            tip_instance.archived = True
-                            
-                            # commit
-                            archived_tips[unicode(tip_instance.key.urlsafe())] = tip_instance
-                            break
-        
-            # if tip is not archived and it's over a day old... something is probably wrong
-            if (
-                tip_instance.archived != True 
-                and (datetime.utcnow() - tip_instance.date).total_seconds() > 64800
-                ):
-                mail_message = (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p')+" "+tip_instance.game_team_away+" @ "+tip_instance.game_team_home+"\n"
-                self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TIP_WARNING, mail_message, logging='warning')
-        
-        return archived_tips, scores_by_date
+def reset_request_count():
+    __REQUEST_COUNT__ = {}
 
-    def fill_wettpoint_tips(self, not_elapsed_tips_by_sport_league, not_archived_tips_by_sport_league, wettpoint_check_tables_sport):
-        self.wettpoint_tables_memcache = memcache_util.get(memcache_util.MEMCACHE_KEY_SCRAPER_WETTPOINT_TABLE)
-        if not self.wettpoint_tables_memcache:
-            self.wettpoint_tables_memcache = {}
-            
-        wettpoint_timezone = pytz.timezone(constants.TIMEZONE_WETTPOINT)
+def _increment_request(host, increment_value=1):
+    global __REQUEST_COUNT__
+    if host in __REQUEST_COUNT__:
+        __REQUEST_COUNT__[host] += increment_value
+    else:
+        __REQUEST_COUNT__[host] = increment_value
         
-        # go through all our sports
-        for sport_key in appvar_util.get_sport_names_appvar():
-            if sport_key not in not_elapsed_tips_by_sport_league or sport_key not in wettpoint_check_tables_sport:
-                continue
-            
+    return __REQUEST_COUNT__[host]
+
+class WettpointScraper(Scraper):
+    __WETTPOINT_FEED = constants.WETTPOINT_FEED
+    
+    def __init__(self, sport_key):
+        self.sport_key = sport_key
+        self._sport_table = None
+    
+    @property
+    def sport_table(self):
+        if self._sport_table is None:
+            sys_util.function_timer(module_name='scraper', function_name='wettpoint_table')
             # get wettpoint tip table page for particular sport
-            sport = appvar_util.get_sport_names_appvar()[sport_key]['wettpoint']
-            feed = 'http://www.forum.'+constants.WETTPOINT_FEED+'/fr_toptipsys.php?cat='+sport
+            sport = appvar_util.get_sport_names_appvar()[self.sport_key]['wettpoint']
+            feed = 'http://www.forum.'+self.__WETTPOINT_FEED+'/fr_toptipsys.php?cat='+sport
             
-            self.REQUEST_COUNT[constants.WETTPOINT_FEED] += 1
-            if self.REQUEST_COUNT[constants.WETTPOINT_FEED] > 1:
+            if _increment_request(self.__WETTPOINT_FEED) > 1:
                 time.sleep(random.uniform(9.9,30.1))
             
-            logging.info('REQUESTING '+feed)
-            
-            try:
-                html = requests.get(feed, headers=sys_util.get_header())
-                wettpoint_current_time = datetime.utcnow()
-                wettpoint_current_date = wettpoint_current_time.replace(tzinfo=pytz.utc).astimezone(wettpoint_timezone).strftime('%d.%m.%Y')
-            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
-                logging.warning('wettpoint tables down')
-                logging.warning(str(request_error))
-                return not_elapsed_tips_by_sport_league
+            logging.info('REQUESTING (custom header) '+feed)
+            html = requests.get(feed, headers=sys_util.get_header())
             
             if html.status_code != 200:
                 logging.debug('Wettpoint Status Code: '+str(html.status_code))
@@ -670,382 +129,90 @@ class Scraper(webapp.RequestHandler):
             # get the tip table for this sport
             tables = soup.find_all('table', {'class' : 'gen'})
             tip_table = tables[1]
-            tip_rows = tip_table.find_all('tr')
+            tip_rows = tip_table.find_all('tr')[2:]
             
-            last_event_columns = tip_rows[-1].find_all('td')
-            
-            if 6 >= len(last_event_columns):
-                last_event_time = False
-            else:
-                last_event_time = re.sub('[^0-9\.\s:]', '', last_event_columns[6].get_text())
+            # store table information in a list
+            event_rows = []
+            for tip_row in tip_rows:
+                columns = tip_row.find_all('td')
                 
-            # format the tip time to a standard
-            if last_event_time is not False and not re.match('\d{2}\.\d{2}\.\d{4}', last_event_time):
-                last_event_time = wettpoint_current_date + ' ' + last_event_time
-            
-            self.wettpoint_tables_memcache[sport_key] = {
-                                                    'first_event_time' : last_event_time,
-                                                    'time_updated' : wettpoint_current_time.strftime(self.WETTPOINT_DATETIME_FORMAT),
-                                                    'tip_changed' : False,
-                                                    'minutes_between_checks' : 120,
-                                                    'h2h_limit_reached' : False,
-                                                    }
-            
-            H2H_sport_issue = False
-            for league_key in appvar_util.get_league_names_appvar()[sport_key]:
-                if league_key not in not_elapsed_tips_by_sport_league[sport_key]:
-                    continue
+                # table may be empty if there are no near-scheduled events (e.g. baseball during winter)
+                if 6 >= len(columns):
+                    break
                 
-                # now let's fill out those tips!
-                for tip_instance in not_elapsed_tips_by_sport_league[sport_key][league_key].values():
-                    tip_stake_changed = False
-                    minutes_until_start = divmod((tip_instance.date - wettpoint_current_time).total_seconds(), 60)[0]
-                    
-                    if (
-                        tip_instance.wettpoint_tip_stake is not None 
-                        and tip_instance.wettpoint_tip_stake >= 1.0
-                    ):
-                        if tip_instance.elapsed is True:
-                            continue
-                    
-                    if not 'wettpoint' in appvar_util.get_league_names_appvar()[tip_instance.game_sport][tip_instance.game_league]:
-                        # constant missing league identifier?
-                        logging.warning('no wettpoint scraping for '+tip_instance.game_league)
-                        continue
-                    
-                    team_home_aliases = get_team_aliases(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home)[0]
-                    team_away_aliases = get_team_aliases(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_away)[0]
-                    
-                    matchup_finalized = False
-                    
-                    possible_earlier_games = []
-                    if sport_key in not_archived_tips_by_sport_league and league_key in not_archived_tips_by_sport_league[sport_key]:
-                        possible_earlier_games += not_archived_tips_by_sport_league[sport_key][league_key].values()
-                    possible_earlier_games += not_elapsed_tips_by_sport_league[sport_key][league_key].values()
-                    
-                    matchup_finalized = self.matchup_data_finalized(sport_key, [tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, possible_earlier_games)
-                    
-                    # has the wettpoint tip been changed
-                    tip_change_created = False
-                    self.temp_holder = False
-                    # go through the events listed
-                    for tip_row in tip_rows[2:]:
-                        columns = tip_row.find_all('td')
-                        
-                        if 6 >= len(columns):
-                            if tip_instance.wettpoint_tip_stake is None:
-                                tip_stake_changed = True
-                                tip_instance.wettpoint_tip_stake = 0.0
-                                
-                            break
-                        
-                        # standard information to determine if tip is of interest
-                        team_names = columns[0].get_text()
-                        league_name = columns[5].get_text()
-                        game_time = re.sub('[^0-9\.\s:]', '', columns[6].get_text())
-                        
-                        # format the tip time to a standard
-                        if not re.match('\d{2}\.\d{2}\.\d{4}', game_time):
-                            game_time = wettpoint_current_date + ' ' + game_time
-                        
-                        # set game time to UTC    
-                        game_time = wettpoint_timezone.localize(datetime.strptime(game_time, self.WETTPOINT_DATETIME_FORMAT)).astimezone(pytz.utc)
-                        row_minutes_past_start = divmod((game_time - tip_instance.date.replace(tzinfo=pytz.utc)).total_seconds(), 60)[0]
-                        
-                        # is it a league we're interested in and does the game time match the tip's game time?
-                        correct_league = False
-                        
-                        # is it the league of the tip object?
-                        wettpoint_league_key = appvar_util.get_league_names_appvar()[tip_instance.game_sport][tip_instance.game_league]['wettpoint']
-                        if isinstance(wettpoint_league_key, list):
-                            if league_name.strip() in wettpoint_league_key:
-                                correct_league = True
-                        else:
-                            if league_name.strip() == wettpoint_league_key.strip():
-                                correct_league = True
-                        
-                        # if the league is correct then does the time match (30 minute error window)    
-                        if (
-                            correct_league is True 
-                            and (
-                                 self.TIME_ERROR_MARGIN_MINUTES_BEFORE <= row_minutes_past_start 
-                                 and self.TIME_ERROR_MARGIN_MINUTES_AFTER >= row_minutes_past_start
-                                 )
-                            ):
-                            index = team_names.find(' - ')
-                            home_team = team_names[0:index].strip()
-                            away_team = team_names[index+3:len(team_names)].strip()
-                            
-                            # finally, are the teams correct?
-                            if (
-                                away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases) 
-                                and home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases)
-                                ):
-                                # so now we know that this wettpoint tip (probably) refers to this tip object... yay!
-                                tip_team = columns[1].get_text().strip()
-                                tip_total = columns[2].get_text().strip()
-                                tip_stake = columns[3].get_text()
-                                tip_stake = float(tip_stake[0:tip_stake.find('/')])
-                                
-                                # team tip changed
-                                if (
-                                    tip_instance.wettpoint_tip_team is not None 
-                                    and tip_instance.wettpoint_tip_team != tip_team
-                                    ):
-                                    tip_instance = self.create_tip_change_object(tip_instance, 'team', 'team_general', not tip_change_created, new_team_selection=tip_team)
-                                    tip_change_created = True
-                                
-                                tip_instance.wettpoint_tip_team = tip_team
+                # get all text as-is and store in a dict
+                team_names = columns[0].get_text()
+                tip_team = columns[1].get_text().strip()
+                tip_total = columns[2].get_text().strip()
+                tip_stake = columns[3].get_text()
+                # column 4 is bookie referral links
+                league_name = columns[5].get_text().strip()
+                game_time = columns[6].get_text().strip()
+                
+                team_splitter = ' - '
+                index = team_names.find(team_splitter)
+                home_team = team_names[0:index].strip()
+                away_team = team_names[index+len(team_splitter):len(team_names)].strip()
+                
+                tip_row_obj = WettpointRowData()
+                tip_row_obj.sport = self.sport_key
+                tip_row_obj.league = league_name
+                tip_row_obj.time_string = game_time
+                tip_row_obj.team_home = home_team
+                tip_row_obj.team_away = away_team
+                tip_row_obj.tip_team = tip_team
+                tip_row_obj.tip_total = tip_total
+                tip_row_obj.tip_stake = tip_stake
+                
+                event_rows.append(tip_row_obj)
+                
+            self._sport_table = event_rows
+            sys_util.function_timer(module_name='scraper', function_name='wettpoint_table')
+        return self._sport_table
     
-                                # tip is over
-                                if tip_total.lower().find('over') != -1:
-                                    # total tip changed
-                                    if (
-                                        tip_instance.total_lines is not None 
-                                        and tip_instance.wettpoint_tip_total != models.TIP_SELECTION_TOTAL_OVER
-                                        ):
-                                        tip_instance = self.create_tip_change_object(tip_instance, 'total', 'total_over', not tip_change_created, new_total_selection=models.TIP_SELECTION_TOTAL_OVER)
-                                        tip_change_created = True
-                                    
-                                    tip_instance.wettpoint_tip_total = models.TIP_SELECTION_TOTAL_OVER
-                                # tip is under
-                                elif tip_total.lower().find('under') != -1:
-                                    # total tip changed
-                                    if (
-                                        tip_instance.wettpoint_tip_total is not None 
-                                        and tip_instance.wettpoint_tip_total != models.TIP_SELECTION_TOTAL_UNDER
-                                        ):
-                                        tip_instance = self.create_tip_change_object(tip_instance, 'total', 'total_under', not tip_change_created, new_total_selection=models.TIP_SELECTION_TOTAL_UNDER)
-                                        tip_change_created = True
-                                    
-                                    tip_instance.wettpoint_tip_total = models.TIP_SELECTION_TOTAL_UNDER
-                                
-                                initial_negative_tip_stake = None
-                                if (
-                                    tip_instance.wettpoint_tip_stake is not None 
-                                    and tip_instance.wettpoint_tip_stake < 0
-                                    ):
-                                    initial_negative_tip_stake = tip_instance.wettpoint_tip_stake
-                                
-                                # stake tip changed
-                                if (
-                                    tip_instance.wettpoint_tip_stake is not None 
-                                    and tip_instance.wettpoint_tip_stake >= 0.0 
-                                    and tip_instance.wettpoint_tip_stake != tip_stake 
-                                    and int(tip_instance.wettpoint_tip_stake) != int(round(tip_stake))
-                                    ):
-                                    tip_instance = self.create_tip_change_object(tip_instance, 'stake', 'stake_chart', not tip_change_created)
-                                    tip_change_created = True
-                                    
-                                    tip_stake_changed = True
-                                    tip_instance.wettpoint_tip_stake = tip_stake
-                                elif tip_instance.wettpoint_tip_stake is None or tip_instance.wettpoint_tip_stake < 0.0:
-                                    tip_stake_changed = True
-                                    tip_instance.wettpoint_tip_stake = tip_stake
-                                
-                                if (
-                                    sport_key not in appvar_util.get_h2h_excluded_sports_appvar() 
-                                    and tip_instance.wettpoint_tip_stake % 1 == 0 
-                                    and matchup_finalized 
-                                    and H2H_sport_issue is not True
-                                    ):
-                                    tip_stake_changed = True
-                                    try:
-                                        tip_instance.wettpoint_tip_stake = self.add_wettpoint_h2h_details(tip_instance)
-                                    except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
-                                        logging.warning('wettpoint '+sport_key+' H2H down, skipping all H2H fetches (1)')
-                                        logging.warning(str(request_error))
-                                        H2H_sport_issue = True
-                                        
-                                if (
-                                    H2H_sport_issue is True 
-                                    and initial_negative_tip_stake is not None 
-                                    and tip_instance.wettpoint_tip_stake >= 0.0
-                                    ):
-                                    logging.warning('Making H2H stake assumption for '+tip_instance.game_league+':'+tip_instance.game_team_away+'@'+tip_instance.game_team_home)
-                                    tip_instance.wettpoint_tip_stake = tip_instance.wettpoint_tip_stake + (initial_negative_tip_stake * -0.1)
-                                
-                                break
-                            # one of the team names matches but the other doesn't, send admin mail to check team names
-                            # could either be 1) team name missing or 2) wettpoint has wrong game listed
-                            elif home_team.strip().upper() in (name_alias.upper() for name_alias in team_home_aliases):
-                                mail_message = 'Probable '+away_team+' WETTPOINT NAMES for '+tip_instance.game_league+', '+tip_instance.game_sport+' MISMATCH!'+"\n"
-                                self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
-                            elif away_team.strip().upper() in (name_alias.upper() for name_alias in team_away_aliases):
-                                mail_message = 'Probable '+home_team+' WETTPOINT NAMES for '+tip_instance.game_league+', '+tip_instance.game_sport+' MISMATCH!'+"\n"
-                                self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
-                        # tip has passed this object (i.e. no tip upcoming for this event therefore tip stake = 0)
-                        elif self.TIME_ERROR_MARGIN_MINUTES_AFTER < row_minutes_past_start:
-                            if (
-                                tip_instance.wettpoint_tip_stake is not None 
-                                and tip_instance.wettpoint_tip_stake >= 1.0
-                                ):
-                                if minutes_until_start <= (abs(self.TIME_ERROR_MARGIN_MINUTES_BEFORE) + self.WETTPOINT_TABLE_MINUTES_BEFORE_EVENT_EXPIRE):
-                                    # tip has already been filled out and table updated past tip time, move on to next to avoid resetting tip to 0
-                                    break
-                                
-#                                 tip_instance = self.create_tip_change_object(tip_instance, 'team', 'stake_team_all', not tip_change_created)
-#                                 tip_instance = self.create_tip_change_object(tip_instance, 'total', 'stake_total_all', not tip_change_created)
-                                tip_instance = self.create_tip_change_object(tip_instance, 'stake', 'stake_all', not tip_change_created)
-                                tip_change_created = True
-                            
-                            if tip_instance.wettpoint_tip_stake is None or tip_instance.wettpoint_tip_stake >= 1.0:
-                                tip_stake_changed = True
-                                tip_instance.wettpoint_tip_stake = 0.0
-#                                 if tip_instance.wettpoint_tip_team is None and tip_instance.wettpoint_tip_total is None: # remove
-#                             elif tip_instance.wettpoint_tip_stake >= 1.0:
-#                                 tip_stake_changed = True
-#                                 tip_instance.wettpoint_tip_stake = 0.0
-                                
-                            break
-                    
-                    if sport_key not in appvar_util.get_h2h_excluded_sports_appvar() and H2H_sport_issue is not True:
-                        if tip_instance.wettpoint_tip_stake == 0.0 and tip_stake_changed is True:
-                            if not matchup_finalized:
-                                tip_instance.wettpoint_tip_stake = None
-                                tip_stake_changed = False
-                        
-                        last_window_minutes = (abs(self.TIME_CRON_SCHEDULE_MINUTES_APART) * 1.5) + 5
-                        if ((
-                            tip_instance.wettpoint_tip_stake is None 
-                            and (
-                                 minutes_until_start <= last_window_minutes 
-                                 or (
-                                     matchup_finalized 
-                                     and tip_instance.wettpoint_tip_team is None 
-                                     and tip_instance.wettpoint_tip_total is None
-                                     )
-                                 )
-                            ) or
-                            (
-                             tip_instance.wettpoint_tip_stake == 0.0 
-                             and tip_stake_changed is True 
-                            ) #or
-#                             (
-#                              tip_instance.wettpoint_tip_stake < 0.0 
-#                             )
-                        ):
-                            nolimit = False
-                            if minutes_until_start <= last_window_minutes:
-                                nolimit = True
-                            try:
-                                h2h_total, h2h_team, h2h_risk = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
-                            except (HTTPException, ProtocolError, urlfetch.DeadlineExceededError, urlfetch.DownloadError) as request_error:
-                                logging.warning('wettpoint '+sport_key+' H2H down, skipping all H2H fetches (2)')
-                                logging.warning(str(request_error))
-                                h2h_total = h2h_team = h2h_risk = False
-                                H2H_sport_issue = True
-                                tip_instance.wettpoint_tip_stake = None
-                        
-                            if h2h_total is not False:
-                                if (
-                                    tip_instance.wettpoint_tip_total is not None 
-                                    and tip_instance.wettpoint_tip_total != h2h_total
-                                    ):
-                                    tip_instance.total_no = None
-                                    tip_instance.total_lines = None
-                                tip_instance.wettpoint_tip_total = h2h_total
-                                
-                            if h2h_team is not False:
-                                if (
-                                    tip_instance.wettpoint_tip_team is not None 
-                                    and tip_instance.wettpoint_tip_team != h2h_team
-                                    ):
-                                    tip_instance.team_lines = None
-                                    tip_instance.spread_no = None
-                                    tip_instance.spread_lines = None
-                                tip_instance.wettpoint_tip_team = h2h_team
-                           
-                            if h2h_risk is not False:
-                                if h2h_team is not False:
-                                    tip_instance.wettpoint_tip_stake = (10.0 - h2h_risk) * -1
-                                elif tip_instance.wettpoint_tip_stake == 0.0 or minutes_until_start <= last_window_minutes:
-                                    h2h_stake = (10.0 - h2h_risk) / 10.0
-                                    tip_instance.wettpoint_tip_stake = 0.0 + h2h_stake
-                            elif minutes_until_start <= last_window_minutes:
-                                tip_instance.wettpoint_tip_stake = 0.0
-                            elif self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] is True and tip_instance.wettpoint_tip_stake == 0.0:
-                                tip_instance.wettpoint_tip_stake = None
-                            
-                    # change object created, put in datastore
-                    if self.temp_holder != False:
-                        self.DATASTORE_PUTS += 1
-                        self.temp_holder.put()
-                    
-                    minutes_for_next_check = minutes_until_start / 3
-                    if minutes_for_next_check < self.wettpoint_tables_memcache[sport_key]['minutes_between_checks']:
-                        if minutes_for_next_check < 120:
-                            self.wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = 120
-                        else:
-                            self.wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = minutes_for_next_check
-                    elif (
-                          minutes_for_next_check >= self.wettpoint_tables_memcache[sport_key]['minutes_between_checks'] 
-                          and self.wettpoint_tables_memcache[sport_key]['minutes_between_checks'] == 120
-                          ):
-                        self.wettpoint_tables_memcache[sport_key]['minutes_between_checks'] = minutes_for_next_check
-                    
-                    if tip_stake_changed is True:
-                        self.wettpoint_tables_memcache[sport_key]['tip_changed'] = True
-                    
-                    not_elapsed_tips_by_sport_league[sport_key][league_key][unicode(tip_instance.key.urlsafe())] = tip_instance
+    def get_wettpoint_h2h(self, league_key, team_home, team_away, **kwargs):
+        sys_util.function_timer(module_name='scraper', function_name='wettpoint_h2h')
+        h2h_total, h2h_team, h2h_risk = False, False, False
         
-        memcache_util.set(memcache_util.MEMCACHE_KEY_SCRAPER_WETTPOINT_TABLE, self.wettpoint_tables_memcache)
-        return not_elapsed_tips_by_sport_league
-    
-    def matchup_data_finalized(self, sport_key, team_list, matchup_date, possible_earlier_games):
-        for check_tip_instance in possible_earlier_games:
-            if (
-                (
-                 sport_key not in appvar_util.get_weekly_sports_appvar() 
-                 and check_tip_instance.date < (matchup_date - timedelta(hours = 12)) 
-                 )
-                or
-                (
-                 check_tip_instance.date < matchup_date 
-                 and (
-                      check_tip_instance.game_team_away in team_list 
-                      or check_tip_instance.game_team_home in team_list
-                     )
-                 )
-                ):
-                return False
-            
-        return True
-    
-    def get_wettpoint_h2h(self, sport_key, league_key, team_home, team_away, **kwargs):
+        team_home_id = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_home)[1]
+        team_away_id = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_away)[1]
+        
+        h2h_details = {
+                       'total'  : h2h_total, 
+                       'team'   : h2h_team, 
+                       'risk'   : h2h_risk
+                       }
+        
+        # one of the teams has no team id
+        if team_home_id is None or team_away_id is None:
+            return h2h_details
+        
+        increment = 1
         if (
             sys_util.is_local() 
             or 'nolimit' not in kwargs 
             or kwargs['nolimit'] is not True
         ):
-#             logging.debug('Upcoming connection counts towards limit. Standing at '+str(self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(constants.SPORTS)))
-            if (self.REQUEST_COUNT[constants.WETTPOINT_FEED] - len(appvar_util.get_sport_names_appvar())) > 5:
-                logging.debug('wettpoint limit H2H reached')
-                self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] = True
-                return False, False, False
+            if (_increment_request(self.__WETTPOINT_FEED, increment_value=0) - len(appvar_util.get_sport_names_appvar())) > 5:
+                logging.debug('Wettpoint H2H fetches have reached their limit.')
+                # return None object to indicate no scrape was attempted and one should be queued up for next execution
+                return None
         else:
-            logging.debug('NOLIMIT fetch')
+            increment = 0
+            logging.debug('Doing a NOLIMIT fetch. Not counting following fetch towards the H2H fetch limit.')
         
-        team_home_aliases, team_home_id = get_team_aliases(sport_key, league_key, team_home)
-        team_away_aliases, team_away_id = get_team_aliases(sport_key, league_key, team_away)
-        
-        if team_home_id is None or team_away_id is None:
-            return False, False, False
-        
-        sport = appvar_util.get_sport_names_appvar()[sport_key]['wettpoint']
-        
-        h2h_total, h2h_team, h2h_risk = False, False, False
+        sport = appvar_util.get_sport_names_appvar()[self.sport_key]['wettpoint']
         
         # wettpoint h2h link is home team - away team
-        h2h_link = 'http://'+sport+'.'+constants.WETTPOINT_FEED+'/h2h/'+team_home_id+'-'+team_away_id+'.html'
-        
-#         if 'nolimit' not in kwargs or kwargs['nolimit'] is not True:
-        self.REQUEST_COUNT[constants.WETTPOINT_FEED] += 1
-        if self.REQUEST_COUNT[constants.WETTPOINT_FEED] > 1:
+        h2h_link = 'http://'+sport+'.'+self.__WETTPOINT_FEED+'/h2h/'+team_home_id+'-'+team_away_id+'.html'
+        if _increment_request(self.__WETTPOINT_FEED, increment_value=increment) > 1:
             time.sleep(random.uniform(16.87,30.9))
         
-#         h2h_html = requests.get(h2h_link, headers=constants.HEADER)
-        logging.info('FETCHING REQUEST '+h2h_link+' ('+team_home+'-'+team_away+')')
+        logging.info('FETCHING (google header) %s (%s-%s)' % (
+                                                                        h2h_link,
+                                                                        team_home,
+                                                                        team_away
+                                                                        ))
         h2h_html = urlfetch.fetch(h2h_link, headers={ "Accept-Encoding" : "identity" })
         
         if h2h_html.status_code != 200:
@@ -1055,10 +222,15 @@ class Scraper(webapp.RequestHandler):
         
         # ensure teams are correct and we got the right link
         team_links = h2h_soup.find('table').find_all('tr')[-1].find_all('a')
+        team_link_text_home = team_links[0].get_text()
+        team_link_text_away = team_links[1].get_text()
+        
+        team_link_home = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_link_text_home)[0]
+        team_link_away = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_link_text_away)[0]
         if (
-            team_links[0].get_text().strip().upper() in (name_alias.upper() for name_alias in team_home_aliases) 
-            and team_links[1].get_text().strip().upper() in (name_alias.upper() for name_alias in team_away_aliases)
-            ):
+            team_home == team_link_home 
+            and team_away == team_link_away
+        ):
             h2h_header = h2h_soup.find_all('h3', recursive=False)[1]
             
             h2h_total_text = h2h_header.find_next_sibling(text=re.compile('Over\s?/\s?Under'))
@@ -1079,492 +251,83 @@ class Scraper(webapp.RequestHandler):
                 try:
                     h2h_risk = float(h2h_risk_text)
                     
-                    if h2h_risk == 10.0:
-                        mail_message = 'Special case of risk factor ('+str(h2h_risk_text)+') : '+team_away+' @ '+team_home+"\n\n"
-                        self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TIP_WARNING, mail_message, logging='warning')
-                        h2h_risk = 9.9
-                    elif h2h_risk == 0.0:
-                        mail_message = 'Special case of risk factor ('+str(h2h_risk_text)+') : '+team_away+' @ '+team_home+"\n\n"
-                        self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TIP_WARNING, mail_message, logging='warning')
-                        h2h_risk = 0.1
+                    if h2h_risk == 10.0 or h2h_risk == 0.0:
+                        mail_message = 'Special case of risk factor (%s) : %s @ %s [%s / %s]'+"\n\n" % (
+                                                                                                         str(h2h_risk_text),
+                                                                                                         team_away,
+                                                                                                         team_home,
+                                                                                                         league_key,
+                                                                                                         self.sport_key
+                                                                                                         )
+                        sys_util.add_mail(constants.MAIL_TITLE_TIP_WARNING, mail_message, logging='warning')
+                        
+                        if h2h_risk == 10.0:
+                            h2h_risk = 9.9
+                        else:
+                            h2h_risk = 0.1
                 except ValueError:
                     h2h_risk = False
         else:
-            mail_message = 'Probable '+team_away+'('+team_away_id+') @ '+team_home+'('+team_home_id+') wettpoint H2H ids for '+league_key+' MISMATCH!'+"\n"
-            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
+            mail_message = ('Wettpoint H2H page retrieved has teams %s-%s which points to datastore %s-%s, but expected %s-%s.'
+                            ' Wettpoint ID in application variable may be incorrect. [%s / %s]' % (
+                                                                                                  team_link_text_home,
+                                                                                                  team_link_text_away,
+                                                                                                  str(team_link_home),
+                                                                                                  str(team_link_away),
+                                                                                                  team_home,
+                                                                                                  team_away,
+                                                                                                  league_key,
+                                                                                                  self.sport_key
+                                                                                                  ))
+            sys_util.add_mail(constants.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
         
-        return h2h_total, h2h_team, h2h_risk
+        h2h_details = {
+                       'total'  : h2h_total, 
+                       'team'   : h2h_team, 
+                       'risk'   : h2h_risk
+                       }
+        
+        sys_util.function_timer(module_name='scraper', function_name='wettpoint_h2h')
+        return h2h_details
+
+class PinnacleScraper(Scraper):
+    __PINNACLE_FEED = 'pinnaclesports.com'
     
-    def add_wettpoint_h2h_details(self, tip_instance):
-        h2h_total, h2h_team, h2h_risk = self.get_wettpoint_h2h(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home, tip_instance.game_team_away)
-        
-        if self.wettpoint_tables_memcache[tip_instance.game_sport]['h2h_limit_reached'] is True:
-            return tip_instance.wettpoint_tip_stake
-        
-        new_wettpoint_stake = tip_instance.wettpoint_tip_stake
-        
-        mail_warning = ''
-        if h2h_risk is not False:
-            h2h_stake = (10.0 - h2h_risk) / 10.0
-            
-            if round(h2h_stake * 10) != tip_instance.wettpoint_tip_stake:
-                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' STAKE DISCREPANCY' + "\n"
-        else:
-            h2h_stake = 0.0
-            
-        if (
-            h2h_team is False 
-            and h2h_total is False
-        ):
-            h2h_stake += models.TIP_STAKE_TEAM_TOTAL_NONE / 1000.0
-        elif (
-              h2h_team is not False 
-              and h2h_total is not False 
-        ):
-            if (
-                h2h_team != tip_instance.wettpoint_tip_team 
-                and h2h_total != tip_instance.wettpoint_tip_total
-            ):
-                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TEAM AND TOTAL DISCREPANCY' + "\n"
-                h2h_stake += models.TIP_STAKE_TEAM_TOTAL_DISAGREE / 1000.0
-            elif h2h_team != tip_instance.wettpoint_tip_team:
-                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TEAM DISCREPANCY' + "\n"
-                h2h_stake += models.TIP_STAKE_TEAM_DISAGREE / 1000.0
-            elif h2h_total != tip_instance.wettpoint_tip_total:
-                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TOTAL DISCREPANCY' + "\n"
-                h2h_stake += models.TIP_STAKE_TOTAL_DISAGREE / 1000.0
-        elif h2h_team is not False:
-            if h2h_team != tip_instance.wettpoint_tip_team:
-                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TEAM DISCREPANCY' + "\n"
-                h2h_stake += models.TIP_STAKE_TEAM_DISAGREE_TOTAL_NONE / 1000.0
-            else:
-                h2h_stake += models.TIP_STAKE_TOTAL_NONE / 1000.0
-        elif h2h_total is not False:
-            if h2h_total != tip_instance.wettpoint_tip_total:
-                mail_warning += tip_instance.game_team_away + ' @ ' + tip_instance.game_team_home + ' TOTAL DISCREPANCY' + "\n"
-                h2h_stake += models.TIP_STAKE_TOTAL_DISAGREE_TEAM_NONE / 1000.0
-            else:
-                h2h_stake += models.TIP_STAKE_TEAM_NONE / 1000.0
-            
-        if len(mail_warning) > 0:
-            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_GENERIC_WARNING, mail_warning)
-                    
-        new_wettpoint_stake += h2h_stake
-        return new_wettpoint_stake
-                                    
-    def create_tip_change_object(self, tip_instance, ctype, line, create_mail, new_team_selection=None, new_total_selection=None):
-        if create_mail is True:
-            mail_message = "\n"+(tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home + "\n"
-            mail_message += str(tip_instance.wettpoint_tip_stake) + " " + str(tip_instance.wettpoint_tip_team) + " " + str(tip_instance.wettpoint_tip_total) + "\n"
-            mail_message += ctype + " (" + line + ")\n"
-            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, 'Tip Change Notice', mail_message)
-        else:
-            mail_message = ctype + " (" + line + ")\n"
-            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, 'Tip Change Notice', mail_message)
-        
-        key_string = unicode(tip_instance.key.urlsafe())
-        
-        self.DATASTORE_READS += 1
-        query = models.TipChange.gql('WHERE tip_key = :1', key_string)
-        query_count = query.count(limit=1)
-        
-        if query_count == 0 and self.temp_holder is False:
-            self.DATASTORE_PUTS += 1
-            tip_change_object = models.TipChange()
-            tip_change_object.changes = 1
-            tip_change_object.type = ctype
-        else:
-            if query_count == 0:
-                tip_change_object = self.temp_holder
-            else:
-                self.DATASTORE_READS += 2
-                tip_change_object = query.get()
-            tip_change_object.changes += 1
-            tip_change_object.type = tip_change_object.type + ctype
-            
-        tip_change_object.date = datetime.utcnow()
-        tip_change_object.tip_key = key_string
-            
-        tip_change_object.wettpoint_tip_stake = tip_instance.wettpoint_tip_stake
-        
-        if ctype == 'team':
-            if (
-                tip_instance.wettpoint_tip_stake is not None 
-                and tip_instance.wettpoint_tip_stake >= 1.0 
-            ):
-                tip_instance.wettpoint_tip_stake = float(int(tip_instance.wettpoint_tip_stake))
-            
-            if (
-                new_team_selection is not None 
-                and tip_change_object.wettpoint_tip_team == new_team_selection
-            ):
-                logging.info('Transferring team lines from existing TipChange object to Tip for %s @ %s' % (tip_instance.game_team_away, tip_instance.game_team_home))
-                original_lines = tip_change_object.team_lines
-            else:
-                original_lines = None
-                
-            tip_change_object.team_lines = tip_instance.team_lines
-            tip_instance.team_lines = original_lines
-            
-            if (
-                new_team_selection is not None 
-                and tip_change_object.wettpoint_tip_team == new_team_selection
-            ):
-                original_lines = tip_change_object.spread_no
-            else:
-                original_lines = None
-            
-            tip_change_object.spread_no = tip_instance.spread_no
-            tip_instance.spread_no = original_lines
-            
-            if (
-                new_team_selection is not None 
-                and tip_change_object.wettpoint_tip_team == new_team_selection
-            ):
-                original_lines = tip_change_object.spread_lines
-            else:
-                original_lines = None
-            
-            tip_change_object.spread_lines = tip_instance.spread_lines
-            tip_instance.spread_lines = original_lines
-            
-            tip_change_object.wettpoint_tip_team = tip_instance.wettpoint_tip_team
-            tip_instance.wettpoint_tip_team = None
-        elif ctype == 'total':
-            if (
-                tip_instance.wettpoint_tip_stake is not None 
-                and tip_instance.wettpoint_tip_stake >= 1.0 
-            ):
-                tip_instance.wettpoint_tip_stake = float(int(tip_instance.wettpoint_tip_stake))
-            
-            if (
-                new_total_selection is not None 
-                and tip_change_object.wettpoint_tip_total == new_total_selection
-            ):
-                logging.info('Transferring total lines from existing TipChange object to Tip for %s @ %s' % (tip_instance.game_team_away, tip_instance.game_team_home))
-                original_lines = tip_change_object.total_no
-            else:
-                original_lines = None
-            
-            tip_change_object.total_no = tip_instance.total_no
-            tip_instance.total_no = original_lines
-            
-            if (
-                new_total_selection is not None 
-                and tip_change_object.wettpoint_tip_total == new_total_selection
-            ):
-                original_lines = tip_change_object.total_lines
-            else:
-                original_lines = None
-            
-            tip_change_object.total_lines = tip_instance.total_lines
-            tip_instance.total_lines = original_lines
-            
-            tip_change_object.wettpoint_tip_total = tip_instance.wettpoint_tip_total
-            tip_instance.wettpoint_tip_total = None
-        
-        self.temp_holder = tip_change_object
-        return tip_instance
-    
-    def fill_lines(self, not_elapsed_tips_by_sport_league):
-        possible_ppd_tips_by_sport_league = {}
-        
-        # go through all our sports
-        for sport_key in appvar_util.get_sport_names_appvar():
-            if sport_key not in not_elapsed_tips_by_sport_league:
-                continue
-            for league_key in appvar_util.get_league_names_appvar()[sport_key]:
-                if league_key not in not_elapsed_tips_by_sport_league[sport_key]:
-                    continue
-                for tip_instance in not_elapsed_tips_by_sport_league[sport_key][league_key].values():
-                    key_string = unicode(tip_instance.key.urlsafe())
-                    if tip_instance.elapsed is True:
-                        continue
-                    
-                    if (
-                        tip_instance.wettpoint_tip_stake is None 
-                        and tip_instance.wettpoint_tip_team is None 
-                        and tip_instance.wettpoint_tip_total is None
-                        ):
-                        # tip stake hasn't been determined yet, move on
-                        continue
-                    
-                    # pinnacle call failed, go to next sport/league
-                    if sport_key not in self.FEED:
-                        break
-                    elif tip_instance.game_league not in self.FEED[sport_key]:
-                        continue
-                    
-                    minutes_until_start = divmod((tip_instance.date - self.utc_task_start).total_seconds(), 60)[0]
-                    # games more than 24 hours from start, only fill lines 3 times daily
-                    if minutes_until_start >= 1440:
-                        if self.utc_task_start.hour % 9 != 0 or self.utc_task_start.minute >= 30:
-                            continue
-                    elif minutes_until_start > 720:
-                        if self.utc_task_start.minute >= 30:
-                            continue
-                    
-                    if tip_instance.pinnacle_game_no in self.FEED[sport_key][tip_instance.game_league]:
-                        # successful pinnacle call + game line exists
-                        event_tag = self.FEED[sport_key][tip_instance.game_league][tip_instance.pinnacle_game_no]
-                        
-                        if isinstance(self.pinnacle_feed_time, datetime):
-                            line_date = self.pinnacle_feed_time
-                        else:
-                            line_date = self.utc_task_start
-                            logging.warning('PinnacleFeedTime was not correctly determined and converted into datetime!')
-                            
-                        # round line_date to nearest minute for store
-                        if line_date.second >= 30:
-                            line_date += timedelta(minutes=1)
-                            
-                        line_date = line_date.strftime(models.TIP_HASH_DATETIME_FORMAT)
-                            
-                        for period in event_tag.xpath('./periods/period'):
-                            # currently only interested in full game lines
-                            if (
-                                (
-                                 not period.find('period_number').text.isdigit() 
-                                 or int(period.find('period_number').text) != 0
-                                 ) 
-                                and unicode(period.find('period_description').text) not in ['Game','Match']
-                            ):
-                                continue
-                            
-                            # get the total lines
-                            period_total = period.find('total')
-                            if period_total is not None:
-                                # get actual total number
-                                if tip_instance.total_no:
-                                    hash1 = json.loads(tip_instance.total_no)
-                                else:
-                                    hash1 = {}
-                                    
-                                hash1[line_date] = unicode(period_total.find('total_points').text)
-                                tip_instance.total_no = json.dumps(hash1)
-                                
-                                # get the total odds line
-                                if tip_instance.total_lines:
-                                    hash1 = json.loads(tip_instance.total_lines)
-                                else:
-                                    hash1 = {}
-                                
-                                if tip_instance.wettpoint_tip_total == models.TIP_SELECTION_TOTAL_OVER:
-                                    hash1[line_date] = unicode(period_total.find('over_adjust').text)
-                                else:
-                                    hash1[line_date] = unicode(period_total.find('under_adjust').text)
-                                    
-                                tip_instance.total_lines = json.dumps(hash1)
-                            # get the moneyline
-                            period_moneyline = period.find('moneyline')
-                            if period_moneyline is not None:
-                                if tip_instance.team_lines:
-                                    hash1 = json.loads(tip_instance.team_lines)
-                                else:
-                                    hash1 = {}
-                                
-                                period_moneyline_home = period_moneyline.find('moneyline_home')
-                                period_moneyline_visiting = period_moneyline.find('moneyline_visiting')
-                                period_moneyline_draw = period_moneyline.find('moneyline_draw')
-                                
-                                if period_moneyline_home is not None:
-                                    period_moneyline_home = unicode(period_moneyline_home.text)
-                                if period_moneyline_visiting is not None:
-                                    period_moneyline_visiting = unicode(period_moneyline_visiting.text)
-                                if period_moneyline_draw is not None:
-                                    period_moneyline_draw = unicode(period_moneyline_draw.text)
-                                
-                                # get tip team line
-                                if tip_instance.wettpoint_tip_team is not None:
-                                    moneyline = ''
-                                    for i in tip_instance.wettpoint_tip_team:
-                                        if i == models.TIP_SELECTION_TEAM_HOME:
-                                            moneyline += period_moneyline_home + models.TIP_SELECTION_LINE_SEPARATOR
-                                        elif i == models.TIP_SELECTION_TEAM_DRAW:
-                                            moneyline += period_moneyline_draw + models.TIP_SELECTION_LINE_SEPARATOR
-                                        elif i == models.TIP_SELECTION_TEAM_AWAY:
-                                            moneyline += period_moneyline_visiting + models.TIP_SELECTION_LINE_SEPARATOR
-                                    
-                                    if (
-                                        period_moneyline_draw 
-                                        and len(tip_instance.wettpoint_tip_team) < 2
-                                        ):
-                                        if tip_instance.wettpoint_tip_team == models.TIP_SELECTION_TEAM_DRAW:
-                                            moneyline += period_moneyline_home
-                                        else:
-                                            moneyline += period_moneyline_draw
-                                        
-                                    moneyline = moneyline.rstrip(models.TIP_SELECTION_LINE_SEPARATOR)
-                                    hash1[line_date] = moneyline
-                                else:
-                                    # if no tip team, get favourite line
-                                    moneyline = ''
-                                    if float(period_moneyline_visiting) < float(period_moneyline_home):
-                                        tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_AWAY
-                                        moneyline = period_moneyline_visiting
-                                    else:
-                                        tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_HOME
-                                        moneyline = period_moneyline_home
-                                        
-                                    if period_moneyline_draw:
-                                        moneyline += models.TIP_SELECTION_LINE_SEPARATOR+period_moneyline_draw
-                                        
-                                    hash1[line_date] = moneyline
-                                        
-                                tip_instance.team_lines = json.dumps(hash1)
-                                
-                            period_spread = period.find('spread')
-                            if period_spread is not None:
-                                if tip_instance.spread_no:
-                                    hash1 = json.loads(tip_instance.spread_no)
-                                else:
-                                    hash1 = {}
-                                    
-                                if tip_instance.spread_lines:
-                                    hash2 = json.loads(tip_instance.spread_lines)
-                                else:
-                                    hash2 = {}
-                                    
-                                period_spread_home = unicode(period_spread.find('spread_home').text)
-                                period_spread_visiting = unicode(period_spread.find('spread_visiting').text)
-                                period_spread_adjust_home = unicode(period_spread.find('spread_adjust_home').text)
-                                period_spread_adjust_visiting = unicode(period_spread.find('spread_adjust_visiting').text)
-                                    
-                                if tip_instance.wettpoint_tip_team is not None:
-                                    if tip_instance.wettpoint_tip_team.find(models.TIP_SELECTION_TEAM_HOME) != -1 or tip_instance.wettpoint_tip_team == models.TIP_SELECTION_TEAM_DRAW:
-                                        hash1[line_date] = period_spread_home
-                                        hash2[line_date] = period_spread_adjust_home
-                                    elif tip_instance.wettpoint_tip_team.find(models.TIP_SELECTION_TEAM_AWAY) != -1:
-                                        hash1[line_date] = period_spread_visiting
-                                        hash2[line_date] = period_spread_adjust_visiting
-                                else:
-                                    if (
-                                        float(period_spread_visiting) < float(period_spread_home) 
-                                        or (
-                                            float(period_spread_visiting) == float(period_spread_home) 
-                                            and float(period_spread_adjust_visiting) < float(period_spread_adjust_home)
-                                        )
-                                    ):
-                                        tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_AWAY
-                                        hash1[line_date] = period_spread_visiting
-                                        hash2[line_date] = period_spread_adjust_visiting
-                                    elif (
-                                          float(period_spread_visiting) > float(period_spread_home) 
-                                          or (
-                                              float(period_spread_visiting) == float(period_spread_home) 
-                                              and float(period_spread_adjust_visiting) >= float(period_spread_adjust_home)
-                                          )
-                                    ):
-                                        tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_HOME
-                                        hash1[line_date] = period_spread_home
-                                        hash2[line_date] = period_spread_adjust_home
-                                    
-                                tip_instance.spread_no = json.dumps(hash1)
-                                tip_instance.spread_lines = json.dumps(hash2)
-                            
-                            not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
-                            break
-                    else:
-                        # either game was taken off the board (for any number of reasons) - could be temporary
-                        # or game is a duplicate (something changed that i didn't account for)
-                        logging.warning('Missing Game: Cannot find '+tip_instance.game_team_home.strip()+' or '+tip_instance.game_team_away.strip()+' for '+key_string)
-                        
-                        if (
-                            minutes_until_start <= 60 
-                            or (
-                                self.utc_task_start.hour % 2 == 0 
-                                and self.utc_task_start.minute < 30
-                                )
-                            ):
-                            mail_message = 'Missing '+tip_instance.date.strftime('%m/%d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home+"\n"
-                            self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TIP_WARNING, mail_message)
-                        
-                        if tip_instance.game_sport not in possible_ppd_tips_by_sport_league:
-                            possible_ppd_tips_by_sport_league[tip_instance.game_sport] = {}
-                        if tip_instance.game_league not in possible_ppd_tips_by_sport_league[tip_instance.game_sport]:
-                            possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league] = {}
-                        possible_ppd_tips_by_sport_league[tip_instance.game_sport][tip_instance.game_league][key_string] = tip_instance
-                    
-        return not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league
-    
-    def check_for_duplicate_tip(self, not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league):
-        keys_to_remove = {}
-        
-        for sport_key, possible_ppd_tips_by_league in possible_ppd_tips_by_sport_league.iteritems():
-            for league_key, possible_ppd_tips in possible_ppd_tips_by_league.iteritems():
-                for key_string, tip_instance in possible_ppd_tips.iteritems():
-                    #TODO: reduce duplicate check index size
-                    self.DATASTORE_READS += 1
-                    query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND date = :3 AND game_team_away = :4 AND game_team_home = :5 AND pinnacle_game_no != :6',
-                            tip_instance.game_sport,
-                            tip_instance.game_league,
-                            tip_instance.date,
-                            tip_instance.game_team_away,
-                            tip_instance.game_team_home,
-                            tip_instance.pinnacle_game_no
-                            )
-                    
-                    if query.count(limit=1) != 0:
-                        self.DATASTORE_READS += 1
-                        
-                        mail_message = 'Setting duplicate for '+tip_instance.date.strftime('%m %d %H:%M')+' :'+tip_instance.game_team_away+' @ '+tip_instance.game_team_home+' ('+tip_instance.pinnacle_game_no+')'+"\n"
-                        self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TIP_WARNING, mail_message)
-                        
-                        tip_instance.pinnacle_game_no = 'OTB '+tip_instance.pinnacle_game_no
-                        tip_instance.game_team_away = 'OTB '+tip_instance.game_team_away
-                        tip_instance.game_team_home = 'OTB '+tip_instance.game_team_home
-                        
-                        logging.info('Taken OTB: '+tip_instance.date.strftime('%m %d %H:%M')+' '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home+' ('+tip_instance.pinnacle_game_no+')')
-                        
-                        if key_string not in not_elapsed_tips_by_sport_league[sport_key][league_key]:
-                            logging.warning('duplicated tip not in commit hash')
-                            
-                        not_elapsed_tips_by_sport_league[sport_key][league_key][key_string] = tip_instance
-                        keys_to_remove[key_string] = [sport_key, league_key]
-        
-        for key_string, sport_list in keys_to_remove.iteritems():
-            sport_key = sport_list[0]
-            league_key = sport_list[1]
-            possible_ppd_tips_by_sport_league[sport_key][league_key].pop(key_string, None)
-            
-        return not_elapsed_tips_by_sport_league, possible_ppd_tips_by_sport_league
-        
-    def find_games(self):
+    def scrape(self):
         """Find a list of games (and their details) corresponding to our interests
         """
-        new_or_updated_tips = {}
+        sys_util.function_timer(module_name='scraper', function_name='pinnacle_scrape')
+        sport_feed = 'http://xml.'+self.__PINNACLE_FEED+'/pinnacleFeed.aspx'#?sporttype=' + keys['pinnacle']
         
-        # grab entire pinnacle feed
-        sport_feed = 'http://xml.'+constants.PINNACLE_FEED+'/pinnacleFeed.aspx'#?sporttype=' + keys['pinnacle']
-        
-        self.REQUEST_COUNT[constants.PINNACLE_FEED] += 1
-        if self.REQUEST_COUNT[constants.PINNACLE_FEED] > 1:
+        if _increment_request(self.__PINNACLE_FEED) > 1:
+            # pinnacle rules state no more than 1 request per minute
             time.sleep(73.6)
             
-#         xml = requests.get(sport_feed, headers=constants.HEADER)
-        # use etree for xpath search to easily filter specific leagues
-        etree_parser = etree.XMLParser(ns_clean=True,recover=True)
-        logging.info('FETCHING REQUEST '+sport_feed)
+        logging.info('FETCHING (google header) '+sport_feed)
         pinnacle_xml = urlfetch.fetch(sport_feed)
         
+        # debug - feel free to remove
         if pinnacle_xml.status_code != 200:
             logging.debug('Pinnacle Status Code: '+str(pinnacle_xml.status_code))
             
+        # use etree for xpath search to easily filter specific leagues
+        etree_parser = etree.XMLParser(ns_clean=True,recover=True)
         lxml_tree = etree.fromstring(pinnacle_xml.content, etree_parser)
         
         try:
+            # get feed time for line date data
             feed_epoch_time = float(lxml_tree.xpath("/pinnacle_line_feed/PinnacleFeedTime/text()")[0])
-            self.pinnacle_feed_time = datetime.utcfromtimestamp(feed_epoch_time / 1000.0)
+            pinnacle_feed_time = datetime.utcfromtimestamp(feed_epoch_time / 1000.0)
         except IndexError:
-            self.pinnacle_feed_time = self.utc_task_start
-            logging.warning('PinnacleFeedTime tag text was not found in the feed!')
+            raise ScrapeException('PinnacleFeedTime tag text was not found in the feed!')
         
-        # get sports we're interested in listed in constant SPORTS
+        # will return the scraped information
+        events_by_sport_league = {}
+        # get pinnacle sports / league names from app variable
         for sport_key, sport_values in appvar_util.get_sport_names_appvar().iteritems():
-            self.FEED[sport_key] = {}
+            events_by_sport_league[sport_key] = {}
             for league_key, league_values in appvar_util.get_league_names_appvar()[sport_key].iteritems():
-                # keep all tag information so don't have to scrape again if we need more information later
-                self.FEED[sport_key][league_key] = {}
+                events_by_sport_league[sport_key][league_key] = []
                 
                 pinnacle_league_key = league_values['pinnacle']
                 league_xpath = None
@@ -1584,23 +347,13 @@ class Scraper(webapp.RequestHandler):
                 for event_tag in all_games:
                     # convert game datetime string to standard GMT datettime object
                     date_GMT = datetime.strptime(event_tag.find('event_datetimeGMT').text, '%Y-%m-%d %H:%M')
-                    event_game_number = unicode(event_tag.find('gamenumber').text)
-                    
-                    # get teams
-                    participants = event_tag.xpath('./participants/participant')
-                    
-                    # game already elapsed, move on to next
-                    if (date_GMT - self.utc_task_start).total_seconds() < 0:
-                        continue
                     
                     # when testing only scrape games within couple days
                     if sys_util.is_local():
-                        if 172800 < (date_GMT - self.utc_task_start).total_seconds():
+                        if 172800 < (date_GMT - datetime.utcnow()).total_seconds():
                             continue
                     
-                    # store team information in tip object - first initialization of tip object
-                    tip_instance = False
-                    
+                    participants = event_tag.xpath('./participants/participant')
                     participant_name_home = participant_name_visiting = None
                     participant_rot_num_home = participant_rot_num_visiting = None
                     # get both teams information
@@ -1613,31 +366,6 @@ class Scraper(webapp.RequestHandler):
                         elif participant_side == 'Home':
                             participant_name_home = unicode(participant_tag.find('participant_name').text)
                             participant_rot_num_home = int(participant_tag.find('rotnum').text)
-                            
-                    is_full_game = False
-                    for period in event_tag.xpath('./periods/period'):
-                        # currently only interested in full game lines
-                        if (
-                            (
-                             period.find('period_number').text.isdigit() 
-                             and int(period.find('period_number').text) == 0
-                             ) 
-                            or unicode(period.find('period_description').text) in ['Game','Match']
-                            ):
-                            # pinnacle game numbers should be unique for each league
-                            if event_game_number in self.FEED[sport_key][league_key]:
-                                logging.error('Multiple matching game numbers in same league listed at the same time! ' + event_game_number)
-                                raise Exception('Multiple matching game numbers in same league listed at the same time! ' + event_game_number)
-                            else:
-#                                         sys.stderr.write("Add game: "+event_tag.find('gamenumber').string+" for "+participant_name))
-#                                         sys.stderr.write("\n")
-                                self.FEED[sport_key][league_key][event_game_number] = event_tag
-                                is_full_game = True
-                            break
-                        
-                    # not a full game tag, skip
-                    if is_full_game is not True:
-                        continue
                     
                     # skip test cases
                     if re.match('^TEST\s?\d', participant_name_visiting, re.IGNORECASE):
@@ -1649,199 +377,316 @@ class Scraper(webapp.RequestHandler):
                     elif participant_name_visiting == '2nd Half Wagering' or participant_name_home == '2nd Half Wagering':
                         continue
                     
-                    league_team_info = teamconstants.get_league_teams(sport_key, league_key)
+                    total_points = total_over_odds = total_under_odds = None
+                    period_moneyline_home = period_moneyline_visiting = period_moneyline_draw = None
+                    period_spread_home = period_spread_visiting = period_spread_adjust_home = period_spread_adjust_visiting = None
                     
-                    participant_name_multi_visiting = participant_name_multi_home = False
-                    for participant_name in [participant_name_visiting, participant_name_home]:
-                        # pinnacle prefixes G# on team names if team has multiple games in a single day
-                        # search and replace a existing tip object if an additional game gets added
-                        participant_name_multi = re.search('^(G\d+\s+)(.+)', participant_name)
-                        participant_game_string = None
-                        if participant_name_multi:
-                            participant_game_string = participant_name_multi.group(1)
-                            participant_name_multi = participant_name_multi.group(2).strip()
-                            
-                            if participant_name == participant_name_visiting:
-                                participant_name_multi_visiting = participant_name_multi
-                            elif participant_name == participant_name_home:
-                                participant_name_multi_home = participant_name_multi
-                        
-                        if league_team_info:
-                            # ensure team string exists in team constant, otherwise email admin
-                            if (
-                                participant_name not in league_team_info['keys'].keys() 
-                                and not (
-                                     participant_name_multi 
-                                     and participant_name_multi in league_team_info['keys'].keys()
-                                     )
-                                ):
-                                team_name_exists = False
-                                
-                                participant_name_upper = participant_name.upper()
-                                if participant_name_multi:
-                                    participant_name_multi_upper = participant_name_multi.upper()
-                                
-                                for name_alias in league_team_info['keys']:
-                                    if participant_name_multi and participant_name_multi_upper == name_alias.upper():
-                                        datastore_name = name_alias
-                                        team_name_exists = True
-                                        
-                                        if participant_name == participant_name_visiting:
-                                            logging.info('(0.3) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+participant_game_string + datastore_name+')')
-                                            participant_name_multi_visiting = datastore_name
-                                            participant_name_visiting = participant_game_string + datastore_name
-                                        elif participant_name == participant_name_home:
-                                            logging.info('(0.4) Changing pinnacle name ('+participant_name_home+') to datastore ('+participant_game_string + datastore_name+')')
-                                            participant_name_multi_home = datastore_name
-                                            participant_name_home = participant_game_string + datastore_name
-                                        break
-                                    elif participant_name_upper == name_alias.upper():
-                                        datastore_name = name_alias
-                                        team_name_exists = True
-                                        
-                                        if participant_name == participant_name_visiting:
-                                            logging.info('(0.1) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+datastore_name+')')
-                                            participant_name_visiting = datastore_name
-                                        elif participant_name == participant_name_home:
-                                            logging.info('(0.2) Changing pinnacle name ('+participant_name_home+') to datastore ('+datastore_name+')')
-                                            participant_name_home = datastore_name
-                                        break
-                                    
-                                if team_name_exists is False:
-                                    for value_team_id, possible_team_aliases in league_team_info['values'].iteritems():
-                                        if participant_name_multi and participant_name_multi_upper in (name_alias.upper() for name_alias in possible_team_aliases):
-                                            for datastore_name, key_team_id in league_team_info['keys'].iteritems():
-                                                if value_team_id == key_team_id:
-                                                    team_name_exists = True
-                                                    
-                                                    if participant_name == participant_name_visiting:
-                                                        logging.info('(3) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+participant_game_string + datastore_name+')')
-                                                        participant_name_multi_visiting = datastore_name
-                                                        participant_name_visiting = participant_game_string + datastore_name
-                                                    elif participant_name == participant_name_home:
-                                                        logging.info('(4) Changing pinnacle name ('+participant_name_home+') to datastore ('+participant_game_string + datastore_name+')')
-                                                        participant_name_multi_home = datastore_name
-                                                        participant_name_home = participant_game_string + datastore_name
-                                                    break
-                                            break
-                                        elif participant_name_upper in (name_alias.upper() for name_alias in possible_team_aliases):
-                                            for datastore_name, key_team_id in league_team_info['keys'].iteritems():
-                                                if value_team_id == key_team_id:
-                                                    team_name_exists = True
-                                                    
-                                                    if participant_name == participant_name_visiting:
-                                                        logging.info('(1) Changing pinnacle name ('+participant_name_visiting+') to datastore ('+datastore_name+')')
-                                                        participant_name_visiting = datastore_name
-                                                    elif participant_name == participant_name_home:
-                                                        logging.info('(2) Changing pinnacle name ('+participant_name_home+') to datastore ('+datastore_name+')')
-                                                        participant_name_home = datastore_name
-                                                    break
-                                            break
-                                
-                                if team_name_exists is False:
-                                    mail_message = participant_name+' for '+league_key+', '+sport_key+' does not exist!'+"\n"
-                                    self.MAIL_OBJECT = add_mail(self.MAIL_OBJECT, self.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
-                    
-                    self.DATASTORE_READS += 1
-                    # do a search of the datastore to see if current tip object already created based on game number, sport, league, and team name
-                    query = models.Tip.gql('WHERE elapsed != True AND pinnacle_game_no = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4 AND game_team_home = :5', 
-                                    event_game_number, 
-                                    sport_key,
-                                    league_key,
-                                    participant_name_visiting,
-                                    participant_name_home,
-                                )
-                    
-                    # safety measure to prevent count() function from doing multiple queries
-                    query_count = query.count(limit=2)
-                    
-                    # if tip object does not yet exist, create it
-                    if query_count == 0:
-                        # do a search for doubleheaders - game number would have changed so search for same time
-                        if participant_name_multi_visiting is not False and participant_name_multi_home is not False:
-                            self.DATASTORE_READS += 1
-                            query = models.Tip.gql('WHERE elapsed != True AND date = :1 AND game_sport = :2 AND game_league = :3 AND game_team_away = :4 AND game_team_home = :5', 
-                                            date_GMT,
-                                            sport_key,
-                                            league_key,
-                                            participant_name_multi_visiting,
-                                            participant_name_multi_home,
-                                        )
-                            
-                            # safety measure to prevent count() function from doing multiple queries
-                            query_count = query.count(limit=2)
-                        
-                        if query_count == 0:
-                            self.DATASTORE_PUTS += 1
-                            # no tip object exists yet, create new one
-                            tip_instance = models.Tip()
-                            tip_instance.game_team_away = participant_name_visiting
-                            tip_instance.game_team_home = participant_name_home
-                            tip_instance.rot_away = participant_rot_num_visiting
-                            tip_instance.rot_home = participant_rot_num_home
-                        else:
-                            self.DATASTORE_READS += 2
-                            # should be only one result if it exists
-                            if query_count > 1:
-                                self.DATASTORE_READS += 1
-                                logging.error('Multiple matching datastore Tip objects to fill_games query!')
-                                raise Exception('Multiple matching datastore Tip objects to fill_games query!')
-                            
-                            # tip object exists, grab it
-                            tip_instance = query.get()
-                            
-                            # if any information is different (ex. time change) update it
-                            if (
-                                tip_instance.pinnacle_game_no != event_game_number 
-                                or tip_instance.game_team_away != participant_name_visiting 
-                                or tip_instance.game_team_home != participant_name_home 
-                                or tip_instance.rot_away != participant_rot_num_visiting
-                                or tip_instance.rot_home != participant_rot_num_home
-                                ):
-                                tip_instance.game_team_away = participant_name_visiting
-                                tip_instance.game_team_home = participant_name_home
-                                tip_instance.rot_away = participant_rot_num_visiting
-                                tip_instance.rot_home = participant_rot_num_home
-                            # otherwise no need to update it because all data has already been stored so move onto next game tag
-                            else:
-                                tip_instance = False
-                                continue
-                    else:
-                        self.DATASTORE_READS += 2
-                        # should be only one result if it exists
-                        if query_count > 1:
-                            self.DATASTORE_READS += 1
-                            logging.error('Multiple matching datastore Tip objects to fill_games query!')
-                            raise Exception('Multiple matching datastore Tip objects to fill_games query!')
-                        
-                        # tip object exists, grab it
-                        tip_instance = query.get()
-                        
-                        # if any information is different (ex. time change) update it
+                    is_full_game = False
+                    for period in event_tag.xpath('./periods/period'):
+                        # currently only interested in full game lines
                         if (
-                            tip_instance.date != date_GMT 
-                            or tip_instance.rot_away != participant_rot_num_visiting
-                            or tip_instance.rot_home != participant_rot_num_home
-                            ):
-                            tip_instance.rot_away = participant_rot_num_visiting
-                            tip_instance.rot_home = participant_rot_num_home
-                        # otherwise no need to update it because all data has already been stored so move onto next game tag
-                        else:
-                            tip_instance = False
-                            continue
+                            (
+                             period.find('period_number').text.isdigit() 
+                             and int(period.find('period_number').text) == 0
+                             ) 
+                            or unicode(period.find('period_description').text) in ['Game','Match']
+                        ):
+                            is_full_game = True
+                            
+                            # get the total lines
+                            period_total = period.find('total')
+                            if period_total is not None:
+                                total_points = unicode(period_total.find('total_points').text)
+                                total_over_odds = unicode(period_total.find('over_adjust').text)
+                                total_under_odds = unicode(period_total.find('under_adjust').text)
+                                    
+                            # get the moneyline
+                            period_moneyline = period.find('moneyline')
+                            if period_moneyline is not None:
+                                period_moneyline_home = unicode(period_moneyline.find('moneyline_home').text)
+                                period_moneyline_visiting = unicode(period_moneyline.find('moneyline_visiting').text)
+                                try:
+                                    period_moneyline_draw = unicode(period_moneyline.find('moneyline_draw').text)
+                                except AttributeError:
+                                    pass
+                                
+                            period_spread = period.find('spread')
+                            if period_spread is not None:
+                                period_spread_home = unicode(period_spread.find('spread_home').text)
+                                period_spread_visiting = unicode(period_spread.find('spread_visiting').text)
+                                period_spread_adjust_home = unicode(period_spread.find('spread_adjust_home').text)
+                                period_spread_adjust_visiting = unicode(period_spread.find('spread_adjust_visiting').text)
+                            
+                            break
                         
-                    # if tip object is new or needs to be updated, do so now    
-                    if tip_instance != False:
-                        # add basic information to tip object
-                        tip_instance.date = date_GMT
-                        tip_instance.game_sport = sport_key
-                        tip_instance.game_league = league_key
-                        tip_instance.pinnacle_game_no = event_game_number
-                        
-                        self.DATASTORE_PUTS += 1
-                        # store in datastore immediately to ensure no conflicts in this session
-                        tip_instance_key = tip_instance.put()
-                        # store in constant for future use and additional commit
-                        new_or_updated_tips[unicode(tip_instance.key.urlsafe())] = tip_instance_key
+                    # not a full game tag, skip
+                    if is_full_game is not True:
+                        continue
+                    
+                    event = BookieScrapeData()
+                    event.line_datetime = pinnacle_feed_time
+                    event.datetime = date_GMT
+                    event.sport = sport_key
+                    event.league = league_key
+                    event.team_away = participant_name_visiting
+                    event.team_home = participant_name_home
+                    event.rot_away = participant_rot_num_visiting
+                    event.rot_home = participant_rot_num_home
+                    event.spread_away = {event.LINE_KEY_POINTS : period_spread_adjust_visiting, event.LINE_KEY_ODDS : period_spread_visiting}
+                    event.spread_home = {event.LINE_KEY_POINTS : period_spread_adjust_home, event.LINE_KEY_ODDS : period_spread_home}
+                    event.moneyline_away = period_moneyline_visiting
+                    event.moneyline_home = period_moneyline_home
+                    event.moneyline_draw = period_moneyline_draw
+                    event.total_over = {event.LINE_KEY_POINTS : total_points, event.LINE_KEY_ODDS : total_over_odds}
+                    event.total_under = {event.LINE_KEY_POINTS : total_points, event.LINE_KEY_ODDS : total_under_odds}
+                    
+                    events_by_sport_league[sport_key][league_key].append(event)
+        sys_util.function_timer(module_name='scraper', function_name='pinnacle_scrape')
+        return events_by_sport_league
+
+sys.path.append('libs/pytz-2014.7')
+import pytz
+
+# TODO: Xscores and ScoresPro should have a common parent class below general Scraper class
+class XscoresScraper(Scraper):
+    __XSCORES_FEED = 'xscores.com'
+    _timezone = pytz.timezone(constants.TIMEZONE_SCOREBOARD)
+    
+    STATUS_FINISHED = 'Fin'
+    STATUS_ABANDONED = 'Abd'
+    STATUS_POSTPONED = 'Post'
+    STATUS_CANCELLED = 'Cancelled'
+    
+    def __init__(self, sport_key):
+        self.sport_key = sport_key
+        self._scores_by_date = {}
         
-        return new_or_updated_tips
+    def convert_utc_to_local(self, dataDatetime):
+        return dataDatetime.replace(tzinfo=pytz.utc).astimezone(self._timezone)
+    
+    def is_complete(self, status):
+        if status in [self.STATUS_FINISHED, self.STATUS_ABANDONED, self.STATUS_POSTPONED, self.STATUS_CANCELLED]:
+            return True
+        return False
+    
+    def scrape(self, dataDatetime):
+        scoreboard_game_time = self.convert_utc_to_local(dataDatetime)
+        scoreboard_date_string = scoreboard_game_time.strftime('%d-%m')
+        
+        # have we gotten the scoreboard for this day before
+        # only get it if we don't already have it
+        if not scoreboard_date_string in self._scores_by_date:
+            sys_util.function_timer(module_name='scraper', function_name='xscores_scrape')
+            self._scores_by_date[scoreboard_date_string] = []
+            score_row_key_indices = {}
+            
+            feed_url = 'http://www.'+self.__XSCORES_FEED+'/'+appvar_util.get_sport_names_appvar()[self.sport_key]['scoreboard']+'/finished_games/'+scoreboard_date_string
+        
+            if _increment_request(self.__XSCORES_FEED) > 1:
+                time.sleep(random.uniform(8.2, 15.5))
+            
+            logging.info('REQUESTING (custom header) '+feed_url)
+            feed_html = requests.get(feed_url, headers=sys_util.get_header())
+            
+            if feed_html.status_code != 200:
+                logging.debug('Scores Status Code: '+str(feed_html.status_code))
+            
+            soup = BeautifulSoup(feed_html.text)
+            
+            scores_rows = None
+            
+            # get the results table
+            score_header = soup.find('tbody', {'id' : 'scoretable'}).find('tr', {'id' : 'finHeader'})
+            if len(score_row_key_indices) < 5:
+                score_header_columns = score_header.find_all('td', recursive=False)
+                index_offset = 0
+                for index, score_header_column in enumerate(score_header_columns):
+                    if score_header_column.has_attr('colspan'):
+                        index_offset += int(score_header_column['colspan']) - 1
+                    score_header_column_text = score_header_column.get_text().strip()
+                    if score_header_column_text in ['K/O', 'League', 'Stat', 'Home', 'Away', 'FT', 'FINAL', 'R']:
+                        score_row_key_indices[score_header_column_text] = index + index_offset
+            
+            if len(score_row_key_indices) < 6:
+                raise ScrapeException('Attempted to get XSCORES feed for %s of %s, but encountered improperly formatted table headers.' % (
+                                                                                                                                           self.sport_key,
+                                                                                                                                           scoreboard_date_string
+                                                                                                                                           ))
+                
+            header_column_count = index + index_offset + 1
+            
+            scores_rows = score_header.find_next_siblings('tr')
+            for score_row in scores_rows:
+                if not score_row.has_attr('id'):
+                    continue
+                
+                row_columns = score_row.find_all('td', recursive=False)
+                if len(row_columns) != header_column_count:
+                    # blank or otherwise invalid row
+                    continue
+                
+                row_league = row_columns[score_row_key_indices['League']].get_text().strip()
+                row_game_time = self._timezone.localize(datetime.strptime(scoreboard_game_time.strftime('%m-%d-%Y') + ' ' + row_columns[score_row_key_indices['K/O']].get_text().replace('(','').replace(')','').strip(), '%m-%d-%Y %H:%M'))
+                row_home_team = row_columns[score_row_key_indices['Home']].get_text().strip()
+                row_away_team = row_columns[score_row_key_indices['Away']].get_text().strip()
+                row_game_status = row_columns[score_row_key_indices['Stat']].get_text().strip()
+                
+                extra_time = False
+                row_home_reg_score = row_away_reg_score = None
+                row_home_final_score = row_away_final_score = None
+                if row_game_status == self.STATUS_FINISHED:
+                    if self.sport_key == 'Baseball':
+                        if score_row_key_indices['Home'] < score_row_key_indices['Away']:
+                            row_home_final_score = row_columns[score_row_key_indices['R'] - 1].get_text().strip()
+                            row_away_final_score = row_columns[score_row_key_indices['R']].get_text().strip()
+                        else:
+                            row_home_final_score = row_columns[score_row_key_indices['R']].get_text().strip()
+                            row_away_final_score = row_columns[score_row_key_indices['R'] - 1].get_text().strip()
+                            
+                        row_home_reg_score = row_home_final_score
+                        row_away_reg_score = row_away_final_score
+                    else:
+                        row_FT_score = row_columns[score_row_key_indices['FT']].get_text().strip()
+                        row_FINAL_score = None
+                        if 'FINAL' in score_row_key_indices:
+                            row_FINAL_score = row_columns[score_row_key_indices['FINAL']].get_text().strip()
+                            
+                        row_FT_split_scores = row_FT_score.split('-')
+                        if row_FINAL_score is not None and row_FINAL_score != row_FT_score:
+                            extra_time = True
+                            row_FINAL_split_scores = row_FINAL_score.split('-')
+                            if score_row_key_indices['Home'] < score_row_key_indices['Away']:
+                                row_home_reg_score = row_FT_split_scores[0].strip()
+                                row_away_reg_score = row_FT_split_scores[1].strip()
+                                row_home_final_score = row_FINAL_split_scores[0].strip()
+                                row_away_final_score = row_FINAL_split_scores[1].strip()
+                            else:
+                                row_home_reg_score = row_FT_split_scores[1].strip()
+                                row_away_reg_score = row_FT_split_scores[0].strip()
+                                row_home_final_score = row_FINAL_split_scores[1].strip()
+                                row_away_final_score = row_FINAL_split_scores[0].strip()
+                        else:
+                            if score_row_key_indices['Home'] < score_row_key_indices['Away']:
+                                row_home_final_score = row_FT_split_scores[0].strip()
+                                row_away_final_score = row_FT_split_scores[1].strip()
+                            else:
+                                row_home_final_score = row_FT_split_scores[1].strip()
+                                row_away_final_score = row_FT_split_scores[0].strip()
+                                
+                            row_home_reg_score = row_home_final_score
+                            row_away_reg_score = row_away_final_score
+                
+                score_row_obj = ScoreRowData()
+                score_row_obj.sport = self.sport_key
+                score_row_obj.league = row_league
+                score_row_obj.datetime = row_game_time
+                score_row_obj.team_away = row_away_team
+                score_row_obj.team_home = row_home_team
+                score_row_obj.status = row_game_status
+                score_row_obj.regulation_score_away = row_away_reg_score
+                score_row_obj.regulation_score_home = row_home_reg_score
+                score_row_obj.final_score_away = row_away_final_score
+                score_row_obj.final_score_home = row_home_final_score
+                score_row_obj.extra_time = extra_time
+                
+                self._scores_by_date[scoreboard_date_string].append(score_row_obj)
+            sys_util.function_timer(module_name='scraper', function_name='xscores_scrape')
+        return self._scores_by_date[scoreboard_date_string]
+    
+class ScoresProScraper(Scraper):
+    __FEED = 'scorespro.com'
+    _timezone = pytz.timezone(constants.TIMEZONE_BACKUP)
+    
+    STATUS_FINISHED = 'FT'
+    STATUS_POSTPONED = 'Pst'
+    
+    def __init__(self, sport_key, league_key):
+        self.sport_key = sport_key
+        self.league_key = league_key
+        self._scores_by_date = {}
+        
+    def convert_utc_to_local(self, dataDatetime):
+        return dataDatetime.replace(tzinfo=pytz.utc).astimezone(self._timezone)
+    
+    def is_complete(self, status):
+        if status in [self.STATUS_FINISHED, self.STATUS_POSTPONED]:
+            return True
+        return False
+    
+    def scrape(self, dataDatetime):
+        scoreboard_game_time = self.convert_utc_to_local(dataDatetime)
+        scoreboard_date_string = scoreboard_game_time.strftime('%d-%m')
+        
+        # have we gotten the scoreboard for this day before
+        # only get it if we don't already have it
+        if not scoreboard_date_string in self._scores_by_date:
+            sys_util.function_timer(module_name='scraper', function_name='xscores_scrape')
+            self._scores_by_date[scoreboard_date_string] = []
+            
+            feed_url = 'http://www.'+self.__FEED+'/'+appvar_util.get_sport_names_appvar()[self.sport_key]['scoreboard']+'/'+appvar_util.get_league_names_appvar()[self.sport_key][self.league_key]['scoreboard']
+            
+            if _increment_request(self.__FEED) > 1:
+                time.sleep(random.uniform(8.2, 15.5))
+            
+            logging.info('REQUESTING (custom header) '+feed_url)
+            feed_html = requests.get(feed_url, headers=sys_util.get_header())
+            
+            if feed_html.status_code != 200:
+                logging.debug('Handball Status Code: '+str(feed_html.status_code))
+                
+            feed_html.encoding = 'utf-8'
+            soup = BeautifulSoup(feed_html.text)
+            
+            results_table = soup.find('div', {'id' : 'national'}).find('table')
+            score_tables = []
+            for results_table_row in results_table.next_siblings:
+                if isinstance(results_table_row, bs4_Tag) and results_table_row.name == 'div':
+                    score_tables.append(results_table_row)
+                elif isinstance(results_table_row, bs4_Tag) and results_table_row.name == 'table':
+                    break
+            
+            scores_rows = []
+            correct_date = False
+            for score_table_row in score_tables:
+                row_date = score_table_row.find('li', {'class' : 'ncet_date'})
+                if row_date:
+                    if correct_date is False:
+                        if row_date.get_text().strip() == scoreboard_date_string:
+                            correct_date = True
+                        elif len(scores_rows) > 0:
+                            break
+                    else:
+                        break
+                elif correct_date is True:
+                    if score_table_row.find('table'):
+                        scores_rows += score_table_row.find_all('table', recursive=False)
+                        correct_date = False
+            
+            for score_row in scores_rows:
+                row_status = score_row.find('td', {'class' : 'status'}).get_text().strip()
+                
+                row_game_time = self._timezone.localize(datetime.strptime(scoreboard_date_string + ' ' + score_row.find('td', {'class' : 'datetime'}).get_text().replace('(','').replace(')','').strip(), '%a %d %b %Y %H:%M'))
+                
+                row_teams = score_row.find_all('tr')
+                row_home_team = row_teams[0].find('td', {'class' : 'hometeam'}).get_text().strip()
+                row_away_team = row_teams[1].find('td', {'class' : 'awayteam'}).get_text().strip()
+                
+                row_score_home = row_teams[0].find('td', {'class' : 'ts_setB'}).get_text().strip()
+                row_score_away = row_teams[1].find('td', {'class' : 'ts_setB'}).get_text().strip()
+            
+                score_row_obj = ScoreRowData()
+                score_row_obj.sport = self.sport_key
+                score_row_obj.league = self.league_key
+                score_row_obj.datetime = row_game_time
+                score_row_obj.team_away = row_away_team
+                score_row_obj.team_home = row_home_team
+                score_row_obj.status = row_status
+                score_row_obj.regulation_score_away = row_score_away
+                score_row_obj.regulation_score_home = row_score_home
+                score_row_obj.final_score_away = row_score_away
+                score_row_obj.final_score_home = row_score_home
+                score_row_obj.extra_time = False
+            
+                self._scores_by_date[scoreboard_date_string].append(score_row_obj)
+            sys_util.function_timer(module_name='scraper', function_name='xscores_scrape')
+        return self._scores_by_date[scoreboard_date_string]

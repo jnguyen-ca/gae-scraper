@@ -2,13 +2,54 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+from google.appengine.api import mail
+
 import random
 import os
+import time
+import logging
 import appvar_util
+import constants
+
+__MAIL_OBJECT__ = None
+__FUNCTION_TIMERS__ = {}
+
+FUNCTION_TIMER_MODE_RESET = 'forceStart'
+FUNCTION_TIMER_MODE_INCREMENT = 'increment'
+FUNCTION_TIMER_MODE_DEFAULT = FUNCTION_TIMER_MODE_INCREMENT
 
 def is_local():
     return os.environ['SERVER_SOFTWARE'].startswith('Development')
 
+def function_timer(module_name='default', function_name='', mode=FUNCTION_TIMER_MODE_DEFAULT):
+    global __FUNCTION_TIMERS__
+    
+    if function_name and module_name:
+        if module_name not in __FUNCTION_TIMERS__:
+            __FUNCTION_TIMERS__[module_name] = {}
+            
+        if mode == FUNCTION_TIMER_MODE_RESET or function_name not in __FUNCTION_TIMERS__[module_name]:
+            __FUNCTION_TIMERS__[module_name][function_name] = {}
+            
+        if 'startTime' not in __FUNCTION_TIMERS__[module_name][function_name]:
+            __FUNCTION_TIMERS__[module_name][function_name]['startTime'] = time.time()
+            __FUNCTION_TIMERS__[module_name][function_name]['timer'] = None
+        else:
+            if __FUNCTION_TIMERS__[module_name][function_name]['timer'] is None:
+                __FUNCTION_TIMERS__[module_name][function_name]['timer'] = 0.0
+            
+            __FUNCTION_TIMERS__[module_name][function_name]['timer'] += time.time() - __FUNCTION_TIMERS__[module_name][function_name]['startTime']
+            __FUNCTION_TIMERS__[module_name][function_name].pop('startTime', None)
+    else:
+        for timerMod, modFunc in __FUNCTION_TIMERS__.iteritems():
+            for timerFunc, funcTimer in modFunc.iteritems():
+                if funcTimer['timer'] is None or 'startTime' in funcTimer:
+                    logging.warning('%s[%s] timer was not closed off.' % (timerMod, timerFunc))
+                    __FUNCTION_TIMERS__[timerMod].pop(timerFunc, None)
+                else:
+                    __FUNCTION_TIMERS__[timerMod][timerFunc] = funcTimer['timer']
+        return __FUNCTION_TIMERS__
+    
 def get_header():
     header = {}
     
@@ -18,6 +59,37 @@ def get_header():
     header['Accept-Encoding'] = 'gzip, deflate'
     
     return header
+
+def add_mail(mail_title, mail_message, **kwargs):
+    global __MAIL_OBJECT__
+    if 'logging' in kwargs:
+        try:
+            getattr(logging, kwargs['logging'])(mail_message.strip())
+        except (AttributeError, TypeError):
+            logging.error('logging function not found "%s" (%s)' % (kwargs['logging'], mail_message))
+        
+    try:
+        if mail_title not in __MAIL_OBJECT__:
+            __MAIL_OBJECT__[mail_title] = ''
+            
+        __MAIL_OBJECT__[mail_title] += mail_message
+    except TypeError:
+        __MAIL_OBJECT__ = {mail_title : mail_message}
+
+def send_all_mail():
+    global __MAIL_OBJECT__
+    try:
+        mail_count = 0
+        for mail_title, mail_message in __MAIL_OBJECT__.iteritems():
+            mail.send_mail_to_admins(constants.MAIL_SENDER, mail_title, mail_message.strip())
+            mail_count += 1
+            
+        logging.debug('%d mail sent.' % (mail_count))
+    except (TypeError, AttributeError):
+        # if mail_object is not iterable or not a dict do nothing
+        pass
+    
+    __MAIL_OBJECT__ = {}
 
 def is_ajax(request):
     """Check if a request is from AJAX

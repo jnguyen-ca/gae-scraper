@@ -270,10 +270,11 @@ class TipDisplay(webapp.RequestHandler):
             
             game_time = game_time.strftime('%B-%d %I:%M%p')
             
+            team_away, team_away_id = teamconstants.get_team_datastore_name_and_id(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_away)
+            team_home, team_home_id = teamconstants.get_team_datastore_name_and_id(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home)
+            
             team_away = tip_instance.game_team_away
-            team_away_aliases, team_away_id = teamconstants.get_team_aliases(tip_instance.game_sport, tip_instance.game_league, team_away)
             team_home = tip_instance.game_team_home
-            team_home_aliases, team_home_id = teamconstants.get_team_aliases(tip_instance.game_sport, tip_instance.game_league, team_home)
             
             wettpoint_h2h_link = None
             if (

@@ -6,15 +6,15 @@ from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
 
 import frontpage
-from scraper import Scraper
 from tiparchive import TipArchive
 import tipdisplay
 import dashboard
 import settings
+import taskhandler
 
 application = webapp.WSGIApplication([
                                       ('/', frontpage.FrontPage), 
-                                      ('/scrape', Scraper), 
+                                      ('/'+taskhandler.TASK_SCRAPE_CRON, taskhandler.TaskHandler), 
                                       ('/display', tipdisplay.TipDisplay),
                                       ('/archive', TipArchive),
                                       ('/dashboard', dashboard.Dashboard),

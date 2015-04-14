@@ -19,6 +19,34 @@ def get_base_league_key(sport, league):
     
     return league
 
+def is_league_alias(site_key, sport_key, league_key, possible_league_alias):
+    possible_league_alias = possible_league_alias.strip()
+    if league_key.strip() == possible_league_alias:
+        return True
+    
+    try:
+        site_league_name = appvar_util.get_league_names_appvar()[sport_key][league_key][site_key]
+    except KeyError:
+        raise appvar_util.ApplicationVariableException('%s does not have a league name for [%s / %s]' % (site_key, league_key, sport_key))
+                        
+    if isinstance(site_league_name, list):
+        if possible_league_alias in site_league_name:
+            return True
+    else:
+        if possible_league_alias == site_league_name:
+            return True
+    return False
+
+def split_doubleheaders_team_names(team_name):
+    team_game_string = None
+    
+    team_name_multi = re.search('^(G\d+\s+)(.+)', team_name)
+    if team_name_multi:
+        team_game_string = team_name_multi.group(1)
+        team_name = team_name_multi.group(2).strip()
+        
+    return team_name, team_game_string
+
 def get_league_teams(sport, league):
     appvar_team_names = appvar_util.get_team_names_appvar()
     
@@ -29,38 +57,26 @@ def get_league_teams(sport, league):
             
     return league_teams
 
-def get_team_aliases(sport, league, team_name):
-    # remove the game digit to get correct team name aliases
-    doubleheader_search = re.search('^G\d+\s+(.+)', team_name)
-    if doubleheader_search:
-        team_name = doubleheader_search.group(1).strip()
-        
+def get_team_datastore_name_and_id(sport, league, team_name):
+    league_team_info = get_league_teams(sport, league)
+    
     OTB_search = re.search('^OTB\s+(.+)', team_name)
     if OTB_search:
-        team_name = OTB_search.group(1).strip()
+        team_name = OTB_search.group(1)
     
-    team_aliases = [team_name]
+    team_name = split_doubleheaders_team_names(team_name)[0]
     
-    try:
-        league_team_info = get_league_teams(sport, league)
-    except KeyError:
-        logging.warning(league+' for '+sport+' has no team information (1)!')
-        return team_aliases, None
+    team_name_upper = team_name.upper().strip()
+    for datastore_name, key_team_id in league_team_info['keys'].iteritems():
+        if team_name_upper == datastore_name.upper():
+            # letter casing was just off
+            return datastore_name, key_team_id
         
-    if (
-        'keys' not in league_team_info 
-        or 'values' not in league_team_info 
-    ):
-        logging.warning(league+' for '+sport+' has no team information (2)!')
-        return team_aliases, None
+    for value_team_id, possible_team_aliases in league_team_info['values'].iteritems():
+        if team_name_upper in (name_alias.upper() for name_alias in possible_team_aliases):
+            for datastore_name, key_team_id in league_team_info['keys'].iteritems():
+                if value_team_id == key_team_id:
+                    # team name was an alias of a datastore name
+                    return datastore_name, key_team_id
     
-    # get all team aliases
-    team_id = None
-    if team_name in league_team_info['keys']:
-        team_id = league_team_info['keys'][team_name]
-        if team_id in league_team_info['values']:
-            team_aliases += league_team_info['values'][team_id]
-    else:
-        logging.warning(team_name+' in '+league+' for '+sport+' has no team id!')
-        
-    return team_aliases, team_id
+    return None, None

@@ -2,6 +2,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import constants
+
+class ApplicationVariableException(constants.ApplicationException):
+    """Base exception for operations on app var"""
+    def __init__(self, message):
+        super(ApplicationVariableException, self).__init__(message, constants.MAIL_TITLE_APPLICATION_ERROR)
+
 from google.appengine.ext import ndb
 
 import json

@@ -4,6 +4,8 @@ from __future__ import unicode_literals
 
 from google.appengine.api import mail
 
+from functools import wraps
+
 import random
 import os
 import time
@@ -21,39 +23,63 @@ FUNCTION_TIMER_MODE_DEFAULT = FUNCTION_TIMER_MODE_INCREMENT
 def is_local():
     return os.environ['SERVER_SOFTWARE'].startswith('Development')
 
-def function_timer(module_name='default', function_name='', mode=FUNCTION_TIMER_MODE_DEFAULT):
+def function_timer(mode=FUNCTION_TIMER_MODE_DEFAULT):
+    def timer_decorator(func):
+        @wraps(func)
+        def wrap_function_timer(*args, **kwargs):
+            modulename = func.__module__
+            functionname = args[0].__class__.__name__+'.'+func.__name__
+            
+            _function_timer(module_name=modulename, function_name=functionname, mode=mode)
+            func_result = func(*args, **kwargs)
+            _function_timer(module_name=modulename, function_name=functionname, mode=mode)
+            return func_result
+        return wrap_function_timer
+    return timer_decorator
+
+def print_and_reset_function_timer():
     global __FUNCTION_TIMERS__
     
-    if function_name and module_name:
-        if module_name not in __FUNCTION_TIMERS__:
-            __FUNCTION_TIMERS__[module_name] = {}
-            
-        if mode == FUNCTION_TIMER_MODE_RESET or function_name not in __FUNCTION_TIMERS__[module_name]:
-            __FUNCTION_TIMERS__[module_name][function_name] = {}
-            
-        if 'startTime' not in __FUNCTION_TIMERS__[module_name][function_name]:
-            __FUNCTION_TIMERS__[module_name][function_name]['startTime'] = time.time()
-            __FUNCTION_TIMERS__[module_name][function_name]['timer'] = None
+    for timerMod, modFunc in __FUNCTION_TIMERS__.iteritems():
+        remove_keys = []
+        for timerFunc, funcTimer in modFunc.iteritems():
+            if funcTimer['timer'] is None or 'startTime' in funcTimer:
+                logging.warning('%s[%s] timer was not closed off.' % (timerMod, timerFunc))
+                remove_keys.append(timerFunc)
+            else:
+                __FUNCTION_TIMERS__[timerMod][timerFunc] = funcTimer['timer']
+        for timerFunc in remove_keys:
+            __FUNCTION_TIMERS__[timerMod].pop(timerFunc, None)
+    
+    for timerMod, modFunc in __FUNCTION_TIMERS__.iteritems():
+        logging_info = ''
+        for timerFunc, funcTimer in modFunc.iteritems():
+            logging_info += timerFunc+' : '+ str("{0:.2f}".format(funcTimer)) + '; '
+        if is_local():
+            logging.info('%s [%s]' % (timerMod, logging_info.rstrip()))
         else:
-            if __FUNCTION_TIMERS__[module_name][function_name]['timer'] is None:
-                __FUNCTION_TIMERS__[module_name][function_name]['timer'] = 0.0
-            
-            __FUNCTION_TIMERS__[module_name][function_name]['timer'] += time.time() - __FUNCTION_TIMERS__[module_name][function_name]['startTime']
-            __FUNCTION_TIMERS__[module_name][function_name].pop('startTime', None)
+            logging.debug('%s [%s]' % (timerMod, logging_info.rstrip()))
+        
+    __FUNCTION_TIMERS__ = {}
+
+def _function_timer(module_name='default', function_name='', mode=FUNCTION_TIMER_MODE_DEFAULT):
+    global __FUNCTION_TIMERS__
+    
+    if module_name not in __FUNCTION_TIMERS__:
+        __FUNCTION_TIMERS__[module_name] = {}
+        
+    if mode == FUNCTION_TIMER_MODE_RESET or function_name not in __FUNCTION_TIMERS__[module_name]:
+        __FUNCTION_TIMERS__[module_name][function_name] = {}
+        
+    if 'startTime' not in __FUNCTION_TIMERS__[module_name][function_name]:
+        __FUNCTION_TIMERS__[module_name][function_name]['startTime'] = time.time()
+        __FUNCTION_TIMERS__[module_name][function_name]['timer'] = None
     else:
-        for timerMod, modFunc in __FUNCTION_TIMERS__.iteritems():
-            remove_keys = []
-            for timerFunc, funcTimer in modFunc.iteritems():
-                if funcTimer['timer'] is None or 'startTime' in funcTimer:
-                    logging.warning('%s[%s] timer was not closed off.' % (timerMod, timerFunc))
-                    remove_keys.append(timerFunc)
-                else:
-                    __FUNCTION_TIMERS__[timerMod][timerFunc] = funcTimer['timer']
-            for timerFunc in remove_keys:
-                __FUNCTION_TIMERS__[timerMod].pop(timerFunc, None)
-        timers = __FUNCTION_TIMERS__
-        __FUNCTION_TIMERS__ = {}
-        return timers
+        if __FUNCTION_TIMERS__[module_name][function_name]['timer'] is None:
+            __FUNCTION_TIMERS__[module_name][function_name]['timer'] = 0.0
+        
+        __FUNCTION_TIMERS__[module_name][function_name]['timer'] += time.time() - __FUNCTION_TIMERS__[module_name][function_name]['startTime']
+        __FUNCTION_TIMERS__[module_name][function_name].pop('startTime', None)
     
 def get_header():
     header = {}

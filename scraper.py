@@ -109,9 +109,9 @@ class WettpointScraper(Scraper):
         self._sport_table = None
     
     @property
+    @sys_util.function_timer()
     def sport_table(self):
         if self._sport_table is None:
-            sys_util.function_timer(module_name='scraper', function_name='wettpoint_table')
             # get wettpoint tip table page for particular sport
             sport = appvar_util.get_sport_names_appvar()[self.sport_key]['wettpoint']
             feed = 'http://www.forum.'+self.__WETTPOINT_FEED+'/fr_toptipsys.php?cat='+sport
@@ -168,11 +168,10 @@ class WettpointScraper(Scraper):
                 event_rows.append(tip_row_obj)
                 
             self._sport_table = event_rows
-            sys_util.function_timer(module_name='scraper', function_name='wettpoint_table')
         return self._sport_table
     
+    @sys_util.function_timer()
     def get_wettpoint_h2h(self, league_key, team_home, team_away, **kwargs):
-        sys_util.function_timer(module_name='scraper', function_name='wettpoint_h2h')
         h2h_total, h2h_team, h2h_risk = False, False, False
         
         team_home_id = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_home)[1]
@@ -186,7 +185,6 @@ class WettpointScraper(Scraper):
         
         # one of the teams has no team id
         if team_home_id is None or team_away_id is None:
-            sys_util.function_timer(module_name='scraper', function_name='wettpoint_h2h')
             return h2h_details
         
         increment = 1
@@ -197,7 +195,6 @@ class WettpointScraper(Scraper):
         ):
             if (_increment_request(self.__WETTPOINT_FEED, increment_value=0) - len(appvar_util.get_sport_names_appvar())) > 5:
                 logging.debug('Wettpoint H2H fetches have reached their limit.')
-                sys_util.function_timer(module_name='scraper', function_name='wettpoint_h2h')
                 # return None object to indicate no scrape was attempted and one should be queued up for next execution
                 return None
         else:
@@ -290,16 +287,15 @@ class WettpointScraper(Scraper):
                        'risk'   : h2h_risk
                        }
         
-        sys_util.function_timer(module_name='scraper', function_name='wettpoint_h2h')
         return h2h_details
 
 class PinnacleScraper(Scraper):
     __PINNACLE_FEED = 'pinnaclesports.com'
     
+    @sys_util.function_timer()
     def scrape(self):
         """Find a list of games (and their details) corresponding to our interests
         """
-        sys_util.function_timer(module_name='scraper', function_name='pinnacle_scrape')
         sport_feed = 'http://xml.'+self.__PINNACLE_FEED+'/pinnacleFeed.aspx'#?sporttype=' + keys['pinnacle']
         
         if _increment_request(self.__PINNACLE_FEED) > 1:
@@ -377,7 +373,11 @@ class PinnacleScraper(Scraper):
                     elif participant_name_visiting.split(' ')[0].lower() == 'away' and participant_name_home.split(' ')[0].lower() == 'home':
                         continue
                     # also skip pinnacle being stupid
-                    elif participant_name_visiting == '2nd Half Wagering' or participant_name_home == '2nd Half Wagering':
+                    elif (
+                          participant_name_visiting == '2nd Half Wagering' 
+                          or participant_name_home == '2nd Half Wagering'
+                          or 'Pre-Game Wagering' in participant_name_visiting
+                      ):
                         continue
                     
                     total_points = total_over_odds = total_under_odds = None
@@ -444,7 +444,6 @@ class PinnacleScraper(Scraper):
                     event.total_under = {event.LINE_KEY_POINTS : total_points, event.LINE_KEY_ODDS : total_under_odds}
                     
                     events_by_sport_league[sport_key][league_key].append(event)
-        sys_util.function_timer(module_name='scraper', function_name='pinnacle_scrape')
         return events_by_sport_league
 
 sys.path.append('libs/pytz-2014.7')
@@ -472,6 +471,7 @@ class XscoresScraper(Scraper):
             return True
         return False
     
+    @sys_util.function_timer()
     def scrape(self, dataDatetime):
         scoreboard_game_time = self.convert_utc_to_local(dataDatetime)
         scoreboard_date_string = scoreboard_game_time.strftime('%d-%m')
@@ -479,7 +479,6 @@ class XscoresScraper(Scraper):
         # have we gotten the scoreboard for this day before
         # only get it if we don't already have it
         if not scoreboard_date_string in self._scores_by_date:
-            sys_util.function_timer(module_name='scraper', function_name='xscores_scrape')
             self._scores_by_date[scoreboard_date_string] = []
             score_row_key_indices = {}
             
@@ -593,7 +592,6 @@ class XscoresScraper(Scraper):
                 score_row_obj.extra_time = extra_time
                 
                 self._scores_by_date[scoreboard_date_string].append(score_row_obj)
-            sys_util.function_timer(module_name='scraper', function_name='xscores_scrape')
         return self._scores_by_date[scoreboard_date_string]
     
 class ScoresProScraper(Scraper):
@@ -616,6 +614,7 @@ class ScoresProScraper(Scraper):
             return True
         return False
     
+    @sys_util.function_timer()
     def scrape(self, dataDatetime):
         scoreboard_game_time = self.convert_utc_to_local(dataDatetime)
         scoreboard_date_string = scoreboard_game_time.strftime('%d-%m')
@@ -623,7 +622,6 @@ class ScoresProScraper(Scraper):
         # have we gotten the scoreboard for this day before
         # only get it if we don't already have it
         if not scoreboard_date_string in self._scores_by_date:
-            sys_util.function_timer(module_name='scraper', function_name='xscores_scrape')
             self._scores_by_date[scoreboard_date_string] = []
             
             feed_url = 'http://www.'+self.__FEED+'/'+appvar_util.get_sport_names_appvar()[self.sport_key]['scoreboard']+'/'+appvar_util.get_league_names_appvar()[self.sport_key][self.league_key]['scoreboard']
@@ -691,5 +689,4 @@ class ScoresProScraper(Scraper):
                 score_row_obj.extra_time = False
             
                 self._scores_by_date[scoreboard_date_string].append(score_row_obj)
-            sys_util.function_timer(module_name='scraper', function_name='xscores_scrape')
         return self._scores_by_date[scoreboard_date_string]

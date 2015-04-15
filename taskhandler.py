@@ -77,10 +77,5 @@ class TaskHandler(webapp.RequestHandler):
                 logging.critical('%s host being hit %d times in a single execution!' % (request_host, int(request_count)))
         logging.info(logging_info.rstrip())
         
-        for timerMod, modFunc in sys_util.function_timer().iteritems():
-            logging_info = ''
-            for timerFunc, funcTimer in modFunc.iteritems():
-                logging_info += timerFunc+' : '+ str("{0:.2f}".format(funcTimer)) + '; '
-            logging.debug('%s [%s]' % (timerMod, logging_info.rstrip()))
-            
+        sys_util.print_and_reset_function_timer()            
         logging.debug('Total Reads: '+str(total_reads)+', Total Writes: '+str(total_writes))

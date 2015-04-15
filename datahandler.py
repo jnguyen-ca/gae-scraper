@@ -159,27 +159,21 @@ class TipData(DataHandler):
         # but would like it to be consistent with how the score updating (further on) works
         
         # wettpoint stuff
-        sys_util.function_timer(module_name='datahandler', function_name='wettpoint_update')
         wettpointData = WettpointData(self)
         wettpointData.update_tips()
         
         self.datastore_reads += wettpointData.datastore_reads
         self.datastore_writes += wettpointData.datastore_writes
-        sys_util.function_timer(module_name='datahandler', function_name='wettpoint_update')
         
         # line stuff
-        sys_util.function_timer(module_name='datahandler', function_name='odds_update')
         self._update_odds()
-        sys_util.function_timer(module_name='datahandler', function_name='odds_update')
         
         # scores stuff
-        sys_util.function_timer(module_name='datahandler', function_name='scores_update')
         try:
             self._update_scores()
         except scraper.HTTP_EXCEPTION_TUPLE as request_error:
             logging.warning('scoreboard down')
-            logging.warning(str(request_error))
-        sys_util.function_timer(module_name='datahandler', function_name='scores_update')
+            logging.warning(request_error)
         
         sys_util.send_all_mail()
         
@@ -193,7 +187,8 @@ class TipData(DataHandler):
                 
         self.datastore_writes += len(update_tips)
         ndb.put_multi(update_tips)
-        
+    
+    @sys_util.function_timer()
     def _update_odds(self):
         for sport_key in appvar_util.get_sport_names_appvar():
             # don't need to update if there are no games to update
@@ -396,7 +391,8 @@ class TipData(DataHandler):
                         # or game is a duplicate (something changed that i didn't account for)
                         mail_message = _game_details_string(tip_instance)+"\n"
                         sys_util.add_mail(constants.MAIL_TITLE_MISSING_EVENT, mail_message, logging='warning')
-                        
+    
+    @sys_util.function_timer()             
     def _update_scores(self):
         for sport_key, sport_leagues in appvar_util.get_league_names_appvar().iteritems():
             if sport_key not in self.not_previously_archived_tips:
@@ -524,6 +520,7 @@ class WettpointData(DataHandler):
         self.valid_sports = valid_sports
         return self.valid_sports
     
+    @sys_util.function_timer()
     def update_tips(self):
         # go through all our sports
         for sport_key in appvar_util.get_sport_names_appvar():
@@ -540,7 +537,7 @@ class WettpointData(DataHandler):
                 wettpoint_current_date = wettpoint_current_time.replace(tzinfo=pytz.utc).astimezone(self.wettpoint_timezone).strftime('%d.%m.%Y')
             except scraper.HTTP_EXCEPTION_TUPLE as request_error:
                 logging.warning('wettpoint tables down')
-                logging.warning(str(request_error))
+                logging.warning(request_error)
                 return
             
             # get the last event time so next scrape can possibly occur when all current events have expired (i.e. table completely refreshes)
@@ -710,7 +707,7 @@ class WettpointData(DataHandler):
                                             h2h_details = wettpointScraper.get_wettpoint_h2h(league_key, tip_instance.game_team_home, tip_instance.game_team_away)
                                     except scraper.HTTP_EXCEPTION_TUPLE as request_error:
                                         logging.warning('Error adding wettpoint H2H details. Skipping future [%s] fetches for this execution (1).' % (tip_instance.game_sport))
-                                        logging.warning(str(request_error))
+                                        logging.warning(request_error)
                                         H2H_sport_issue = True
                                     else:
                                         if h2h_details is None:
@@ -793,7 +790,7 @@ class WettpointData(DataHandler):
                                     h2h_details = wettpointScraper.get_wettpoint_h2h(league_key, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
                             except scraper.HTTP_EXCEPTION_TUPLE as request_error:
                                 logging.warning('Error getting wettpoint H2H details. Skipping future [%s] fetches for this execution (2).' % (tip_instance.game_sport))
-                                logging.warning(str(request_error))
+                                logging.warning(request_error)
                                 H2H_sport_issue = True
                                 tip_instance.wettpoint_tip_stake = None
                             else:
@@ -1057,7 +1054,19 @@ class BookieData(DataHandler):
         if tipKey in self.new_or_updated_tips:
             return True
         return False
-        
+    
+    def _set_status(func):
+        def call_and_set_status(*args, **kwargs):
+            try:
+                func(*args, **kwargs)
+                args[0].status = args[0].STATUS_UPDATED
+            except DatastoreException as error:
+                logging.warning(error)
+                args[0].status = args[0].STATUS_ERROR
+        return call_and_set_status
+    
+    @sys_util.function_timer()
+    @_set_status
     def update_tips(self):
         '''Create a dictionary (stored on DataHandler attribute _tipkey_to_event) that stores a 1:1 link
         for a Tip key (keys) to a BookieScrapeData (values). If an BookieScrapeData has no corresponding Tip then create and 
@@ -1065,7 +1074,6 @@ class BookieData(DataHandler):
         corresponding Tip line data. Needs to be done before line update so that new Tips lines can also be updated
         on their initialization.
         '''
-        sys_util.function_timer(module_name='datahandler', function_name='bookie_update')
         for sport_key, events_by_leage in self.eventsDict.iteritems():
             if sport_key not in appvar_util.get_sport_names_appvar():
                 raise DatastoreException('Scraper did not get correct sport datastore name for %s' % (sport_key))
@@ -1273,5 +1281,3 @@ class BookieData(DataHandler):
                     
                     # Tips will get their lines updated so keep Tip associated with their BookieScrapeData for later use
                     self._tipkey_to_event[tip_instance_key] = event
-                    self.status = self.STATUS_UPDATED
-        sys_util.function_timer(module_name='datahandler', function_name='bookie_update')

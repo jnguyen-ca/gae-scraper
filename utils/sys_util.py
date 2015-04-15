@@ -42,13 +42,18 @@ def function_timer(module_name='default', function_name='', mode=FUNCTION_TIMER_
             __FUNCTION_TIMERS__[module_name][function_name].pop('startTime', None)
     else:
         for timerMod, modFunc in __FUNCTION_TIMERS__.iteritems():
+            remove_keys = []
             for timerFunc, funcTimer in modFunc.iteritems():
                 if funcTimer['timer'] is None or 'startTime' in funcTimer:
                     logging.warning('%s[%s] timer was not closed off.' % (timerMod, timerFunc))
-                    __FUNCTION_TIMERS__[timerMod].pop(timerFunc, None)
+                    remove_keys.append(timerFunc)
                 else:
                     __FUNCTION_TIMERS__[timerMod][timerFunc] = funcTimer['timer']
-        return __FUNCTION_TIMERS__
+            for timerFunc in remove_keys:
+                __FUNCTION_TIMERS__[timerMod].pop(timerFunc, None)
+        timers = __FUNCTION_TIMERS__
+        __FUNCTION_TIMERS__ = {}
+        return timers
     
 def get_header():
     header = {}

@@ -2,14 +2,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-def is_game_off_the_board(tip_instance):
-    if (
-        tip_instance.game_team_away.startswith('OTB ') 
-        and tip_instance.game_team_home.startswith('OTB ')
-    ):
-        return True
-    return False
-
 class DataHandler(object):
     datastore_writes = 0
     datastore_reads = 0
@@ -142,7 +134,7 @@ class TipData(DataHandler):
             # determine which sports should make a wettpoint request to be updated
             
             # off the board tips do not require wettpoint scrapes
-            if is_game_off_the_board(tip_instance):
+            if teamconstants.is_game_off_the_board(tip_instance):
                 continue
                 
             if tip_instance.key in self.new_or_updated_tips:
@@ -181,13 +173,13 @@ class TipData(DataHandler):
         sys_util.function_timer(module_name='datahandler', function_name='odds_update')
         
         # scores stuff
+        sys_util.function_timer(module_name='datahandler', function_name='scores_update')
         try:
-            sys_util.function_timer(module_name='datahandler', function_name='scores_update')
             self._update_scores()
-            sys_util.function_timer(module_name='datahandler', function_name='scores_update')
         except scraper.HTTP_EXCEPTION_TUPLE as request_error:
             logging.warning('scoreboard down')
             logging.warning(str(request_error))
+        sys_util.function_timer(module_name='datahandler', function_name='scores_update')
         
         sys_util.send_all_mail()
         
@@ -1183,7 +1175,7 @@ class BookieData(DataHandler):
                         
                         # if the team names were missing their datastore constants, email the admin about it (only once when inserting)
                         if len(missing_team_name) > 0:
-                            mail_message = '%s for %s (%s) does not exist!' % (' & '.join(missing_team_name), league_key, sport_key) + "\n"
+                            mail_message = '%s for [%s / %s] does not exist!' % (' & '.join(missing_team_name), league_key, sport_key) + "\n"
                             sys_util.add_mail(constants.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
                     else:
                         self.datastore_reads += 2

@@ -18,6 +18,8 @@ import datahandler
 TASK_SCRAPE_CRON = 'scrape'
 
 class TaskHandler(webapp.RequestHandler):
+    TASK_RETRY_LIMIT = 2
+    
     def get(self):
         taskqueue.add(queue_name='scraper', url=self.request.path)
         self.response.out.write('Adding task to queue for: '+str(self.request.path))
@@ -33,6 +35,9 @@ class TaskHandler(webapp.RequestHandler):
         urlfetch.set_default_fetch_deadline(15)
         logging.getLogger('requests').setLevel(logging.WARNING) # disable requests library info and debug messages (to replace with my own)
         scraper.reset_request_count()
+        
+        total_reads = 0
+        total_writes = 0
         
         # Scraper: find all relevant games
         events = {}
@@ -52,10 +57,16 @@ class TaskHandler(webapp.RequestHandler):
         bookieData = datahandler.BookieData(events)
         bookieData.update_tips()
         
+        total_reads += bookieData.datastore_reads
+        total_writes += bookieData.datastore_writes
+        
         tipData = datahandler.TipData({'pinnacle' : bookieData})
         tipData.utc_task_start = self.utc_task_start
 
         tipData.update_tips()
+        
+        total_reads += tipData.datastore_reads
+        total_writes += tipData.datastore_writes
 
         # log the scrape hits for each host
         logging_info = ''
@@ -64,10 +75,12 @@ class TaskHandler(webapp.RequestHandler):
             
             if int(request_count) > 20:
                 logging.critical('%s host being hit %d times in a single execution!' % (request_host, int(request_count)))
-        logging.info(logging_info)
+        logging.info(logging_info.rstrip())
         
         for timerMod, modFunc in sys_util.function_timer().iteritems():
             logging_info = ''
             for timerFunc, funcTimer in modFunc.iteritems():
                 logging_info += timerFunc+' : '+ str("{0:.2f}".format(funcTimer)) + '; '
-            logging.debug('%s [%s]' % (timerMod, logging_info))
+            logging.debug('%s [%s]' % (timerMod, logging_info.rstrip()))
+            
+        logging.debug('Total Reads: '+str(total_reads)+', Total Writes: '+str(total_writes))

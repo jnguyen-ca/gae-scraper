@@ -336,7 +336,7 @@ class TipArchive(webapp.RequestHandler):
         for tip_instance in all_tips_by_date:
             self.DATASTORE_READS += 1
             # skip off the board games since they will have a duplicate tip without the OTB pre-string
-            if tip_instance.pinnacle_game_no.startswith('OTB '):
+            if teamconstants.is_game_off_the_board(tip_instance):
                 continue
             
             # store tips in a list with date string keys so that a invalid date can be thrown away easily

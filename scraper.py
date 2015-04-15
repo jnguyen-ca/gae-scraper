@@ -89,6 +89,7 @@ def get_request_count():
     return __REQUEST_COUNT__
 
 def reset_request_count():
+    global __REQUEST_COUNT__
     __REQUEST_COUNT__ = {}
 
 def _increment_request(host, increment_value=1):
@@ -185,6 +186,7 @@ class WettpointScraper(Scraper):
         
         # one of the teams has no team id
         if team_home_id is None or team_away_id is None:
+            sys_util.function_timer(module_name='scraper', function_name='wettpoint_h2h')
             return h2h_details
         
         increment = 1
@@ -195,6 +197,7 @@ class WettpointScraper(Scraper):
         ):
             if (_increment_request(self.__WETTPOINT_FEED, increment_value=0) - len(appvar_util.get_sport_names_appvar())) > 5:
                 logging.debug('Wettpoint H2H fetches have reached their limit.')
+                sys_util.function_timer(module_name='scraper', function_name='wettpoint_h2h')
                 # return None object to indicate no scrape was attempted and one should be queued up for next execution
                 return None
         else:

@@ -8,7 +8,6 @@ sys.path.append('utils')
 from utils import appvar_util
 
 import re
-import logging
 
 def get_base_league_key(sport, league):
     appvar_team_names = appvar_util.get_team_names_appvar()
@@ -46,6 +45,14 @@ def split_doubleheaders_team_names(team_name):
         team_name = team_name_multi.group(2).strip()
         
     return team_name, team_game_string
+
+def is_game_off_the_board(tip_instance):
+    if (
+        tip_instance.game_team_away.startswith('OTB ') 
+        and tip_instance.game_team_home.startswith('OTB ')
+    ):
+        return True
+    return False
 
 def get_league_teams(sport, league):
     appvar_team_names = appvar_util.get_team_names_appvar()

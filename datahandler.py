@@ -33,12 +33,12 @@ def _game_details_string(tip_instance):
 
 import sys
 sys.path.append('utils')
-sys.path.append('libs/pytz-2014.7')
+sys.path.append('libs/'+constants.LIB_DIR_PYTZ)
 
 from google.appengine.ext import ndb
 
 from datetime import datetime, timedelta
-from utils import sys_util, memcache_util, appvar_util
+from utils import sys_util, memcache_util, appvar_util, requests_util
 
 import re
 import json
@@ -171,7 +171,7 @@ class TipData(DataHandler):
         # scores stuff
         try:
             self._update_scores()
-        except scraper.HTTP_EXCEPTION_TUPLE as request_error:
+        except requests_util.HTTP_EXCEPTION_TUPLE as request_error:
             logging.warning('scoreboard down')
             logging.warning(request_error)
         
@@ -389,7 +389,7 @@ class TipData(DataHandler):
                     else:
                         # either game was taken off the board (for any number of reasons) - could be temporary
                         # or game is a duplicate (something changed that i didn't account for)
-                        mail_message = _game_details_string(tip_instance)+"\n"
+                        mail_message = 'Missing from bookies: '+_game_details_string(tip_instance)+"\n"
                         sys_util.add_mail(constants.MAIL_TITLE_MISSING_EVENT, mail_message, logging='warning')
     
     @sys_util.function_timer()             
@@ -535,7 +535,7 @@ class WettpointData(DataHandler):
                 # get the time immediately after a scrape for converting the table times
                 wettpoint_current_time = datetime.utcnow()
                 wettpoint_current_date = wettpoint_current_time.replace(tzinfo=pytz.utc).astimezone(self.wettpoint_timezone).strftime('%d.%m.%Y')
-            except scraper.HTTP_EXCEPTION_TUPLE as request_error:
+            except requests_util.HTTP_EXCEPTION_TUPLE as request_error:
                 logging.warning('wettpoint tables down')
                 logging.warning(request_error)
                 return
@@ -705,7 +705,7 @@ class WettpointData(DataHandler):
                                             h2h_details = None
                                         else:
                                             h2h_details = wettpointScraper.get_wettpoint_h2h(league_key, tip_instance.game_team_home, tip_instance.game_team_away)
-                                    except scraper.HTTP_EXCEPTION_TUPLE as request_error:
+                                    except requests_util.HTTP_EXCEPTION_TUPLE as request_error:
                                         logging.warning('Error adding wettpoint H2H details. Skipping future [%s] fetches for this execution (1).' % (tip_instance.game_sport))
                                         logging.warning(request_error)
                                         H2H_sport_issue = True
@@ -788,7 +788,7 @@ class WettpointData(DataHandler):
                                     h2h_details = None
                                 else:
                                     h2h_details = wettpointScraper.get_wettpoint_h2h(league_key, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
-                            except scraper.HTTP_EXCEPTION_TUPLE as request_error:
+                            except requests_util.HTTP_EXCEPTION_TUPLE as request_error:
                                 logging.warning('Error getting wettpoint H2H details. Skipping future [%s] fetches for this execution (2).' % (tip_instance.game_sport))
                                 logging.warning(request_error)
                                 H2H_sport_issue = True

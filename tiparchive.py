@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import constants
+
 import sys
 sys.path.append('libs/oauth2client-1.3')
 sys.path.append('libs/gspread-0.2.2')
-sys.path.append('libs/pytz-2014.7')
+sys.path.append('libs/'+constants.LIB_DIR_PYTZ)
 sys.path.append('utils')
 
 from google.appengine.ext import webapp
@@ -20,7 +22,6 @@ import string
 import logging
 import pytz
 import gspread
-import constants
 import models
 import teamconstants
 import tipanalysis

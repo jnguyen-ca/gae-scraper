@@ -9,7 +9,7 @@ from google.appengine.ext import webapp
 from google.appengine.api import taskqueue, urlfetch
 
 from datetime import datetime
-from utils import sys_util
+from utils import sys_util, requests_util
 
 import logging
 import scraper
@@ -34,7 +34,7 @@ class TaskHandler(webapp.RequestHandler):
     def scrape_and_update_tips(self):
         urlfetch.set_default_fetch_deadline(15)
         logging.getLogger('requests').setLevel(logging.WARNING) # disable requests library info and debug messages (to replace with my own)
-        scraper.reset_request_count()
+        requests_util.reset_request_count()
         
         total_reads = 0
         total_writes = 0
@@ -44,7 +44,7 @@ class TaskHandler(webapp.RequestHandler):
         try:
             pinnacleScraper = scraper.PinnacleScraper()
             events = pinnacleScraper.scrape()
-        except scraper.HTTP_EXCEPTION_TUPLE:
+        except requests_util.HTTP_EXCEPTION_TUPLE:
             task_execution_count = int(self.request.headers['X-AppEngine-TaskExecutionCount'])
             # if there are retries for the queue left, re-raise exception to retry; otherwise complete without pinnacle lines
             if self.TASK_RETRY_LIMIT > task_execution_count:
@@ -70,7 +70,7 @@ class TaskHandler(webapp.RequestHandler):
 
         # log the scrape hits for each host
         logging_info = ''
-        for request_host, request_count in scraper.get_request_count().iteritems():
+        for request_host, request_count in requests_util.get_request_count().iteritems():
             logging_info += request_host + ' : ' + str(request_count) + '; '
             
             if int(request_count) > 20:

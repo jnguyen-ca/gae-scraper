@@ -59,47 +59,19 @@ class WettpointRowData(EventScrapeData):
         self.tip_stake = None
 
 from google.appengine.api import urlfetch
-from httplib import HTTPException
 
 import sys
 sys.path.append('utils')
-sys.path.append('libs/requests-2.3.0')
-sys.path.append('libs/BeautifulSoup-4.3.2')
 
 from datetime import datetime
-from lxml import etree
-from utils import appvar_util, sys_util
-from bs4.element import Tag as bs4_Tag
-from bs4 import BeautifulSoup
-from requests.packages.urllib3.exceptions import ProtocolError
+from utils import appvar_util, sys_util, requests_util
 
 import re
 import time
 import random
-import requests
 import logging
 import teamconstants
 import models
-
-HTTP_EXCEPTION_TUPLE = (HTTPException, urlfetch.DeadlineExceededError, ProtocolError)
-
-__REQUEST_COUNT__ = {}
-
-def get_request_count():
-    return __REQUEST_COUNT__
-
-def reset_request_count():
-    global __REQUEST_COUNT__
-    __REQUEST_COUNT__ = {}
-
-def _increment_request(host, increment_value=1):
-    global __REQUEST_COUNT__
-    if host in __REQUEST_COUNT__:
-        __REQUEST_COUNT__[host] += increment_value
-    else:
-        __REQUEST_COUNT__[host] = increment_value
-        
-    return __REQUEST_COUNT__[host]
 
 class WettpointScraper(Scraper):
     __WETTPOINT_FEED = constants.WETTPOINT_FEED
@@ -116,56 +88,57 @@ class WettpointScraper(Scraper):
             sport = appvar_util.get_sport_names_appvar()[self.sport_key]['wettpoint']
             feed = 'http://www.forum.'+self.__WETTPOINT_FEED+'/fr_toptipsys.php?cat='+sport
             
-            if _increment_request(self.__WETTPOINT_FEED) > 1:
-                time.sleep(random.uniform(9.9,30.1))
-            
-            logging.info('REQUESTING (custom header) '+feed)
-            html = requests.get(feed, headers=sys_util.get_header())
-            
-            if html.status_code != 200:
-                logging.debug('Wettpoint Status Code: '+str(html.status_code))
-                
-            soup = BeautifulSoup(html.text)
-            
-            # get the tip table for this sport
-            tables = soup.find_all('table', {'class' : 'gen'})
-            tip_table = tables[1]
-            tip_rows = tip_table.find_all('tr')[2:]
+            soup = requests_util.request(
+                                  request_lib        = requests_util.REQUEST_LIB_REQUESTS, 
+                                  response_type      = requests_util.RESPONSE_TYPE_HTML, 
+                                  response_encoding  = None, 
+                                  min_wait_time       = 9.9, 
+                                  max_wait_time       = 30.1, 
+                                  max_hits           = len(appvar_util.get_sport_names_appvar()),
+                                  url               = feed,
+                                  headers           = sys_util.get_header()
+                                  )
             
             # store table information in a list
             event_rows = []
-            for tip_row in tip_rows:
-                columns = tip_row.find_all('td')
+            if soup:
+                # get the tip table for this sport
+                tables = soup.find_all('table', {'class' : 'gen'})
+                tip_table = tables[1]
+                tip_rows = tip_table.find_all('tr')[2:]
                 
-                # table may be empty if there are no near-scheduled events (e.g. baseball during winter)
-                if 6 >= len(columns):
-                    break
-                
-                # get all text as-is and store in a dict
-                team_names = columns[0].get_text()
-                tip_team = columns[1].get_text().strip()
-                tip_total = columns[2].get_text().strip()
-                tip_stake = columns[3].get_text()
-                # column 4 is bookie referral links
-                league_name = columns[5].get_text().strip()
-                game_time = columns[6].get_text().strip()
-                
-                team_splitter = ' - '
-                index = team_names.find(team_splitter)
-                home_team = team_names[0:index].strip()
-                away_team = team_names[index+len(team_splitter):len(team_names)].strip()
-                
-                tip_row_obj = WettpointRowData()
-                tip_row_obj.sport = self.sport_key
-                tip_row_obj.league = league_name
-                tip_row_obj.time_string = game_time
-                tip_row_obj.team_home = home_team
-                tip_row_obj.team_away = away_team
-                tip_row_obj.tip_team = tip_team
-                tip_row_obj.tip_total = tip_total
-                tip_row_obj.tip_stake = tip_stake
-                
-                event_rows.append(tip_row_obj)
+                for tip_row in tip_rows:
+                    columns = tip_row.find_all('td')
+                    
+                    # table may be empty if there are no near-scheduled events (e.g. baseball during winter)
+                    if 6 >= len(columns):
+                        break
+                    
+                    # get all text as-is and store in a dict
+                    team_names = columns[0].get_text()
+                    tip_team = columns[1].get_text().strip()
+                    tip_total = columns[2].get_text().strip()
+                    tip_stake = columns[3].get_text()
+                    # column 4 is bookie referral links
+                    league_name = columns[5].get_text().strip()
+                    game_time = columns[6].get_text().strip()
+                    
+                    team_splitter = ' - '
+                    index = team_names.find(team_splitter)
+                    home_team = team_names[0:index].strip()
+                    away_team = team_names[index+len(team_splitter):len(team_names)].strip()
+                    
+                    tip_row_obj = WettpointRowData()
+                    tip_row_obj.sport = self.sport_key
+                    tip_row_obj.league = league_name
+                    tip_row_obj.time_string = game_time
+                    tip_row_obj.team_home = home_team
+                    tip_row_obj.team_away = away_team
+                    tip_row_obj.tip_team = tip_team
+                    tip_row_obj.tip_total = tip_total
+                    tip_row_obj.tip_stake = tip_stake
+                    
+                    event_rows.append(tip_row_obj)
                 
             self._sport_table = event_rows
         return self._sport_table
@@ -187,38 +160,35 @@ class WettpointScraper(Scraper):
         if team_home_id is None or team_away_id is None:
             return h2h_details
         
-        increment = 1
-        if (
-            sys_util.is_local() 
-            or 'nolimit' not in kwargs 
-            or kwargs['nolimit'] is not True
-        ):
-            if (_increment_request(self.__WETTPOINT_FEED, increment_value=0) - len(appvar_util.get_sport_names_appvar())) > 5:
-                logging.debug('Wettpoint H2H fetches have reached their limit.')
-                # return None object to indicate no scrape was attempted and one should be queued up for next execution
-                return None
-        else:
-            increment = 0
+        no_limit = False
+        if 'nolimit' in kwargs and kwargs['nolimit'] and not sys_util.is_local():
+            no_limit = True
             logging.debug('Doing a NOLIMIT fetch. Not counting following fetch towards the H2H fetch limit.')
         
         sport = appvar_util.get_sport_names_appvar()[self.sport_key]['wettpoint']
         
         # wettpoint h2h link is home team - away team
         h2h_link = 'http://'+sport+'.'+self.__WETTPOINT_FEED+'/h2h/'+team_home_id+'-'+team_away_id+'.html'
-        if _increment_request(self.__WETTPOINT_FEED, increment_value=increment) > 1:
-            time.sleep(random.uniform(16.87,30.9))
         
-        logging.info('FETCHING (google header) %s (%s-%s)' % (
-                                                                        h2h_link,
-                                                                        team_home,
-                                                                        team_away
-                                                                        ))
-        h2h_html = urlfetch.fetch(h2h_link, headers={ "Accept-Encoding" : "identity" })
+        h2h_soup = requests_util.request(
+                                  request_lib           = requests_util.REQUEST_LIB_URLFETCH, 
+                                  response_type         = requests_util.RESPONSE_TYPE_HTML, 
+                                  response_encoding     = None, 
+                                  min_wait_time         = 16.87, 
+                                  max_wait_time         = 30.9, 
+                                  max_hits              = 5,
+                                  no_hit                = no_limit,
+                                  log_info              = '(%s-%s)' % (team_home, team_away),
+                                  url                   = h2h_link,
+                                  headers               = { "Accept-Encoding" : "identity" }
+                                  )
         
-        if h2h_html.status_code != 200:
-            logging.debug('H2H Status Code: '+str(h2h_html.status_code))
+        if not h2h_soup:
+            logging.debug('Wettpoint H2H fetches have reached their limit.')
+            # return None object to indicate no scrape was attempted and one should be queued up for next execution
+            return None
         
-        h2h_soup = BeautifulSoup(h2h_html.content).find('div', {'class' : 'inhalt2'})
+        h2h_soup = h2h_soup.find('div', {'class' : 'inhalt2'})
         
         # ensure teams are correct and we got the right link
         team_links = h2h_soup.find('table').find_all('tr')[-1].find_all('a')
@@ -298,20 +268,23 @@ class PinnacleScraper(Scraper):
         """
         sport_feed = 'http://xml.'+self.__PINNACLE_FEED+'/pinnacleFeed.aspx'#?sporttype=' + keys['pinnacle']
         
-        if _increment_request(self.__PINNACLE_FEED) > 1:
-            # pinnacle rules state no more than 1 request per minute
-            time.sleep(73.6)
-            
-        logging.info('FETCHING (google header) '+sport_feed)
-        pinnacle_xml = urlfetch.fetch(sport_feed)
+        lxml_tree = requests_util.request(
+                                      request_lib        = requests_util.REQUEST_LIB_URLFETCH, 
+                                      response_type      = requests_util.RESPONSE_TYPE_XML, 
+                                      response_encoding  = None, 
+                                      min_wait_time      = 73.6, # pinnacle rules state no more than 1 request per minute
+                                      max_wait_time      = 73.6, 
+                                      max_hits           = 3,
+                                      no_hit             = False,
+                                      log_info           = None,
+                                      url                = sport_feed
+                                  )
         
-        # debug - feel free to remove
-        if pinnacle_xml.status_code != 200:
-            logging.debug('Pinnacle Status Code: '+str(pinnacle_xml.status_code))
-            
-        # use etree for xpath search to easily filter specific leagues
-        etree_parser = etree.XMLParser(ns_clean=True,recover=True)
-        lxml_tree = etree.fromstring(pinnacle_xml.content, etree_parser)
+        # will return the scraped information
+        events_by_sport_league = {}
+        
+        if lxml_tree is None:
+            return events_by_sport_league
         
         try:
             # get feed time for line date data
@@ -320,8 +293,6 @@ class PinnacleScraper(Scraper):
         except IndexError:
             raise ScrapeException('PinnacleFeedTime tag text was not found in the feed!')
         
-        # will return the scraped information
-        events_by_sport_league = {}
         # get pinnacle sports / league names from app variable
         for sport_key, sport_values in appvar_util.get_sport_names_appvar().iteritems():
             events_by_sport_league[sport_key] = {}
@@ -446,7 +417,7 @@ class PinnacleScraper(Scraper):
                     events_by_sport_league[sport_key][league_key].append(event)
         return events_by_sport_league
 
-sys.path.append('libs/pytz-2014.7')
+sys.path.append('libs/'+constants.LIB_DIR_PYTZ)
 import pytz
 
 # TODO: Xscores and ScoresPro should have a common parent class below general Scraper class
@@ -484,16 +455,19 @@ class XscoresScraper(Scraper):
             
             feed_url = 'http://www.'+self.__XSCORES_FEED+'/'+appvar_util.get_sport_names_appvar()[self.sport_key]['scoreboard']+'/finished_games/'+scoreboard_date_string
         
-            if _increment_request(self.__XSCORES_FEED) > 1:
-                time.sleep(random.uniform(8.2, 15.5))
+            soup = requests_util.request(
+                                  request_lib        = requests_util.REQUEST_LIB_REQUESTS, 
+                                  response_type      = requests_util.RESPONSE_TYPE_HTML, 
+                                  response_encoding  = None, 
+                                  min_wait_time       = 8.2, 
+                                  max_wait_time       = 15.5, 
+                                  max_hits           = len(appvar_util.get_sport_names_appvar()),
+                                  url               = feed_url,
+                                  headers           = sys_util.get_header()
+                                  )
             
-            logging.info('REQUESTING (custom header) '+feed_url)
-            feed_html = requests.get(feed_url, headers=sys_util.get_header())
-            
-            if feed_html.status_code != 200:
-                logging.debug('Scores Status Code: '+str(feed_html.status_code))
-            
-            soup = BeautifulSoup(feed_html.text)
+            if not soup:
+                return self._scores_by_date[scoreboard_date_string]
             
             scores_rows = None
             
@@ -626,67 +600,70 @@ class ScoresProScraper(Scraper):
             
             feed_url = 'http://www.'+self.__FEED+'/'+appvar_util.get_sport_names_appvar()[self.sport_key]['scoreboard']+'/'+appvar_util.get_league_names_appvar()[self.sport_key][self.league_key]['scoreboard']
             
-            if _increment_request(self.__FEED) > 1:
-                time.sleep(random.uniform(8.2, 15.5))
+            soup = requests_util.request(
+                                  request_lib        = requests_util.REQUEST_LIB_REQUESTS, 
+                                  response_type      = requests_util.RESPONSE_TYPE_HTML, 
+                                  response_encoding  = requests_util.RESPONSE_ENCODING_UTF8, 
+                                  min_wait_time       = 8.2, 
+                                  max_wait_time       = 15.5, 
+                                  max_hits           = len(appvar_util.get_sport_names_appvar()),
+                                  url               = feed_url,
+                                  headers           = sys_util.get_header()
+                                  )
             
-            logging.info('REQUESTING (custom header) '+feed_url)
-            feed_html = requests.get(feed_url, headers=sys_util.get_header())
-            
-            if feed_html.status_code != 200:
-                logging.debug('Handball Status Code: '+str(feed_html.status_code))
-                
-            feed_html.encoding = 'utf-8'
-            soup = BeautifulSoup(feed_html.text)
-            
-            results_table = soup.find('div', {'id' : 'national'}).find('table')
-            score_tables = []
-            for results_table_row in results_table.next_siblings:
-                if isinstance(results_table_row, bs4_Tag) and results_table_row.name == 'div':
-                    score_tables.append(results_table_row)
-                elif isinstance(results_table_row, bs4_Tag) and results_table_row.name == 'table':
-                    break
-            
-            scores_rows = []
-            correct_date = False
-            for score_table_row in score_tables:
-                row_date = score_table_row.find('li', {'class' : 'ncet_date'})
-                if row_date:
-                    if correct_date is False:
-                        if row_date.get_text().strip() == scoreboard_date_string:
-                            correct_date = True
-                        elif len(scores_rows) > 0:
+            if soup:
+                results_table = soup.find('div', {'id' : 'national'}).find('table')
+                score_tables = []
+                for results_table_row in results_table.next_siblings:
+                    try:
+                        if results_table_row.name == 'div':
+                            score_tables.append(results_table_row)
+                        elif results_table_row.name == 'table':
                             break
-                    else:
-                        break
-                elif correct_date is True:
-                    if score_table_row.find('table'):
-                        scores_rows += score_table_row.find_all('table', recursive=False)
-                        correct_date = False
-            
-            for score_row in scores_rows:
-                row_status = score_row.find('td', {'class' : 'status'}).get_text().strip()
+                    except AttributeError:
+                        pass
                 
-                row_game_time = self._timezone.localize(datetime.strptime(scoreboard_date_string + ' ' + score_row.find('td', {'class' : 'datetime'}).get_text().replace('(','').replace(')','').strip(), '%a %d %b %Y %H:%M'))
+                scores_rows = []
+                correct_date = False
+                for score_table_row in score_tables:
+                    row_date = score_table_row.find('li', {'class' : 'ncet_date'})
+                    if row_date:
+                        if correct_date is False:
+                            if row_date.get_text().strip() == scoreboard_date_string:
+                                correct_date = True
+                            elif len(scores_rows) > 0:
+                                break
+                        else:
+                            break
+                    elif correct_date is True:
+                        if score_table_row.find('table'):
+                            scores_rows += score_table_row.find_all('table', recursive=False)
+                            correct_date = False
                 
-                row_teams = score_row.find_all('tr')
-                row_home_team = row_teams[0].find('td', {'class' : 'hometeam'}).get_text().strip()
-                row_away_team = row_teams[1].find('td', {'class' : 'awayteam'}).get_text().strip()
+                for score_row in scores_rows:
+                    row_status = score_row.find('td', {'class' : 'status'}).get_text().strip()
+                    
+                    row_game_time = self._timezone.localize(datetime.strptime(scoreboard_date_string + ' ' + score_row.find('td', {'class' : 'datetime'}).get_text().replace('(','').replace(')','').strip(), '%a %d %b %Y %H:%M'))
+                    
+                    row_teams = score_row.find_all('tr')
+                    row_home_team = row_teams[0].find('td', {'class' : 'hometeam'}).get_text().strip()
+                    row_away_team = row_teams[1].find('td', {'class' : 'awayteam'}).get_text().strip()
+                    
+                    row_score_home = row_teams[0].find('td', {'class' : 'ts_setB'}).get_text().strip()
+                    row_score_away = row_teams[1].find('td', {'class' : 'ts_setB'}).get_text().strip()
                 
-                row_score_home = row_teams[0].find('td', {'class' : 'ts_setB'}).get_text().strip()
-                row_score_away = row_teams[1].find('td', {'class' : 'ts_setB'}).get_text().strip()
-            
-                score_row_obj = ScoreRowData()
-                score_row_obj.sport = self.sport_key
-                score_row_obj.league = self.league_key
-                score_row_obj.datetime = row_game_time
-                score_row_obj.team_away = row_away_team
-                score_row_obj.team_home = row_home_team
-                score_row_obj.status = row_status
-                score_row_obj.regulation_score_away = row_score_away
-                score_row_obj.regulation_score_home = row_score_home
-                score_row_obj.final_score_away = row_score_away
-                score_row_obj.final_score_home = row_score_home
-                score_row_obj.extra_time = False
-            
-                self._scores_by_date[scoreboard_date_string].append(score_row_obj)
+                    score_row_obj = ScoreRowData()
+                    score_row_obj.sport = self.sport_key
+                    score_row_obj.league = self.league_key
+                    score_row_obj.datetime = row_game_time
+                    score_row_obj.team_away = row_away_team
+                    score_row_obj.team_home = row_home_team
+                    score_row_obj.status = row_status
+                    score_row_obj.regulation_score_away = row_score_away
+                    score_row_obj.regulation_score_home = row_score_home
+                    score_row_obj.final_score_away = row_score_away
+                    score_row_obj.final_score_home = row_score_home
+                    score_row_obj.extra_time = False
+                
+                    self._scores_by_date[scoreboard_date_string].append(score_row_obj)
         return self._scores_by_date[scoreboard_date_string]

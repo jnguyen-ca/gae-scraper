@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+import constants
+
 import sys
-sys.path.append('libs/pytz-2014.7')
+sys.path.append('libs/'+constants.LIB_DIR_PYTZ)
 sys.path.append('utils')
 
 from google.appengine.ext import webapp
@@ -14,7 +16,6 @@ from utils import appvar_util
 
 # import json
 import logging
-import constants
 import teamconstants
 import pytz
 import models
@@ -168,7 +169,7 @@ class TipDisplay(webapp.RequestHandler):
                 frontpage.DISPLAY_VALUE_RESULTS == display_type 
                 and tip_instance.archived is not True
             ):
-                break
+                continue
             
             # store tips by sport and league
             if tip_instance.game_sport not in not_archived_tips_values_by_sport_league:

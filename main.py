@@ -11,6 +11,7 @@ import tipdisplay
 import dashboard
 import settings
 import taskhandler
+import superadmin
 
 application = webapp.WSGIApplication([
                                       ('/', frontpage.FrontPage), 
@@ -19,6 +20,7 @@ application = webapp.WSGIApplication([
                                       ('/archive', TipArchive),
                                       ('/dashboard', dashboard.Dashboard),
                                       ('/appvars', settings.AppSettings),
+                                      ('/superadmin', superadmin.SuperAdmin),
                                     ], 
                                     debug=True)
 

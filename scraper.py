@@ -406,8 +406,8 @@ class PinnacleScraper(Scraper):
                     event.team_home = participant_name_home
                     event.rot_away = participant_rot_num_visiting
                     event.rot_home = participant_rot_num_home
-                    event.spread_away = {event.LINE_KEY_POINTS : period_spread_adjust_visiting, event.LINE_KEY_ODDS : period_spread_visiting}
-                    event.spread_home = {event.LINE_KEY_POINTS : period_spread_adjust_home, event.LINE_KEY_ODDS : period_spread_home}
+                    event.spread_away = {event.LINE_KEY_POINTS : period_spread_visiting, event.LINE_KEY_ODDS : period_spread_adjust_visiting}
+                    event.spread_home = {event.LINE_KEY_POINTS : period_spread_home, event.LINE_KEY_ODDS : period_spread_adjust_home}
                     event.moneyline_away = period_moneyline_visiting
                     event.moneyline_home = period_moneyline_home
                     event.moneyline_draw = period_moneyline_draw

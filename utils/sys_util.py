@@ -102,6 +102,8 @@ def add_mail(mail_title, mail_message, **kwargs):
     try:
         if mail_title not in __MAIL_OBJECT__:
             __MAIL_OBJECT__[mail_title] = ''
+        elif __MAIL_OBJECT__[mail_title][-1] != "\n":
+            __MAIL_OBJECT__[mail_title] += "\n"
             
         __MAIL_OBJECT__[mail_title] += mail_message
     except TypeError:

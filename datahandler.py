@@ -503,15 +503,14 @@ class WettpointData(DataHandler):
             self.wettpoint_tables_memcache = {}
             logging.debug('Checking all sports due to memcache expiration')
             for sport_key in appvar_util.get_sport_names_appvar():
-                if sport_key not in valid_sports:
-                    valid_sports[sport_key] = None
+                valid_sports[sport_key] = None
         
         # only want to do a wettpoint request if there actually exists a tip for the sport
         empty_sports_to_remove = []
         for sport_key, debug_message in valid_sports.iteritems():
             if sport_key not in self.tipData.not_previously_elapsed_tips:
                 empty_sports_to_remove.append(sport_key)
-            else:
+            elif debug_message:
                 logging.debug(debug_message)
         
         for sport_key in empty_sports_to_remove:
@@ -1190,18 +1189,23 @@ class BookieData(DataHandler):
                         
                         # should be only one result if it exists
                         if query_count > 1:
-                            error_message = '''
-                            Multiple matching datastore Tip instances: %s %s (%d) @ %s (%d) [%s / %s]
-                            ''' % (
-                                   event.datetime.strftime(constants.DATETIME_ISO_8601_FORMAT),
-                                   team_name_away,
-                                   event.rot_away,
-                                   team_name_home,
-                                   event.rot_home,
-                                   sport_key,
-                                   league_key
-                                   )
-                            raise DatastoreException(error_message)
+                            try:
+                                error_message = '''
+                                Multiple matching datastore Tip instances: %s %s (%d) @ %s (%d) [%s / %s]
+                                ''' % (
+                                       event.datetime.strftime(constants.DATETIME_ISO_8601_FORMAT),
+                                       team_name_away,
+                                       event.rot_away,
+                                       team_name_home,
+                                       event.rot_home,
+                                       sport_key,
+                                       league_key
+                                       )
+                                raise DatastoreException(error_message)
+                            except DatastoreException as error:
+                                # raise exception to send mail but continue on without this event
+                                logging.warning(error)
+                                continue
                             
                         # tip object exists, grab it
                         tip_instance = query.get()
@@ -1221,49 +1225,58 @@ class BookieData(DataHandler):
                                 or tip_instance.game_team_home != team_name_without_game_string_home
                             ):
                                 # or something is wrong and we got the wrong Tip
-                                error_message = '''
-                                Retrieved incorrect Tip! 
-                                Retrieved: %s %s (%d) @ %s (%d) [%s / %s]
-                                Expected: %s %s (%d) @ %s (%d) [%s / %s]
-                                ''' % (
-                                       tip_instance.date.strftime(constants.DATETIME_ISO_8601_FORMAT),
-                                       tip_instance.game_team_away,
-                                       tip_instance.rot_away,
-                                       tip_instance.game_team_home,
-                                       tip_instance.rot_home,
-                                       tip_instance.game_sport,
-                                       tip_instance.game_league,
-                                       event.datetime.strftime(constants.DATETIME_ISO_8601_FORMAT),
-                                       team_name_away,
-                                       event.rot_away,
-                                       team_name_home,
-                                       event.rot_home,
-                                       sport_key,
-                                       league_key
-                                       )
-                                raise DatastoreException(error_message)
+                                # other possibility is that it's a game with team names not yet added to
+                                # the app var and then the name changed throughout the day
+                                try:
+                                    error_message = '''
+                                    Retrieved incorrect Tip! 
+                                    Retrieved: %s %s (%d) @ %s (%d) [%s / %s]
+                                    Expected: %s %s (%d) @ %s (%d) [%s / %s]
+                                    ''' % (
+                                           tip_instance.date.strftime(constants.DATETIME_ISO_8601_FORMAT),
+                                           tip_instance.game_team_away,
+                                           tip_instance.rot_away,
+                                           tip_instance.game_team_home,
+                                           tip_instance.rot_home,
+                                           tip_instance.game_sport,
+                                           tip_instance.game_league,
+                                           event.datetime.strftime(constants.DATETIME_ISO_8601_FORMAT),
+                                           team_name_away,
+                                           event.rot_away,
+                                           team_name_home,
+                                           event.rot_home,
+                                           sport_key,
+                                           league_key
+                                           )
+                                    raise DatastoreException(error_message)
+                                except DatastoreException as error:
+                                    # raise exception to send mail but continue on without this event
+                                    logging.warning(error)
+                                    continue
                             
                             # team names matched names without game string so we'll want to update this Tip with the doubleheader info
-                            logging.info('Updating game team names: %s %s @ %s to %s @ %s' % (
-                                                                                              tip_instance.date.strftime(constants.DATETIME_ISO_8601_FORMAT),
-                                                                                               tip_instance.game_team_away,
-                                                                                               tip_instance.game_team_home,
-                                                                                               event.team_away,
-                                                                                               event.team_home
+                            update_message = 'Updating game team names: %s %s @ %s to %s @ %s' % (
+                                                                                            tip_instance.date.strftime(constants.DATETIME_ISO_8601_FORMAT),
+                                                                                            tip_instance.game_team_away,
+                                                                                            tip_instance.game_team_home,
+                                                                                            event.team_away,
+                                                                                            event.team_home
                                                                                               )
-                                         
-                                         )
+                            sys_util.add_mail(constants.MAIL_TITLE_UPDATE_NOTIFICATION, update_message, logging='info')
+                            logging.info(update_message)
                             update_tip_instance = True
                             
                         # second check the datetime (e.g. game could have been delayed)
                         # TODO: add margin of error (because different bookies might have slightly different times)
                         if tip_instance.date != event.datetime:
-                            logging.info('Updating game date: %s %s @ %s to %s' % (
+                            update_message = 'Updating game date: %s %s @ %s to %s' % (
                                                                                    tip_instance.date.strftime(constants.DATETIME_ISO_8601_FORMAT),
                                                                                    tip_instance.game_team_away,
                                                                                    tip_instance.game_team_home,
                                                                                    event.datetime.strftime(constants.DATETIME_ISO_8601_FORMAT)
-                                                                                   ))
+                                                                                   )
+                            sys_util.add_mail(constants.MAIL_TITLE_UPDATE_NOTIFICATION, update_message, logging='info')
+                            logging.info(update_message)
                             update_tip_instance = True
                             
                     if update_tip_instance is True:

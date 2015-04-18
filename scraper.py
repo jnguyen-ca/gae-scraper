@@ -591,7 +591,7 @@ class ScoresProScraper(Scraper):
     @sys_util.function_timer()
     def scrape(self, dataDatetime):
         scoreboard_game_time = self.convert_utc_to_local(dataDatetime)
-        scoreboard_date_string = scoreboard_game_time.strftime('%d-%m')
+        scoreboard_date_string = scoreboard_game_time.strftime('%a %d %b %Y')
         
         # have we gotten the scoreboard for this day before
         # only get it if we don't already have it

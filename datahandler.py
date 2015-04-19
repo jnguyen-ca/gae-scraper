@@ -222,11 +222,14 @@ class TipData(DataHandler):
                     
                     # if tip does not have corresponding event in any of the bookies then it may have been ppd
                     event_is_missing = True
+                    bookies_are_down = True
                     for bookieKey, bookieObj in self.bookieDict.iteritems():
                         '@type bookieObj: BookieData'
                         if bookieObj.status == bookieObj.STATUS_ERROR:
                             # bookie scraper failed, move onto next bookie
                             continue
+                        
+                        bookies_are_down = False
                         
                         '@type eventData: scraper.BookieScrapeData'
                         eventData = bookieObj.get_event_from_key(tip_instance.key)
@@ -386,7 +389,7 @@ class TipData(DataHandler):
                     
                     if event_is_missing is not True:
                         self.not_previously_elapsed_tips[sport_key][league_key][tip_instance_index] = tip_instance
-                    else:
+                    elif bookies_are_down is not True:
                         # either game was taken off the board (for any number of reasons) - could be temporary
                         # or game is a duplicate (something changed that i didn't account for)
                         mail_message = 'Missing from bookies: '+_game_details_string(tip_instance)+"\n"
@@ -1088,70 +1091,30 @@ class BookieData(DataHandler):
                     team_name_away = event.team_away
                     team_name_home = event.team_home
                     
-                    team_name_without_game_string_away = team_name_without_game_string_home = False
+                    team_name_without_game_string_away = None
+                    team_name_without_game_string_home = None
                     # if a team name does not exist (as an alias or otherwise) then we'll want to email the admin later
                     missing_team_name = []
                     # convert the scraped team names to the team names as they are stored in the datastore
                     for team_name in [team_name_away, team_name_home]:
-                        # if the game is a doubleheader then we'll need both the team name with the game string and without
-                        # since a doubleheader may be stored as a Tip with the team name as is (with the game string) or
-                        # it could be a game that was converted to a doubleheader (without game string)
-                        team_name_without_game_string, team_game_string = teamconstants.split_doubleheaders_team_names(team_name)
-                        if team_game_string is not None:
-                            try:
-                                datastore_name = teamconstants.get_team_datastore_name_and_id(sport_key, league_key, team_name_without_game_string)[0]
-                            except KeyError:
-                                # league does not have team names data set up (correctly)
-                                datastore_name = None
-
-                            # the datastore name for this team was either retrieved or it doesn't exist
-                            if datastore_name is not None:
-                                # update the names all the time since we need to update the without game string variables for query use anyways
-                                if team_name == team_name_away:
-                                    if datastore_name != team_name:
-                                        logging.info('(3) Changing pinnacle name (%s) to datastore (%s)' % (
-                                                                                                            team_name_away,
-                                                                                                            team_game_string + datastore_name
-                                                                                                            ))
-                                    team_name_without_game_string_away = datastore_name
-                                    team_name_away = team_game_string + datastore_name
-                                elif team_name == team_name_home:
-                                    if datastore_name != team_name:
-                                        logging.info('(4) Changing pinnacle name (%s) to datastore (%s)' % (
-                                                                                                            team_name_home,
-                                                                                                            team_game_string + datastore_name
-                                                                                                            ))
-                                    team_name_without_game_string_home = datastore_name
-                                    team_name_home = team_game_string + datastore_name
-                            else:
-                                # will still add this event to the datastore but email the admins about the missing team names
-                                missing_team_name.append(team_name)
+                        datastore_team_name, datastore_team_name_without_game_string = self._get_team_datastore_name(sport_key, league_key, team_name)
+                        
+                        if datastore_team_name is None:
+                            # will still add this event to the datastore but email the admins about the missing team names
+                            missing_team_name.append(team_name)
                         else:
-                            try:
-                                datastore_name = teamconstants.get_team_datastore_name_and_id(sport_key, league_key, team_name)[0]
-                            except KeyError:
-                                # league does not have team names data set up (correctly)
-                                datastore_name = None
-                            
-                            # the datastore name for this team was either retrieved or it doesn't exist
-                            if datastore_name is not None:
-                                # only update the team name if it's actually different
-                                if datastore_name != team_name:
-                                    if team_name == team_name_away:
-                                        logging.info('(1) Changing pinnacle name (%s) to datastore (%s)' % (
-                                                                                                            team_name_away,
-                                                                                                            datastore_name
-                                                                                                            ))
-                                        team_name_away = datastore_name
-                                    elif team_name == team_name_home:
-                                        logging.info('(2) Changing pinnacle name (%s) to datastore (%s)' % (
-                                                                                                            team_name_home,
-                                                                                                            datastore_name
-                                                                                                            ))
-                                        team_name_home = datastore_name
-                            else:
-                                # will still add this event to the datastore but email the admins about the missing team names
-                                missing_team_name.append(team_name)
+                            if datastore_team_name != team_name:
+                                logging.info('Changing pinnacle name (%s) to datastore (%s)' % (
+                                                                                                team_name,
+                                                                                                datastore_team_name
+                                                                                                ))
+                                
+                            if team_name == team_name_away:
+                                team_name_without_game_string_home = datastore_team_name_without_game_string
+                                team_name_away = datastore_team_name
+                            elif team_name == team_name_home:
+                                team_name_without_game_string_away = datastore_team_name_without_game_string
+                                team_name_home = datastore_team_name
 
                     # determine whether Tip object for this event exists or not based on rotation #s
                     self.datastore_reads += 1
@@ -1164,56 +1127,79 @@ class BookieData(DataHandler):
                                     event.datetime + timedelta(hours=_TIME_ERROR_MARGIN_HOURS_GAME_MATCH),
                                 )
                     
-                    # count: 0 = insert new Tip, 1 = get existing Tip, 2 = something wrong
-                    query_count = query.count(limit=2)
+                    try:
+                        tip_instance = self._get_tip_from_query(query)
+                    except DatastoreException as error:
+                        # a previous Tip could have had its rotation numbers changed so that now there are 2
+                        # Tips that match this query, will have to ignore this exception since we're expecting
+                        # it to fix itself with the softer match
+                        tip_instance = None
                     
                     # only update the Tip (using a datastore write) if we need to
                     update_tip_instance = False
-                    if query_count == 0:
-                        # no tip object exists yet, create new one with the query data
-                        self.datastore_writes += 1
-                        tip_instance = models.Tip()
-                        tip_instance.game_sport = sport_key
-                        tip_instance.game_league = league_key
-                        tip_instance.rot_away = event.rot_away
-                        tip_instance.rot_home = event.rot_home
-                        
-                        update_tip_instance = True
-                        
-                        # if the team names were missing their datastore constants, email the admin about it (only once when inserting)
-                        if len(missing_team_name) > 0:
-                            mail_message = '%s for [%s / %s] does not exist!' % (' & '.join(missing_team_name), league_key, sport_key) + "\n"
-                            sys_util.add_mail(constants.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
-                    else:
-                        self.datastore_reads += 2
-                        
-                        # should be only one result if it exists
-                        if query_count > 1:
-                            try:
-                                error_message = '''
-                                Multiple matching datastore Tip instances: %s %s (%d) @ %s (%d) [%s / %s]
-                                ''' % (
-                                       event.datetime.strftime(constants.DATETIME_ISO_8601_FORMAT),
-                                       team_name_away,
-                                       event.rot_away,
-                                       team_name_home,
-                                       event.rot_home,
-                                       sport_key,
-                                       league_key
-                                       )
-                                raise DatastoreException(error_message)
-                            except DatastoreException as error:
-                                # raise exception to send mail but continue on without this event
-                                logging.warning(error)
-                                continue
+                    
+                    if (
+                        # either a event with no corresponding Tip or...
+                        tip_instance is None
+                        or (
+                            # ...a possibility that rotation numbers within the league have been switched around
+                            # for more confidence that the rot numbers simply changed from when the event first appeared
+                            # make sure the team names don't match at all
+                            tip_instance.game_team_away != team_name_away 
+                            and tip_instance.game_team_home != team_name_home
+                            and tip_instance.game_team_away != team_name_without_game_string_away 
+                            and tip_instance.game_team_home != team_name_without_game_string_home
+                        )
+                    ):
+                        # do a softer match on team names and datetime margin error
+                        self.datastore_reads += 1
+                        query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND game_team_away = :3 AND game_team_home = :4 AND date >= :5 AND date <= :6',
+                                                sport_key,
+                                                league_key,
+                                                team_name_away,
+                                                team_name_home,
+                                                event.datetime - timedelta(hours=_TIME_ERROR_MARGIN_HOURS_GAME_MATCH),
+                                                event.datetime + timedelta(hours=_TIME_ERROR_MARGIN_HOURS_GAME_MATCH),
+                                               )
                             
-                        # tip object exists, grab it
-                        tip_instance = query.get()
-                        
+                        try:
+                            tip_instance = self._get_or_create_tip_from_query(query)
+                            # either new or needs updating
+                            update_tip_instance = True
+                            if tip_instance.game_sport is None:
+                                # completely new Tip
+                                # if the team names were missing their datastore constants, email the admin about it (only once when inserting)
+                                if len(missing_team_name) > 0:
+                                    mail_message = '%s for [%s / %s] does not exist!' % (' & '.join(missing_team_name), league_key, sport_key) + "\n"
+                                    sys_util.add_mail(constants.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
+                            else:
+                                # otherwise a Tip whose rotation numbers are wrong
+                                update_message = 'Updating game rotation numbers: %s %s (%d) @ %s (%d) to %s (%d) @ %s (%d) [%s / %s]' % (
+                                                                                            tip_instance.date.strftime(constants.DATETIME_ISO_8601_FORMAT),
+                                                                                            tip_instance.game_team_away,
+                                                                                            tip_instance.rot_away,
+                                                                                            tip_instance.game_team_home,
+                                                                                            tip_instance.rot_home,
+                                                                                            team_name_away,
+                                                                                            event.rot_away,
+                                                                                            team_name_home,
+                                                                                            event.rot_home,
+                                                                                            tip_instance.game_league,
+                                                                                            tip_instance.game_sport,
+                                                                                          )
+                                sys_util.add_mail(constants.MAIL_TITLE_UPDATE_NOTIFICATION, update_message, logging='info')
+                                logging.info(update_message)
+                        except DatastoreException as error:
+                            # raise exception to send mail but continue on without this event
+                            logging.warning(error)
+                            continue
+                    
+                    if tip_instance.game_sport is not None:
+                        # only if Tip is not a new one
                         # determine if information is the same as it should be
                         # possibly need to update the date and/or team names (e.g. updated doubleheader)
                         
-                        # first check the team names (e.g. doubleheader added)
+                        # check the team names (e.g. doubleheader added)
                         if (
                             tip_instance.game_team_away != team_name_away 
                             or tip_instance.game_team_home != team_name_home
@@ -1224,9 +1210,9 @@ class BookieData(DataHandler):
                                 tip_instance.game_team_away != team_name_without_game_string_away 
                                 or tip_instance.game_team_home != team_name_without_game_string_home
                             ):
-                                # or something is wrong and we got the wrong Tip
-                                # other possibility is that it's a game with team names not yet added to
-                                # the app var and then the name changed throughout the day
+                                # possibilities for how it got here:
+                                # 1) a team name in bookie was not in app var, new Tip for it is created, team name then changes on bookie
+                                # 2) something is really wrong and we got the completely wrong Tip
                                 try:
                                     error_message = '''
                                     Retrieved incorrect Tip! 
@@ -1255,12 +1241,14 @@ class BookieData(DataHandler):
                                     continue
                             
                             # team names matched names without game string so we'll want to update this Tip with the doubleheader info
-                            update_message = 'Updating game team names: %s %s @ %s to %s @ %s' % (
+                            update_message = 'Updating game team names: %s %s @ %s to %s @ %s [%s / %s]' % (
                                                                                             tip_instance.date.strftime(constants.DATETIME_ISO_8601_FORMAT),
                                                                                             tip_instance.game_team_away,
                                                                                             tip_instance.game_team_home,
                                                                                             event.team_away,
-                                                                                            event.team_home
+                                                                                            event.team_home,
+                                                                                            tip_instance.game_league,
+                                                                                            tip_instance.game_sport
                                                                                               )
                             sys_util.add_mail(constants.MAIL_TITLE_UPDATE_NOTIFICATION, update_message, logging='info')
                             logging.info(update_message)
@@ -1269,11 +1257,13 @@ class BookieData(DataHandler):
                         # second check the datetime (e.g. game could have been delayed)
                         # TODO: add margin of error (because different bookies might have slightly different times)
                         if tip_instance.date != event.datetime:
-                            update_message = 'Updating game date: %s %s @ %s to %s' % (
+                            update_message = 'Updating game date: %s %s @ %s to %s [%s / %s]' % (
                                                                                    tip_instance.date.strftime(constants.DATETIME_ISO_8601_FORMAT),
                                                                                    tip_instance.game_team_away,
                                                                                    tip_instance.game_team_home,
-                                                                                   event.datetime.strftime(constants.DATETIME_ISO_8601_FORMAT)
+                                                                                   event.datetime.strftime(constants.DATETIME_ISO_8601_FORMAT),
+                                                                                   tip_instance.game_league,
+                                                                                   tip_instance.game_sport
                                                                                    )
                             sys_util.add_mail(constants.MAIL_TITLE_UPDATE_NOTIFICATION, update_message, logging='info')
                             logging.info(update_message)
@@ -1281,9 +1271,13 @@ class BookieData(DataHandler):
                             
                     if update_tip_instance is True:
                         # add / overwrite basic information to tip object
+                        tip_instance.game_sport = sport_key
+                        tip_instance.game_league = league_key
                         tip_instance.date = event.datetime
                         tip_instance.game_team_away = team_name_away
                         tip_instance.game_team_home = team_name_home
+                        tip_instance.rot_away = event.rot_away
+                        tip_instance.rot_home = event.rot_home
                         
                         self.datastore_writes += 1
                         tip_instance_key = tip_instance.put()
@@ -1294,3 +1288,62 @@ class BookieData(DataHandler):
                     
                     # Tips will get their lines updated so keep Tip associated with their BookieScrapeData for later use
                     self._tipkey_to_event[tip_instance_key] = event
+                    
+    def _get_team_datastore_name(self, sport_key, league_key, bookie_team_name):
+        # if the game is a doubleheader then we'll need both the team name with the game string and without
+        # since a doubleheader may be stored as a Tip with the team name as is (with the game string) or
+        # it could be a game that was converted to a doubleheader (without game string)
+        bookie_team_name_without_game_string, team_game_string = teamconstants.split_doubleheaders_team_names(bookie_team_name)
+        try:
+            datastore_name = teamconstants.get_team_datastore_name_and_id(sport_key, league_key, bookie_team_name_without_game_string)[0]
+        except KeyError:
+            # league does not have team names data set up (correctly)
+            datastore_name = None
+
+        # the datastore name for this team was either retrieved or it doesn't exist
+        datastore_team_name_without_game_string = datastore_name
+        
+        if team_game_string is not None:
+            datastore_team_name = team_game_string + datastore_name
+        else:
+            datastore_team_name = datastore_name
+            
+        return datastore_team_name, datastore_team_name_without_game_string
+    
+    def _get_tip_from_query(self, query):
+        # count: 0 = insert new Tip, 1 = get existing Tip, 2 = something wrong
+        query_count = query.count(limit=2)
+        
+        if query_count == 0:
+            tip_instance = None
+        else:
+            self.datastore_reads += 2
+            tip_instance = query.get()
+              
+            # should be only one result if it exists
+            if query_count > 1:
+                error_message = '''
+                                Multiple matching datastore Tip instances: %s (%d) @ %s (%d) [%s / %s]
+                                ''' % (
+                                       tip_instance.game_team_away,
+                                       tip_instance.rot_away,
+                                       tip_instance.game_team_home,
+                                       tip_instance.rot_home,
+                                       tip_instance.game_sport,
+                                       tip_instance.game_league
+                                       )
+                raise DatastoreException(error_message)
+            
+        return tip_instance
+    
+    def _get_or_create_tip_from_query(self, query):
+        if query:
+            tip_instance = self._get_tip_from_query(query)
+        else:
+            tip_instance = None
+        
+        if tip_instance is None:
+            self.datastore_writes += 1
+            tip_instance = models.Tip()
+            
+        return tip_instance

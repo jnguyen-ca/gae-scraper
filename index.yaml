@@ -19,6 +19,14 @@ indexes:
   - name: rot_away
   - name: rot_home
   - name: date
+  
+- kind: Tip
+  properties:
+  - name: game_league
+  - name: game_sport
+  - name: game_team_away
+  - name: game_team_home
+  - name: date
 
 ####### DATAHANDLER.BOOKIEDATA.UPDATE_TIPS #######
 

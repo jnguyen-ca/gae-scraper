@@ -6,7 +6,7 @@ import constants
 
 import sys
 sys.path.append('libs/oauth2client-1.3')
-sys.path.append('libs/gspread-0.2.2')
+sys.path.append('libs/gspread-0.2.5')
 sys.path.append('libs/'+constants.LIB_DIR_PYTZ)
 sys.path.append('utils')
 

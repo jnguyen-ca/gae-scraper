@@ -204,7 +204,7 @@ class TipDisplay(webapp.RequestHandler):
                 league_key = sport_league_date[1]
                 
                 # sort all the league's tips
-                tips_values = sorted(not_archived_tips_values_by_sport_league[sport_key][league_key], key=lambda x: x.date)
+                tips_values = sorted(not_archived_tips_values_by_sport_league[sport_key][league_key], key=lambda x: (x.date, x.rot_home))
                 
                 wettpoint_table = 'http://www.forum.'+constants.WETTPOINT_FEED+'/fr_toptipsys.php?cat='+appvar_util.get_sport_names_appvar()[sport_key]['wettpoint']
                 

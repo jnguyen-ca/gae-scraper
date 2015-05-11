@@ -303,16 +303,16 @@ class PinnacleScraper(Scraper):
                 league_xpath = None
                 # single league can have multiple league names (ex. conferences)
                 if isinstance(pinnacle_league_key, list):
-                    for pinnacle_league_value in pinnacle_league_key.values():
+                    for pinnacle_league_value in pinnacle_league_key:
                         if league_xpath is None:
                             league_xpath = "league='"+pinnacle_league_value+"'"
                         else:
-                            league_xpath += " OR league='"+pinnacle_league_value+"'"
+                            league_xpath += " or league='"+pinnacle_league_value+"'"
                 else:
                     league_xpath = "league='"+pinnacle_league_key+"'"
                     
                 # get all the game (event) tags for this league (not live games)
-                all_games = lxml_tree.xpath("//event[sporttype='"+sport_values['pinnacle']+"' and ("+league_xpath+") and IsLive='No']")
+                all_games = lxml_tree.xpath("//event[sporttype='"+sport_values['pinnacle']+"' and IsLive='No']["+league_xpath+"]")
                 
                 for event_tag in all_games:
                     # convert game datetime string to standard GMT datettime object
@@ -347,7 +347,8 @@ class PinnacleScraper(Scraper):
                     elif (
                           participant_name_visiting == '2nd Half Wagering' 
                           or participant_name_home == '2nd Half Wagering'
-                          or 'Pre-Game Wagering' in participant_name_visiting
+                          or 'Pre-Game Wagering' in participant_name_visiting 
+                          or 'Will Be Available For' in participant_name_home
                       ):
                         continue
                     

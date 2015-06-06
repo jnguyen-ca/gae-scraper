@@ -17,3 +17,6 @@ def get(key, namespace=None, for_cas=False):
     
 def set(key, value, time=0, min_compress_len=0, namespace=None):
     return memcache.set(key, value, time=time, min_compress_len=min_compress_len, namespace=namespace)
+
+def delete(key, seconds=0, namespace=None):
+    return memcache.delete(key, seconds=seconds, namespace=namespace)

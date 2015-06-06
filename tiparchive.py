@@ -45,6 +45,22 @@ SPREADSHEET_LIMIT_ROW = 3
 
 SPREADSHEET_DATE_FORMAT = '%m/%d/%Y' # format for date stored in spreadsheet
 
+def reset_tiparchive_memcache():
+    memcache_util.delete(memcache_util.MEMCACHE_KEY_TIPARCHIVE_CLIENT)
+    memcache_util.delete(memcache_util.MEMCACHE_KEY_TIPARCHIVE_SPREADSHEET)
+    return
+
+def test_spreadsheet(sh):
+    valid_sh = False
+    try:
+        sh.sheet1
+        valid_sh = True
+    except Exception as e:
+        logging.warning('Spreadsheet is not valid.')
+        logging.warning(e)
+        
+    return valid_sh
+
 def get_client():
     gclient = memcache_util.get(memcache_util.MEMCACHE_KEY_TIPARCHIVE_CLIENT)
     if gclient is None:
@@ -68,6 +84,11 @@ def get_client():
 
 def get_spreadsheet():
     spreadsheet = memcache_util.get(memcache_util.MEMCACHE_KEY_TIPARCHIVE_SPREADSHEET)
+    
+    if spreadsheet is not None and not test_spreadsheet(spreadsheet):
+        reset_tiparchive_memcache()
+        spreadsheet = None
+    
     if spreadsheet is None:
         if sys_util.is_local():
             logging.info('Opening Test Tracking spreadsheet...')

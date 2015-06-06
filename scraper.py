@@ -222,13 +222,13 @@ class WettpointScraper(Scraper):
                     h2h_risk = float(h2h_risk_text)
                     
                     if h2h_risk == 10.0 or h2h_risk == 0.0:
-                        mail_message = 'Special case of risk factor (%s) : %s @ %s [%s / %s]'+"\n\n" % (
-                                                                                                         str(h2h_risk_text),
-                                                                                                         team_away,
-                                                                                                         team_home,
-                                                                                                         league_key,
-                                                                                                         self.sport_key
-                                                                                                         )
+                        mail_message = 'Special case of risk factor (%s) : %s @ %s [%s / %s]' % (
+                                                                                                 str(h2h_risk_text),
+                                                                                                 team_away,
+                                                                                                 team_home,
+                                                                                                 league_key,
+                                                                                                 self.sport_key
+                                                                                                 )+"\n\n"
                         sys_util.add_mail(constants.MAIL_TITLE_TIP_WARNING, mail_message, logging='warning')
                         
                         if h2h_risk == 10.0:

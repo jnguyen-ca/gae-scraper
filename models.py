@@ -24,6 +24,9 @@ TIP_STAKE_TOTAL_NONE = 8
 
 TIP_HASH_DATETIME_FORMAT = '%d.%m.%Y %H:%M'
 
+TIPLINE_KEY_POINTS = 'points'
+TIPLINE_KEY_ODDS = 'odds'
+
 class DisplaySession(ndb.Model):
     user = ndb.UserProperty()
     last_login = ndb.DateTimeProperty()
@@ -63,6 +66,24 @@ class Tip(ndb.Model):
     
     elapsed = ndb.BooleanProperty()
     archived = ndb.BooleanProperty()
+    
+class TipLine(ndb.Model):
+    '''Line information for a Tip stored as json properties.
+    Each TipLine should have a single parent Tip (one-to-one relation, not enforced)
+    '''
+    spread_away = ndb.JsonProperty(indexed=False,compressed=True)
+    spread_home = ndb.JsonProperty(indexed=False,compressed=True)
+    
+    money_away = ndb.JsonProperty(indexed=False,compressed=True)
+    money_home = ndb.JsonProperty(indexed=False,compressed=True)
+    money_draw = ndb.JsonProperty(indexed=False,compressed=True)
+    
+    total_over = ndb.JsonProperty(indexed=False,compressed=True)
+    total_under = ndb.JsonProperty(indexed=False,compressed=True)
+
+#     consensus_spread_home = ndb.JsonProperty(indexed=False,compressed=True)
+#     consensus_money_home = ndb.JsonProperty(indexed=False,compressed=True)
+#     consensus_total_under = ndb.JsonProperty(indexed=False,compressed=True)
     
 class TipChange(ndb.Model):
     date = ndb.DateTimeProperty()

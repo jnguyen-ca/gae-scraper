@@ -54,13 +54,13 @@ class TaskHandler(webapp.RequestHandler):
                 logging.warning('Pinnacle XML feed down; Retry limit reached, continuing on')
                 
         # DataHandler: Update and insert Tip objects, creating a relational dict as you go
-        bookieData = datahandler.BookieData(events)
+        bookieData = datahandler.BookieData('pinnacle', events)
         bookieData.update_tips()
         
         total_reads += bookieData.datastore_reads
         total_writes += bookieData.datastore_writes
         
-        tipData = datahandler.TipData({'pinnacle' : bookieData})
+        tipData = datahandler.TipData([bookieData])
         tipData.utc_task_start = self.utc_task_start
 
         tipData.update_tips()

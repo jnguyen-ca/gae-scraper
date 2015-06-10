@@ -46,6 +46,7 @@ import pytz
 import scraper
 import teamconstants
 import models
+import modelhandler
 
 _WETTPOINT_DATETIME_FORMAT = '%d.%m.%Y %H:%M'
 
@@ -55,15 +56,15 @@ _TIME_ERROR_MARGIN_MINUTES_AFTER = 90
 _TIME_ERROR_MARGIN_HOURS_GAME_MATCH = 12
 
 class TipData(DataHandler):
-    def __init__(self, bookieDict={}):
+    def __init__(self, bookieList={}):
         self._not_previously_elapsed_tips = None
         self._not_previously_archived_tips = None
         self._sports_requiring_wettpoint_update = None
         self.utc_task_start = datetime.utcnow()
         self.new_or_updated_tips = []
-        self.bookieDict = bookieDict
+        self.bookieList = bookieList
         
-        for bookieObj in self.bookieDict.values():
+        for bookieObj in self.bookieList:
             self.new_or_updated_tips += bookieObj.new_or_updated_tips
     
     @property
@@ -166,7 +167,7 @@ class TipData(DataHandler):
         self.datastore_writes += wettpointData.datastore_writes
         
         # line stuff
-        self._update_odds()
+        updated_tiplines = self._update_odds()
         
         # scores stuff
         try:
@@ -185,11 +186,13 @@ class TipData(DataHandler):
                 if sport_key in self.not_previously_archived_tips and league_key in self.not_previously_archived_tips[sport_key]:
                     update_tips += self.not_previously_archived_tips[sport_key][league_key]
                 
-        self.datastore_writes += len(update_tips)
-        ndb.put_multi(update_tips)
+        self.datastore_writes += len(update_tips) + len(updated_tiplines)
+        ndb.put_multi(update_tips+updated_tiplines)
     
     @sys_util.function_timer()
     def _update_odds(self):
+        updated_tiplines = []
+        
         for sport_key in appvar_util.get_sport_names_appvar():
             # don't need to update if there are no games to update
             if sport_key not in self.not_previously_elapsed_tips:
@@ -220,10 +223,21 @@ class TipData(DataHandler):
                         if self.utc_task_start.minute >= 30:
                             continue
                     
+                    # retrieve the corresponding TipLine object
+                    self.datastore_reads += 1
+                    tipline_instance = models.TipLine.gql('WHERE ANCESTOR IS :1', tip_instance.key).get()
+                    if tipline_instance is None:
+                        self.datastore_writes += 1
+                        tipline_instance = models.TipLine(parent=tip_instance.key)
+                    else:
+                        self.datastore_reads += 1
+                    
+                    tipline_data = modelhandler.TipLineData(tipline_instance)
+                    
                     # if tip does not have corresponding event in any of the bookies then it may have been ppd
                     event_is_missing = True
                     bookies_are_down = True
-                    for bookieKey, bookieObj in self.bookieDict.iteritems():
+                    for bookieObj in self.bookieList:
                         '@type bookieObj: BookieData'
                         if bookieObj.status == bookieObj.STATUS_ERROR:
                             # bookie scraper failed, move onto next bookie
@@ -238,6 +252,8 @@ class TipData(DataHandler):
                         
                         event_is_missing = False
                         
+                        bookie_key = bookieObj.bookieKey
+                        
                         line_date = eventData.line_datetime
                         # round line_date to nearest minute for store
                         if line_date.second >= 30:
@@ -246,6 +262,32 @@ class TipData(DataHandler):
                         
                         # TODO: add support for multiple bookie lines
                         ############# TOTALS (O/U) UPDATE #############
+                        event_total_over_points = eventData.total_over[eventData.LINE_KEY_POINTS]
+                        event_total_over_odds = eventData.total_over[eventData.LINE_KEY_ODDS]
+                        event_total_under_points = eventData.total_under[eventData.LINE_KEY_POINTS]
+                        event_total_under_odds = eventData.total_under[eventData.LINE_KEY_ODDS]
+                        
+                        if (
+                            event_total_over_points is not None 
+                            and event_total_over_odds is not None
+                            and event_total_under_points is not None
+                            and event_total_under_odds is not None  
+                        ):
+                            # add total entries to tipline
+                            tipline_data.insert_total_over_entry(
+                                                                 bookie         = bookie_key, 
+                                                                 line_date      = line_date, 
+                                                                 total_points   = event_total_over_points, 
+                                                                 total_odds     = event_total_over_odds
+                                                                 )
+                            
+                            tipline_data.insert_total_under_entry(
+                                                                 bookie         = bookie_key, 
+                                                                 line_date      = line_date, 
+                                                                 total_points   = event_total_under_points, 
+                                                                 total_odds     = event_total_under_odds
+                                                                 )
+                        
                         # get the correct total dict (i.e. either the over or the under)
                         if tip_instance.wettpoint_tip_total == models.TIP_SELECTION_TOTAL_OVER:
                             event_total = eventData.total_over
@@ -278,6 +320,25 @@ class TipData(DataHandler):
                             or eventData.moneyline_home is not None
                             or eventData.moneyline_draw is not None
                         ):
+                            # add moneyline entries to tipline
+                            tipline_data.insert_money_away_entry(
+                                                                 bookie     = bookie_key, 
+                                                                 line_date  = line_date, 
+                                                                 odds       = eventData.moneyline_away
+                                                                 )
+                            
+                            tipline_data.insert_money_home_entry(
+                                                                 bookie     = bookie_key, 
+                                                                 line_date  = line_date, 
+                                                                 odds       = eventData.moneyline_home
+                                                                 )
+                            
+                            tipline_data.insert_money_draw_entry(
+                                                                 bookie     = bookie_key, 
+                                                                 line_date  = line_date, 
+                                                                 odds       = eventData.moneyline_draw
+                                                                 )
+                        
                             if tip_instance.team_lines:
                                 hash1 = json.loads(tip_instance.team_lines)
                             else:
@@ -343,6 +404,21 @@ class TipData(DataHandler):
                             and event_spread_away_points is not None
                             and event_spread_away_odds is not None  
                         ):
+                            # add spread entries to tipline
+                            tipline_data.insert_spread_home_entry(
+                                                                 bookie         = bookie_key, 
+                                                                 line_date      = line_date, 
+                                                                 spread_points  = event_spread_home_points, 
+                                                                 spread_odds    = event_spread_home_odds
+                                                                 )
+                            
+                            tipline_data.insert_spread_away_entry(
+                                                                 bookie         = bookie_key, 
+                                                                 line_date      = line_date, 
+                                                                 spread_points  = event_spread_away_points, 
+                                                                 spread_odds    = event_spread_away_odds
+                                                                 )
+                            
                             if tip_instance.spread_no:
                                 hash1 = json.loads(tip_instance.spread_no)
                             else:
@@ -388,12 +464,15 @@ class TipData(DataHandler):
                             tip_instance.spread_lines = json.dumps(hash2)
                     
                     if event_is_missing is not True:
+                        updated_tiplines.append(tipline_data.tipline_instance)
                         self.not_previously_elapsed_tips[sport_key][league_key][tip_instance_index] = tip_instance
                     elif bookies_are_down is not True:
                         # either game was taken off the board (for any number of reasons) - could be temporary
                         # or game is a duplicate (something changed that i didn't account for)
                         mail_message = 'Missing from bookies: '+_game_details_string(tip_instance)+"\n"
                         sys_util.add_mail(constants.MAIL_TITLE_MISSING_EVENT, mail_message, logging='warning')
+                        
+        return updated_tiplines
     
     @sys_util.function_timer()             
     def _update_scores(self):
@@ -1037,7 +1116,9 @@ class BookieData(DataHandler):
     STATUS_ERROR = 'error'
     STATUS_UPDATED = 'updated'
     
-    def __init__(self, eventsDict):
+    def __init__(self, keyname, eventsDict):
+        self.bookieKey = keyname
+        
         if eventsDict:
             self.eventsDict = eventsDict
             self.status = self.STATUS_INITIALIZED

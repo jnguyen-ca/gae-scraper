@@ -206,7 +206,7 @@ class TipDisplay(webapp.RequestHandler):
                 # sort all the league's tips
                 tips_values = sorted(not_archived_tips_values_by_sport_league[sport_key][league_key], key=lambda x: (x.date, x.rot_home))
                 
-                wettpoint_table = 'http://www.forum.'+constants.WETTPOINT_FEED+'/fr_toptipsys.php?cat='+appvar_util.get_sport_names_appvar()[sport_key]['wettpoint']
+                wettpoint_table = 'http://www.forum.'+constants.WETTPOINT_FEED+'/fr_toptipsys.php?cat='+appvar_util.get_sport_names_appvar()[sport_key][appvar_util.APPVAR_KEY_WETTPOINT]
                 
                 # display all non-archived tips
                 self.html.append("<div class='league_header'><b class='league_key'>%s</b>" % (league_key))
@@ -283,7 +283,7 @@ class TipDisplay(webapp.RequestHandler):
                 and team_away_id is not None 
                 and team_home_id is not None
             ):
-                wettpoint_h2h_link = 'http://'+appvar_util.get_sport_names_appvar()[tip_instance.game_sport]['wettpoint']+'.'+constants.WETTPOINT_FEED+'/h2h/'+team_home_id+'-'+team_away_id+'.html'
+                wettpoint_h2h_link = 'http://'+appvar_util.get_sport_names_appvar()[tip_instance.game_sport][appvar_util.APPVAR_KEY_WETTPOINT]+'.'+constants.WETTPOINT_FEED+'/h2h/'+team_home_id+'-'+team_away_id+'.html'
             
             wettpoint_stake = tip_instance.wettpoint_tip_stake
             wettpoint_team = tip_instance.wettpoint_tip_team

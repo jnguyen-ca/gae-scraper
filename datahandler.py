@@ -496,7 +496,7 @@ class TipData(DataHandler):
                     
                     '@type score_row: scraper.ScoreRowData'
                     for score_row in score_scraper.scrape(tip_instance.date):
-                        if not teamconstants.is_league_alias('scoreboard', tip_instance.game_sport, tip_instance.game_league, score_row.league):
+                        if not teamconstants.is_league_alias(appvar_util.APPVAR_KEY_SCOREBOARD, tip_instance.game_sport, tip_instance.game_league, score_row.league):
                             continue
                         
                         # row should have same time (30 minute error window) and team names
@@ -694,7 +694,7 @@ class WettpointData(DataHandler):
                         row_minutes_past_start = divmod((game_time - tip_instance.date.replace(tzinfo=pytz.utc)).total_seconds(), 60)[0]
                         
                         # is it a league we're interested in and does the game time match the tip's game time?
-                        correct_league = teamconstants.is_league_alias('wettpoint', tip_instance.game_sport, tip_instance.game_league, league_name)
+                        correct_league = teamconstants.is_league_alias(appvar_util.APPVAR_KEY_WETTPOINT, tip_instance.game_sport, tip_instance.game_league, league_name)
                             
                         # if the league is correct then does the time match (30 minute error window)    
                         if (

@@ -11,6 +11,9 @@ class Scraper(object):
     def scrape(self):
         pass
     
+class BookieScraper(Scraper):
+    BOOKIE_KEY = None
+    
 class EventScrapeData(object):
     def __init__(self):
         self.sport = None
@@ -85,7 +88,7 @@ class WettpointScraper(Scraper):
     def sport_table(self):
         if self._sport_table is None:
             # get wettpoint tip table page for particular sport
-            sport = appvar_util.get_sport_names_appvar()[self.sport_key]['wettpoint']
+            sport = appvar_util.get_sport_names_appvar()[self.sport_key][appvar_util.APPVAR_KEY_WETTPOINT]
             feed = 'http://www.forum.'+self.__WETTPOINT_FEED+'/fr_toptipsys.php?cat='+sport
             
             soup = requests_util.request(
@@ -165,7 +168,7 @@ class WettpointScraper(Scraper):
             no_limit = True
             logging.debug('Doing a NOLIMIT fetch. Not counting following fetch towards the H2H fetch limit.')
         
-        sport = appvar_util.get_sport_names_appvar()[self.sport_key]['wettpoint']
+        sport = appvar_util.get_sport_names_appvar()[self.sport_key][appvar_util.APPVAR_KEY_WETTPOINT]
         
         # wettpoint h2h link is home team - away team
         h2h_link = 'http://'+sport+'.'+self.__WETTPOINT_FEED+'/h2h/'+team_home_id+'-'+team_away_id+'.html'
@@ -259,7 +262,8 @@ class WettpointScraper(Scraper):
         
         return h2h_details
 
-class PinnacleScraper(Scraper):
+class PinnacleScraper(BookieScraper):
+    BOOKIE_KEY = appvar_util.APPVAR_KEY_PINNACLE
     __PINNACLE_FEED = 'pinnaclesports.com'
     
     @sys_util.function_timer()
@@ -299,7 +303,7 @@ class PinnacleScraper(Scraper):
             for league_key, league_values in appvar_util.get_league_names_appvar()[sport_key].iteritems():
                 events_by_sport_league[sport_key][league_key] = []
                 
-                pinnacle_league_key = league_values['pinnacle']
+                pinnacle_league_key = league_values[appvar_util.APPVAR_KEY_PINNACLE]
                 league_xpath = None
                 # single league can have multiple league names (ex. conferences)
                 if isinstance(pinnacle_league_key, list):
@@ -312,7 +316,7 @@ class PinnacleScraper(Scraper):
                     league_xpath = "league='"+pinnacle_league_key+"'"
                     
                 # get all the game (event) tags for this league (not live games)
-                all_games = lxml_tree.xpath("//event[sporttype='"+sport_values['pinnacle']+"' and IsLive='No']["+league_xpath+"]")
+                all_games = lxml_tree.xpath("//event[sporttype='"+sport_values[appvar_util.APPVAR_KEY_PINNACLE]+"' and IsLive='No']["+league_xpath+"]")
                 
                 for event_tag in all_games:
                     # convert game datetime string to standard GMT datettime object
@@ -454,7 +458,7 @@ class XscoresScraper(Scraper):
             self._scores_by_date[scoreboard_date_string] = []
             score_row_key_indices = {}
             
-            feed_url = 'http://www.'+self.__XSCORES_FEED+'/'+appvar_util.get_sport_names_appvar()[self.sport_key]['scoreboard']+'/finished_games/'+scoreboard_date_string
+            feed_url = 'http://www.'+self.__XSCORES_FEED+'/'+appvar_util.get_sport_names_appvar()[self.sport_key][appvar_util.APPVAR_KEY_SCOREBOARD]+'/finished_games/'+scoreboard_date_string
         
             soup = requests_util.request(
                                   request_lib        = requests_util.REQUEST_LIB_REQUESTS, 
@@ -599,7 +603,7 @@ class ScoresProScraper(Scraper):
         if not scoreboard_date_string in self._scores_by_date:
             self._scores_by_date[scoreboard_date_string] = []
             
-            feed_url = 'http://www.'+self.__FEED+'/'+appvar_util.get_sport_names_appvar()[self.sport_key]['scoreboard']+'/'+appvar_util.get_league_names_appvar()[self.sport_key][self.league_key]['scoreboard']
+            feed_url = 'http://www.'+self.__FEED+'/'+appvar_util.get_sport_names_appvar()[self.sport_key][appvar_util.APPVAR_KEY_SCOREBOARD]+'/'+appvar_util.get_league_names_appvar()[self.sport_key][self.league_key][appvar_util.APPVAR_KEY_SCOREBOARD]
             
             soup = requests_util.request(
                                   request_lib        = requests_util.REQUEST_LIB_REQUESTS, 

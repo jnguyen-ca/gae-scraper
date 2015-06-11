@@ -41,8 +41,10 @@ class TaskHandler(webapp.RequestHandler):
         
         # Scraper: find all relevant games
         events = {}
+        bookie_key = None
         try:
             pinnacleScraper = scraper.PinnacleScraper()
+            bookie_key = pinnacleScraper.BOOKIE_KEY
             events = pinnacleScraper.scrape()
         except requests_util.HTTP_EXCEPTION_TUPLE:
             task_execution_count = int(self.request.headers['X-AppEngine-TaskExecutionCount'])
@@ -54,7 +56,7 @@ class TaskHandler(webapp.RequestHandler):
                 logging.warning('Pinnacle XML feed down; Retry limit reached, continuing on')
                 
         # DataHandler: Update and insert Tip objects, creating a relational dict as you go
-        bookieData = datahandler.BookieData('pinnacle', events)
+        bookieData = datahandler.BookieData(bookie_key, events)
         bookieData.update_tips()
         
         total_reads += bookieData.datastore_reads

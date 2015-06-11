@@ -2,6 +2,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
+APPVAR_KEY_SCOREBOARD = 'scoreboard'
+APPVAR_KEY_WETTPOINT = 'wettpoint'
+APPVAR_KEY_PINNACLE = 'pinnacle'
+
 import constants
 
 class ApplicationVariableException(constants.ApplicationException):

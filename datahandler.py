@@ -489,10 +489,13 @@ class TipData(DataHandler):
                 scoresProScraper = scraper.ScoresProScraper(sport_key, league_key)
                 
                 for tip_instance_index, tip_instance in enumerate(self.not_previously_archived_tips[sport_key][league_key]):
+                    '@type score_scraper: scraper.ScoreboardScraper'
                     if tip_instance.game_sport == 'Handball':
                         score_scraper = scoresProScraper
                     else:
                         score_scraper = xscoreScraper
+                    
+                    ongoing = False
                     
                     '@type score_row: scraper.ScoreRowData'
                     for score_row in score_scraper.scrape(tip_instance.date):
@@ -515,6 +518,9 @@ class TipData(DataHandler):
                                 and tip_instance.game_team_home == home_team
                             ):
                                 if not score_scraper.is_complete(score_row.status):
+                                    if score_scraper.is_live(score_row.status):
+                                        ongoing = True
+                                    
                                     break
                                 
                                 if score_row.final_score_home and score_row.final_score_away:
@@ -541,7 +547,8 @@ class TipData(DataHandler):
                                 sys_util.add_mail(constants.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
                                 
                     if (
-                        tip_instance.archived != True 
+                        ongoing is False 
+                        and tip_instance.archived != True 
                         and (datetime.utcnow() - tip_instance.date).total_seconds() > 18000 # 5 hours
                     ):
                         mail_message = 'Game missing from scoreboard - '+_game_details_string(tip_instance)+"\n"

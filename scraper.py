@@ -14,6 +14,18 @@ class Scraper(object):
 class BookieScraper(Scraper):
     BOOKIE_KEY = None
     
+class ScoreboardScraper(Scraper):
+    _timezone = None
+    
+    def convert_utc_to_local(self, dataDatetime):
+        raise NotImplementedError('must be overridden')
+    
+    def is_complete(self, status):
+        raise NotImplementedError('must be overridden')
+    
+    def is_live(self, status):
+        raise NotImplementedError('must be overridden')
+    
 class EventScrapeData(object):
     def __init__(self):
         self.sport = None
@@ -426,14 +438,11 @@ sys.path.append('libs/'+constants.LIB_DIR_PYTZ)
 import pytz
 
 # TODO: Xscores and ScoresPro should have a common parent class below general Scraper class
-class XscoresScraper(Scraper):
+class XscoresScraper(ScoreboardScraper):
     __XSCORES_FEED = 'xscores.com'
     _timezone = pytz.timezone(constants.TIMEZONE_SCOREBOARD)
     
-    STATUS_FINISHED = 'Fin'
-    STATUS_ABANDONED = 'Abd'
-    STATUS_POSTPONED = 'Post'
-    STATUS_CANCELLED = 'Cancelled'
+    _STATUS_FINISHED = 'Fin'
     
     def __init__(self, sport_key):
         self.sport_key = sport_key
@@ -443,7 +452,17 @@ class XscoresScraper(Scraper):
         return dataDatetime.replace(tzinfo=pytz.utc).astimezone(self._timezone)
     
     def is_complete(self, status):
-        if status in [self.STATUS_FINISHED, self.STATUS_ABANDONED, self.STATUS_POSTPONED, self.STATUS_CANCELLED]:
+        if status in [
+                      self._STATUS_FINISHED, 
+                      'Post',
+                      ]:
+            return True
+        return False
+    
+    def is_live(self, status):
+        if status in [
+                      'Live',
+                      ]:
             return True
         return False
     
@@ -515,7 +534,7 @@ class XscoresScraper(Scraper):
                 extra_time = False
                 row_home_reg_score = row_away_reg_score = None
                 row_home_final_score = row_away_final_score = None
-                if row_game_status == self.STATUS_FINISHED:
+                if row_game_status == self._STATUS_FINISHED:
                     if self.sport_key == 'Baseball':
                         if score_row_key_indices['Home'] < score_row_key_indices['Away']:
                             row_home_final_score = row_columns[score_row_key_indices['R'] - 1].get_text().strip()
@@ -573,12 +592,9 @@ class XscoresScraper(Scraper):
                 self._scores_by_date[scoreboard_date_string].append(score_row_obj)
         return self._scores_by_date[scoreboard_date_string]
     
-class ScoresProScraper(Scraper):
+class ScoresProScraper(ScoreboardScraper):
     __FEED = 'scorespro.com'
     _timezone = pytz.timezone(constants.TIMEZONE_BACKUP)
-    
-    STATUS_FINISHED = 'FT'
-    STATUS_POSTPONED = 'Pst'
     
     def __init__(self, sport_key, league_key):
         self.sport_key = sport_key
@@ -589,7 +605,16 @@ class ScoresProScraper(Scraper):
         return dataDatetime.replace(tzinfo=pytz.utc).astimezone(self._timezone)
     
     def is_complete(self, status):
-        if status in [self.STATUS_FINISHED, self.STATUS_POSTPONED]:
+        if status in [
+                      'FT', 
+                      'Pst',
+                      ]:
+            return True
+        return False
+    
+    def is_live(self, status):
+        if status in [
+                      ]:
             return True
         return False
     

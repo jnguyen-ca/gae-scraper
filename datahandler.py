@@ -512,10 +512,13 @@ class TipData(DataHandler):
                         ):
                             home_team = teamconstants.get_team_datastore_name_and_id(tip_instance.game_sport, tip_instance.game_league, score_row.team_home)[0]
                             away_team = teamconstants.get_team_datastore_name_and_id(tip_instance.game_sport, tip_instance.game_league, score_row.team_away)[0]
+                            
+                            tip_home_team = teamconstants.get_team_datastore_name_and_id(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home)[0]
+                            tip_away_team = teamconstants.get_team_datastore_name_and_id(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_away)[0]
                         
                             if (
-                                tip_instance.game_team_away == away_team 
-                                and tip_instance.game_team_home == home_team
+                                tip_away_team == away_team 
+                                and tip_home_team == home_team
                             ):
                                 if not score_scraper.is_complete(score_row.status):
                                     if score_scraper.is_live(score_row.status):
@@ -535,12 +538,12 @@ class TipData(DataHandler):
                                     
                                 self.not_previously_archived_tips[sport_key][league_key][tip_instance_index] = tip_instance
                                 break
-                            elif tip_instance.game_team_home == home_team:
+                            elif tip_home_team == home_team:
                                 mail_message = ('Scoreboard table has matched a Tip date and home team.'
                                                 ' Possible AWAY team name missing for '+_game_details_string(tip_instance)+
                                                 ' Scoreboard table match is %s @ %s' % (str(away_team), str(home_team)))
                                 sys_util.add_mail(constants.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
-                            elif tip_instance.game_team_away == away_team:
+                            elif tip_away_team == away_team:
                                 mail_message = ('Scoreboard table has matched a Tip date and away team.'
                                                 ' Possible HOME team name missing for '+_game_details_string(tip_instance)+
                                                 ' Scoreboard table match is %s @ %s' % (str(away_team), str(home_team)))
@@ -672,8 +675,11 @@ class WettpointData(DataHandler):
                         if tip_instance.elapsed is True:
                             continue
                     
+                    tip_home_team = teamconstants.get_team_datastore_name_and_id(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_home)[0]
+                    tip_away_team = teamconstants.get_team_datastore_name_and_id(tip_instance.game_sport, tip_instance.game_league, tip_instance.game_team_away)[0]
+                    
                     # determine if the data for the teams have likely been updated (i.e. this is the next game and current games are finished)
-                    matchup_finalized = self._matchup_data_finalized(tip_instance.game_sport, [tip_instance.game_team_away, tip_instance.game_team_home], tip_instance.date, possible_earlier_games)
+                    matchup_finalized = self._matchup_data_finalized(tip_instance.game_sport, [tip_away_team, tip_home_team], tip_instance.date, possible_earlier_games)
                     
                     # has the wettpoint tip been changed
                     tip_change_created = False
@@ -716,8 +722,8 @@ class WettpointData(DataHandler):
                             
                             # finally, are the teams correct?
                             if (
-                                tip_instance.game_team_away == away_team 
-                                and tip_instance.game_team_home == home_team
+                                tip_away_team == away_team 
+                                and tip_home_team == home_team
                             ):
                                 # so now we know that this wettpoint tip (probably) refers to this tip object... yay!
                                 tip_team = tip_row.tip_team
@@ -815,12 +821,12 @@ class WettpointData(DataHandler):
                                 break
                             # one of the team names matches but the other doesn't, send admin mail to check team names
                             # could either be 1) team name missing or 2) wettpoint has wrong game listed
-                            elif tip_instance.game_team_home == home_team:
+                            elif tip_home_team == home_team:
                                 mail_message = ('Wettpoint table has matched a Tip date and home team.'
                                                 ' Possible AWAY team name missing for '+_game_details_string(tip_instance)+
                                                 ' Wettpoint table match is %s @ %s' % (str(away_team), str(home_team)))
                                 sys_util.add_mail(constants.MAIL_TITLE_TEAM_ERROR, mail_message, logging='warning')
-                            elif tip_instance.game_team_away == away_team:
+                            elif tip_away_team == away_team:
                                 mail_message = ('Wettpoint table has matched a Tip date and away team.'
                                                 ' Possible HOME team name missing for '+_game_details_string(tip_instance)+
                                                 ' Wettpoint table match is %s @ %s' % (str(away_team), str(home_team)))
@@ -946,6 +952,9 @@ class WettpointData(DataHandler):
     
     def _matchup_data_finalized(self, sport_key, team_list, matchup_date, possible_earlier_games):
         for check_tip_instance in possible_earlier_games:
+            check_tip_home_team = teamconstants.get_team_datastore_name_and_id(check_tip_instance.game_sport, check_tip_instance.game_league, check_tip_instance.game_team_home)[0]
+            check_tip_away_team = teamconstants.get_team_datastore_name_and_id(check_tip_instance.game_sport, check_tip_instance.game_league, check_tip_instance.game_team_away)[0]
+            
             if (
                 (
                  sport_key not in appvar_util.get_weekly_sports_appvar() 
@@ -955,8 +964,8 @@ class WettpointData(DataHandler):
                 (
                  check_tip_instance.date < matchup_date 
                  and (
-                      check_tip_instance.game_team_away in team_list 
-                      or check_tip_instance.game_team_home in team_list
+                      check_tip_away_team in team_list 
+                      or check_tip_home_team in team_list
                      )
                  )
                 ):
@@ -1198,10 +1207,10 @@ class BookieData(DataHandler):
                                                                                                 ))
                                 
                             if team_name == team_name_away:
-                                team_name_without_game_string_home = datastore_team_name_without_game_string
+                                team_name_without_game_string_away = datastore_team_name_without_game_string
                                 team_name_away = datastore_team_name
                             elif team_name == team_name_home:
-                                team_name_without_game_string_away = datastore_team_name_without_game_string
+                                team_name_without_game_string_home = datastore_team_name_without_game_string
                                 team_name_home = datastore_team_name
 
                     # determine whether Tip object for this event exists or not based on rotation #s
@@ -1221,6 +1230,8 @@ class BookieData(DataHandler):
                         # a previous Tip could have had its rotation numbers changed so that now there are 2
                         # Tips that match this query, will have to ignore this exception since we're expecting
                         # it to fix itself with the softer match
+                        logging.warning(error)
+                        logging.info('Multiple matches based on rotation number query. Expected behaviour if league rot #s are being updated.')
                         tip_instance = None
                     
                     # only update the Tip (using a datastore write) if we need to
@@ -1276,7 +1287,6 @@ class BookieData(DataHandler):
                                                                                             tip_instance.game_sport,
                                                                                           )
                                 sys_util.add_mail(constants.MAIL_TITLE_UPDATE_NOTIFICATION, update_message, logging='info')
-                                logging.info(update_message)
                         except DatastoreException as error:
                             # raise exception to send mail but continue on without this event
                             logging.warning(error)
@@ -1339,7 +1349,6 @@ class BookieData(DataHandler):
                                                                                             tip_instance.game_sport
                                                                                               )
                             sys_util.add_mail(constants.MAIL_TITLE_UPDATE_NOTIFICATION, update_message, logging='info')
-                            logging.info(update_message)
                             update_tip_instance = True
                             
                         # second check the datetime (e.g. game could have been delayed)
@@ -1354,7 +1363,6 @@ class BookieData(DataHandler):
                                                                                    tip_instance.game_sport
                                                                                    )
                             sys_util.add_mail(constants.MAIL_TITLE_UPDATE_NOTIFICATION, update_message, logging='info')
-                            logging.info(update_message)
                             update_tip_instance = True
                             
                     if update_tip_instance is True:

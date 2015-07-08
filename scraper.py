@@ -162,8 +162,8 @@ class WettpointScraper(Scraper):
     def get_wettpoint_h2h(self, league_key, team_home, team_away, **kwargs):
         h2h_total, h2h_team, h2h_risk = False, False, False
         
-        team_home_id = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_home)[1]
-        team_away_id = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_away)[1]
+        datastore_team_home, team_home_id = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_home)
+        datastore_team_away, team_away_id = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_away)
         
         h2h_details = {
                        'total'  : h2h_total, 
@@ -213,8 +213,8 @@ class WettpointScraper(Scraper):
         team_link_home = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_link_text_home)[0]
         team_link_away = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_link_text_away)[0]
         if (
-            team_home == team_link_home 
-            and team_away == team_link_away
+            datastore_team_home == team_link_home 
+            and datastore_team_away == team_link_away
         ):
             h2h_header = h2h_soup.find_all('h3', recursive=False)[1]
             

@@ -455,6 +455,7 @@ class XscoresScraper(ScoreboardScraper):
         if status in [
                       self._STATUS_FINISHED, 
                       'Post',
+                      'Abd',
                       ]:
             return True
         return False

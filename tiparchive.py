@@ -572,10 +572,24 @@ class TipArchive(webapp.RequestHandler):
         for date_to_remove in dates_to_remove:
             dates_to_archive.pop(date_to_remove, None)
         
+        # TODO: replace this list
+        if tip_instance.game_sport in ['Baseball']:
+            analysis_object = tipanalysis.TipAnalysis()
+            series_wettpoint_tips = analysis_object.calculate_series_wettpoint_tips(tip_instance)
+            self.DATASTORE_READS += analysis_object.datastore_reads
+        
         # Team/Side & Spread bets
-        new_tip_archive_row_lists += self.get_new_archive_team_value_lists(default_row_values, dates_to_archive, tip_instance.wettpoint_tip_team, tip_instance.team_lines, tip_instance.spread_no, tip_instance.spread_lines, tip_instance.score_away, tip_instance.score_home)
+        team_value_row = self.get_new_archive_team_value_lists(default_row_values, dates_to_archive, tip_instance.wettpoint_tip_team, tip_instance.team_lines, tip_instance.spread_no, tip_instance.spread_lines, tip_instance.score_away, tip_instance.score_home)
+        if tip_instance.game_sport in ['Baseball'] and series_wettpoint_tips:
+            team_value_row[self.SELECTION_INDEX] = series_wettpoint_tips[0]
+            team_value_row[5] = series_wettpoint_tips[2]
+        new_tip_archive_row_lists += team_value_row
         # Total bets
-        new_tip_archive_row_lists += self.get_new_archive_total_value_lists(default_row_values, dates_to_archive, tip_instance.wettpoint_tip_total, tip_instance.total_no, tip_instance.total_lines, tip_instance.score_away, tip_instance.score_home)
+        total_value_row = self.get_new_archive_total_value_lists(default_row_values, dates_to_archive, tip_instance.wettpoint_tip_total, tip_instance.total_no, tip_instance.total_lines, tip_instance.score_away, tip_instance.score_home)
+        if tip_instance.game_sport in ['Baseball'] and series_wettpoint_tips:
+            total_value_row[self.SELECTION_INDEX] = series_wettpoint_tips[1]
+            total_value_row[5] = series_wettpoint_tips[2]
+        new_tip_archive_row_lists += total_value_row
         
     def get_new_archive_team_value_lists(self, default_row_values, dates_to_archive, team_selection, team_lines, spread_no, spread_lines, score_away, score_home):
         archive_tip_team_lists = []

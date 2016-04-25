@@ -10,6 +10,17 @@ indexes:
 
 ####### END PERSONAL USE #######
 
+####### TIPANALYSIS.TIPANALYSIS.CALCULATE_SERIES_WETTPOINT_TIPS #######
+
+- kind: Tip
+  properties:
+  - name: game_league
+  - name: game_sport
+  - name: date
+    direction: desc
+
+####### END TIPANALYSIS.TIPANALYSIS.CALCULATE_SERIES_WETTPOINT_TIPS #######
+
 ####### DATAHANDLER.BOOKIEDATA.UPDATE_TIPS #######
 
 - kind: Tip

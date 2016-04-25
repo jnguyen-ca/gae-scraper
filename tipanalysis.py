@@ -6,7 +6,7 @@ import sys
 sys.path.append('utils')
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from utils import appvar_util
 
 import models
@@ -134,3 +134,104 @@ def get_line(line_dates, **kwargs):
         line = line_dates[latest_date_string]
         
     return line, date
+
+class TipAnalysis(object):
+    '''Analysis of Tips that require querying the datastore
+    '''
+    datastore_writes = 0
+    datastore_reads = 0
+    
+    def __init__(self):
+        pass
+
+    def calculate_series_wettpoint_tips(self, tip_instance):
+        '''For a series of events, wettpoint tips will usually only be applied to the first
+        game of the series. Since having the rest of the series being treated as 0 tips is not
+        conducive to tip analysis (e.g. there is no way to separate actual 0 tips from tips
+        which are not the first of their series) it would be better instead to extend the 
+        tips from the first game to the rest of the game in the same series.
+        '''
+        # if a Tip has it's own wettpoint tips set then we don't want to extends series wettpoint tips
+        if tip_instance.wettpoint_tip_stake != 0.0 or tip_instance.wettpoint_tip_total != None:
+            return None
+        
+        # query datastore for previous series events
+        # a series can be determined by matching the same 2 teams who play against each other
+        # uninterrupted by other teams, limited to a certain date range
+        #TODO: analyze this, any better way to do this without having to make a query every single time?
+        self.datastore_reads += 1
+        query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND date < :3 ORDER BY date DESC',
+                                 tip_instance.game_sport,
+                                 tip_instance.game_league,
+                                 tip_instance.date,
+                                 )
+        
+        max_day_limit = 3
+        last_series_entry_date = tip_instance.date
+        
+        # continue searching until no longer a series between the 2 teams
+        series_tips = []
+        for previous_tip_instance in query:
+            self.datastore_reads += 1
+            # only interested in the previous Tip if it's an earlier game of the same series or if it's a game
+            # that breaks the series for tip_instances, either way only care if 1 of the teams match
+            if (
+                previous_tip_instance.game_team_away in [tip_instance.game_team_away, tip_instance.game_team_home]
+                or previous_tip_instance.game_team_home in [tip_instance.game_team_away, tip_instance.game_team_home]
+            ):
+                # both teams have to be the same to be part of the same series (away vs home can be switched, just same teams)
+                # on first sign where 1 team is playing a different team then the series has been broken
+                if (
+                    (
+                     previous_tip_instance.game_team_away == tip_instance.game_team_away
+                     and previous_tip_instance.game_team_home == tip_instance.game_team_home
+                     )
+                    or
+                    (
+                     previous_tip_instance.game_team_home == tip_instance.game_team_away
+                     and previous_tip_instance.game_team_away == tip_instance.game_team_home
+                     )
+                ):
+                    # same series
+                    series_tips.append(previous_tip_instance)
+                    last_series_entry_date = previous_tip_instance.date
+                else:
+                    # 1 of the teams is playing a different team, series has been broken
+                    break
+                
+            if (last_series_entry_date - timedelta(days = max_day_limit)) > previous_tip_instance.date:
+                break
+        
+        # Tip was the first of its series (or there is no series)
+        if len(series_tips) < 1:
+            return None
+        
+        # only want to extend the first of the series wettpoint tips if none of the other Tips in the series
+        # have wettpoint tips (which would mean the wettpoint tips are being updated throughout the series and
+        # a 0.0 wettpoint tip is actually a 0.0 wettpoint tip and not just a blank)
+        series_wettpoint_tip_team = str(tip_instance.wettpoint_tip_team)
+        series_wettpoint_tip_total = str(tip_instance.wettpoint_tip_total)
+        series_wettpoint_tip_stake = str(tip_instance.wettpoint_tip_stake)
+        
+        first_series_tip = series_tips.pop()
+        
+        series_wettpoint_tip_total += ' ('+str(first_series_tip.wettpoint_tip_total)+')'
+        series_wettpoint_tip_stake += ' ('+str(first_series_tip.wettpoint_tip_stake)+')'
+        
+        # for the wettpoint tip team, want to convert it so that it corresponds to the tip_instance's sides
+        # i.e. first_series_tip wettpoint tip team was home team (aka '1') but tip_instance is a split series
+        # so now the home team in first_series_tip is the away team then we want to convert it as such (i.e. to '2')
+        if first_series_tip.game_team_away == tip_instance.game_team_away:
+            series_wettpoint_tip_team += ' ('+str(first_series_tip.wettpoint_tip_team)+')'
+        else:
+            if first_series_tip.wettpoint_tip_team == models.TIP_SELECTION_TEAM_AWAY:
+                series_wettpoint_tip_team += ' ('+models.TIP_SELECTION_TEAM_HOME+')'
+            else:
+                series_wettpoint_tip_team += ' ('+models.TIP_SELECTION_TEAM_AWAY+')'
+        
+        for preceding_series_tip in series_tips:
+            # series is being updated throughout
+            if preceding_series_tip.wettpoint_tip_stake != 0.0 or preceding_series_tip.wettpoint_tip_total != None:
+                return None
+        
+        return series_wettpoint_tip_team, series_wettpoint_tip_total, series_wettpoint_tip_stake

@@ -628,8 +628,23 @@ class TipDisplay(webapp.RequestHandler):
         game_row_html += '<span class="score_home %s" name="Score Home">%s</span>' % (self.INPUT_NAME_SCORE_HOME, score_home)
         game_row_html += '</span>'
         
-        game_row_html += '<span class="tip-stake">%s</span>' % (tip_instance.wettpoint_tip_stake)
-        game_row_html += '<span class="tip-team">%s</span>' % (tip_instance.wettpoint_tip_team)    
+        display_wettpoint_tip_team = tip_instance.wettpoint_tip_team
+        display_wettpoint_tip_total = tip_instance.wettpoint_tip_total
+        display_wettpoint_tip_stake = tip_instance.wettpoint_tip_stake
+        
+        #TODO: replace this list
+        if tip_instance.game_sport in ['Baseball']:
+            analysis_object = tipanalysis.TipAnalysis()
+            series_wettpoint_tips = analysis_object.calculate_series_wettpoint_tips(tip_instance)
+            if series_wettpoint_tips:
+                display_wettpoint_tip_team = series_wettpoint_tips[0]
+                display_wettpoint_tip_total = series_wettpoint_tips[1]
+                display_wettpoint_tip_stake = series_wettpoint_tips[2]
+            
+            self.DATASTORE_READS += analysis_object.datastore_reads
+        
+        game_row_html += '<span class="tip-stake">%s</span>' % (display_wettpoint_tip_stake)
+        game_row_html += '<span class="tip-team">%s</span>' % (display_wettpoint_tip_team)    
         
         latest_moneyline, latest_moneyline_datetime = tipanalysis.get_line(tip_instance.team_lines)
         latest_spread_no, latest_spread_datetime = tipanalysis.get_line(tip_instance.spread_no)
@@ -686,7 +701,7 @@ class TipDisplay(webapp.RequestHandler):
         
         game_row_html += '<span class="tip-date">%s</span>' % (latest_odds_datetime)
             
-        game_row_html += '<span class="tip-total">%s</span>' % (tip_instance.wettpoint_tip_total)
+        game_row_html += '<span class="tip-total">%s</span>' % (display_wettpoint_tip_total)
             
         game_row_html += '<span class="tip-total_no">%s</span>' % (latest_total_no)
         

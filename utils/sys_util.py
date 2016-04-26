@@ -73,7 +73,8 @@ def _function_timer(module_name='default', function_name='', mode=FUNCTION_TIMER
         
     if 'startTime' not in __FUNCTION_TIMERS__[module_name][function_name]:
         __FUNCTION_TIMERS__[module_name][function_name]['startTime'] = time.time()
-        __FUNCTION_TIMERS__[module_name][function_name]['timer'] = None
+        if 'timer' not in __FUNCTION_TIMERS__[module_name][function_name]:
+            __FUNCTION_TIMERS__[module_name][function_name]['timer'] = None
     else:
         if __FUNCTION_TIMERS__[module_name][function_name]['timer'] is None:
             __FUNCTION_TIMERS__[module_name][function_name]['timer'] = 0.0

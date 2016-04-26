@@ -31,18 +31,22 @@ HTTP_EXCEPTION_TUPLE = (HTTPException, urlfetch.DeadlineExceededError, ProtocolE
 
 __REQUEST_COUNT__ = {}
 
-def get_request_count():
+def get_request_count(host=None):
+    global __REQUEST_COUNT__
+    if isinstance(host, basestring):
+        if host in __REQUEST_COUNT__:
+            return __REQUEST_COUNT__[host]
+        return 0
     return __REQUEST_COUNT__
 
 def reset_request_count():
     global __REQUEST_COUNT__
     __REQUEST_COUNT__ = {}
 
-def _increment_request(host, increment_value=1, max_count=None):
+def _increment_request(host, increment_value=1):
     global __REQUEST_COUNT__
     if host in __REQUEST_COUNT__:
-        if max_count is not None and __REQUEST_COUNT__[host] != max_count:
-            __REQUEST_COUNT__[host] += increment_value
+        __REQUEST_COUNT__[host] += increment_value
     else:
         __REQUEST_COUNT__[host] = increment_value
         
@@ -57,10 +61,11 @@ def request(request_lib=REQUEST_LIB_REQUESTS, response_type=RESPONSE_TYPE_HTML, 
     if no_hit:
         increment = 0
     
-    hits = _increment_request(hostname, increment_value=increment, max_count=max_hits)
-    if hits >= max_hits:
+    if get_request_count(hostname)+increment > max_hits:
         return None
-    elif hits > 1:
+    hits = _increment_request(hostname, increment_value=increment)
+    
+    if hits > 1:
         time.sleep(random.uniform(min_wait_time,max_wait_time))
     
     if request_lib == REQUEST_LIB_URLFETCH:

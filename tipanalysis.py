@@ -7,9 +7,10 @@ sys.path.append('utils')
 
 import json
 from datetime import datetime, timedelta
-from utils import appvar_util
+from utils import appvar_util, sys_util
 
 import models
+import constants
 
 BET_RESULT_WIN = 'Y'
 BET_RESULT_LOSS = 'N'
@@ -144,6 +145,7 @@ class TipAnalysis(object):
     def __init__(self):
         pass
 
+    @sys_util.function_timer()
     def calculate_series_wettpoint_tips(self, tip_instance):
         '''For a series of events, wettpoint tips will usually only be applied to the first
         game of the series. Since having the rest of the series being treated as 0 tips is not
@@ -155,55 +157,36 @@ class TipAnalysis(object):
         if tip_instance.wettpoint_tip_stake != 0.0 or tip_instance.wettpoint_tip_total != None:
             return None
         
-        # query datastore for previous series events
-        # a series can be determined by matching the same 2 teams who play against each other
-        # uninterrupted by other teams, limited to a certain date range
-        #TODO: analyze this, any better way to do this without having to make a query every single time?
+        # get the previous match ups of the away team
         self.datastore_reads += 1
-        query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND date < :3 ORDER BY date DESC',
+        sides_match_query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND '
+                               +'game_team_away = :3 AND date < :4 ORDER BY date DESC',
                                  tip_instance.game_sport,
                                  tip_instance.game_league,
+                                 tip_instance.game_team_away,
                                  tip_instance.date,
                                  )
         
-        max_day_limit = 3
-        last_series_entry_date = tip_instance.date
+        self.datastore_reads += 1
+        sides_switch_query = models.Tip.gql('WHERE game_sport = :1 AND game_league = :2 AND '
+                               +'game_team_home = :3 AND date < :4 ORDER BY date DESC',
+                                 tip_instance.game_sport,
+                                 tip_instance.game_league,
+                                 tip_instance.game_team_away,
+                                 tip_instance.date,
+                                 )
         
-        # continue searching until no longer a series between the 2 teams
-        series_tips = []
-        for previous_tip_instance in query:
-            self.datastore_reads += 1
-            # only interested in the previous Tip if it's an earlier game of the same series or if it's a game
-            # that breaks the series for tip_instances, either way only care if 1 of the teams match
-            if (
-                previous_tip_instance.game_team_away in [tip_instance.game_team_away, tip_instance.game_team_home]
-                or previous_tip_instance.game_team_home in [tip_instance.game_team_away, tip_instance.game_team_home]
-            ):
-                # both teams have to be the same to be part of the same series (away vs home can be switched, just same teams)
-                # on first sign where 1 team is playing a different team then the series has been broken
-                if (
-                    (
-                     previous_tip_instance.game_team_away == tip_instance.game_team_away
-                     and previous_tip_instance.game_team_home == tip_instance.game_team_home
-                     )
-                    or
-                    (
-                     previous_tip_instance.game_team_home == tip_instance.game_team_away
-                     and previous_tip_instance.game_team_away == tip_instance.game_team_home
-                     )
-                ):
-                    # same series
-                    series_tips.append(previous_tip_instance)
-                    last_series_entry_date = previous_tip_instance.date
-                else:
-                    # 1 of the teams is playing a different team, series has been broken
-                    break
-                
-            if (last_series_entry_date - timedelta(days = max_day_limit)) > previous_tip_instance.date:
-                break
+        #TODO: unchecked scenario
+        # The away team (A) has a matchup against the home team (B)
+        # To find series we query A's matchups and search for non-interrupted matchups against B within 2 days of each other
+        # However, if A has matchup against B on day 1, then takes day 2 off while B faces off against C, and then on
+        # day 3 A matches up against B again, the matchup on day 1 will be considered the start of the series because
+        # we do not check B's matchups and do not see that B faced C on day 2 while A was resting
+        sorted_date_series_tips = [tip_instance]
+        self._fill_series(sorted_date_series_tips, sides_match_query, sides_switch_query)
         
         # Tip was the first of its series (or there is no series)
-        if len(series_tips) < 1:
+        if len(sorted_date_series_tips) < 2:
             return None
         
         # only want to extend the first of the series wettpoint tips if none of the other Tips in the series
@@ -213,7 +196,7 @@ class TipAnalysis(object):
         series_wettpoint_tip_total = str(tip_instance.wettpoint_tip_total)
         series_wettpoint_tip_stake = str(tip_instance.wettpoint_tip_stake)
         
-        first_series_tip = series_tips.pop()
+        first_series_tip = sorted_date_series_tips.pop(0)
         
         series_wettpoint_tip_total += ' ('+str(first_series_tip.wettpoint_tip_total)+')'
         series_wettpoint_tip_stake += ' ('+str(first_series_tip.wettpoint_tip_stake)+')'
@@ -229,9 +212,95 @@ class TipAnalysis(object):
             else:
                 series_wettpoint_tip_team += ' ('+models.TIP_SELECTION_TEAM_AWAY+')'
         
-        for preceding_series_tip in series_tips:
+        for preceding_series_tip in sorted_date_series_tips:
             # series is being updated throughout
             if preceding_series_tip.wettpoint_tip_stake != 0.0 or preceding_series_tip.wettpoint_tip_total != None:
                 return None
         
         return series_wettpoint_tip_team, series_wettpoint_tip_total, series_wettpoint_tip_stake
+    
+    @sys_util.function_timer()
+    def _fill_series(self, sorted_date_series, sides_match_query, sides_switch_query, max_day_limit=2):
+        earliest_series_tip = sorted_date_series[0]
+        current_series_tip = sorted_date_series[-1]
+        
+        # initialization
+        if not isinstance(sides_match_query, dict):
+            sides_match_query = {'query' : sides_match_query, 'last_tip' : None, 'offset' : 0}
+        if not isinstance(sides_switch_query, dict):
+            sides_switch_query = {'query' : sides_switch_query, 'last_tip' : None, 'offset' : 0}
+        
+        previous_match_tip_instance = previous_switch_tip_instance = None
+        
+        if sides_match_query['last_tip'] is None and sides_match_query['query'] is not None:
+            # either initialization or last tip in series was from match query
+            # get the team's last matchup where they were the away team
+            self.datastore_reads += 1
+            previous_match_tip_instance = sides_match_query['query'].get(offset=sides_match_query['offset'])
+            if previous_match_tip_instance is None:
+                sides_match_query['query'] = None
+            sides_match_query['last_tip'] = previous_match_tip_instance
+        elif sides_match_query['last_tip'] is not None:
+            # last matchup added to the series was a matchup where team was a home team
+            # while the last matchup where the team was the away team occurred before that and is still the same as before
+            previous_match_tip_instance = sides_match_query['last_tip']
+            
+        if sides_switch_query['last_tip'] is None and sides_switch_query['query'] is not None:
+            # either initialization or last tip in series was from switch query
+            # get the team's last matchup where they were the home team
+            self.datastore_reads += 1
+            previous_switch_tip_instance = sides_switch_query['query'].get(offset=sides_switch_query['offset'])
+            if previous_switch_tip_instance is None:
+                sides_switch_query['query'] = None
+            sides_switch_query['last_tip'] = previous_switch_tip_instance
+        elif sides_switch_query['last_tip'] is not None:
+            # last matchup added to the series was a matchup where team was a away team
+            # while the last matchup where the team was the home team occurred before that and is still the same as before
+            previous_switch_tip_instance = sides_switch_query['last_tip']
+        
+        # reached the start of team's initialization into the datastore, no games before this (rare occurrence)
+        if previous_match_tip_instance is None and previous_switch_tip_instance is None:
+            sys_util.add_mail(constants.MAIL_TITLE_GENERIC_WARNING, 
+                              'Reached all the way to '+current_series_tip.game_team_away+' initialization while trying to find series!',
+                              logging='debug')
+            return
+        
+        if (
+            previous_switch_tip_instance is None 
+            or (
+                previous_match_tip_instance is not None
+                and previous_match_tip_instance.date > previous_switch_tip_instance.date
+            )
+        ):
+            # last matchup was where team is away team
+            if current_series_tip.game_team_home !=  previous_match_tip_instance.game_team_home:
+                # if facing different opponent then series has ended
+                return
+            
+            if (earliest_series_tip.date - timedelta(days = max_day_limit)) > previous_match_tip_instance.date:
+                # if matchup occurred over max_day_limit days ago then series has ended
+                return
+            
+            # this matchup is part of the series, continue searching for earliest matchup in series
+            sides_match_query['last_tip'] = None
+            sides_match_query['offset'] += 1
+            sorted_date_series.insert(0, previous_match_tip_instance)
+            self._fill_series(sorted_date_series, sides_match_query, sides_switch_query, max_day_limit)
+        else:
+            # last matchup was where team is home team
+            if current_series_tip.game_team_home !=  previous_switch_tip_instance.game_team_away:
+                # if facing different opponent then series has ended
+                return
+                
+            if (earliest_series_tip.date - timedelta(days = max_day_limit)) > previous_switch_tip_instance.date:
+                # if matchup occurred over max_day_limit days ago then series has ended
+                return
+            
+            # this matchup is part of the series, continue searching for earliest matchup in series
+            sides_switch_query['last_tip'] = None
+            sides_switch_query['offset'] += 1
+            sorted_date_series.insert(0, previous_switch_tip_instance)
+            self._fill_series(sorted_date_series, sides_match_query, sides_switch_query, max_day_limit)
+        
+        # got all the matchups in the series, all done
+        return

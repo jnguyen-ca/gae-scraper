@@ -16,6 +16,15 @@ indexes:
   properties:
   - name: game_league
   - name: game_sport
+  - name: game_team_away
+  - name: date
+    direction: desc
+
+- kind: Tip
+  properties:
+  - name: game_league
+  - name: game_sport
+  - name: game_team_home
   - name: date
     direction: desc
 

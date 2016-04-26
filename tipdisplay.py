@@ -44,6 +44,9 @@ class TipDisplay(webapp.RequestHandler):
     __ERROR_SEPARATOR = ';'
     
     def post(self):
+        self.DATASTORE_PUTS = 0
+        self.DATASTORE_READS = 0
+        
         if sys_util.is_ajax(self.request):
             request_type = self.request.get(self.INPUT_NAME_REQUEST_TYPE)
             
@@ -58,10 +61,6 @@ class TipDisplay(webapp.RequestHandler):
                 logging.warning('Invalid request made!')
                 
             return
-        
-        self.DATASTORE_PUTS = 0
-        self.DATASTORE_READS = 0
-        self.datastore = {}
         
         self.html = []
         self.cssheader = []
@@ -339,6 +338,7 @@ class TipDisplay(webapp.RequestHandler):
 #         self.DATASTORE_PUTS += 1
 #         session.put()
         
+        sys_util.print_and_reset_function_timer()
         logging.debug('Total Reads: '+str(self.DATASTORE_READS)+', Total Writes: '+str(self.DATASTORE_PUTS))
         
     def list_next_games(self, not_archived_tips):

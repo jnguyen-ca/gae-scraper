@@ -662,7 +662,12 @@ class TipDisplay(webapp.RequestHandler):
             latest_odds_datetime = latest_odds_datetime.replace(tzinfo=pytz.utc).astimezone(local_timezone)
             latest_odds_datetime = latest_odds_datetime.strftime('%Y/%m/%d %I:%M%p')
         
-        game_row_html += '<span class="tip-money_line">%s</span>' % (latest_moneyline)
+        try:
+            latest_decimal_moneyline = round(tipanalysis.convert_to_decimal_odds(latest_moneyline),3)
+        except:
+            latest_decimal_moneyline = None
+        
+        game_row_html += '<span class="tip-money_line">%s (%s)</span>' % (latest_moneyline, latest_decimal_moneyline)
         
         if scores_exist is True:
             moneyline_result = self._get_tip_tipanalysis_result(

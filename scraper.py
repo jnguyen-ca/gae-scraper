@@ -206,9 +206,12 @@ class WettpointScraper(Scraper):
         h2h_soup = h2h_soup.find('div', {'class' : 'inhalt2'})
         
         # ensure teams are correct and we got the right link
-        team_links = h2h_soup.find('table').find_all('tr')[-1].find_all('a')
-        team_link_text_home = team_links[0].get_text()
-        team_link_text_away = team_links[1].get_text()
+        try:
+            team_links = h2h_soup.find('table').find_all('tr')[-1].find_all('a')
+            team_link_text_home = team_links[0].get_text()
+            team_link_text_away = team_links[1].get_text()
+        except IndexError:
+            return None
         
         team_link_home = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_link_text_home)[0]
         team_link_away = teamconstants.get_team_datastore_name_and_id(self.sport_key, league_key, team_link_text_away)[0]

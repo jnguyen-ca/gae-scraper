@@ -589,10 +589,17 @@ class TipArchive(webapp.RequestHandler):
         total_value_rows = self.get_new_archive_total_value_lists(default_row_values, dates_to_archive, tip_instance.wettpoint_tip_total, tip_instance.total_no, tip_instance.total_lines, tip_instance.score_away, tip_instance.score_home)
         if tip_instance.game_sport in ['Baseball'] and series_wettpoint_tips:
             for total_value_row in total_value_rows:
-                total_value_row[self.SELECTION_INDEX] = series_wettpoint_tips[1]
+                if series_wettpoint_tips[1] is None:
+                    #TODO: implement this better and for other sports
+                    total_value_row[self.SELECTION_INDEX] = 'None'
+                else:
+                    total_value_row[self.SELECTION_INDEX] = series_wettpoint_tips[1]
                 total_value_row[5] = series_wettpoint_tips[2]
         new_tip_archive_row_lists += total_value_rows
-        
+    
+    #TODO: clean up get_new_archive_team_value_lists() (and examine get_new_archive_total_value_lists())
+    # split up functionality into smaller functions
+    # why am i using temporary lists instead of dicts?
     def get_new_archive_team_value_lists(self, default_row_values, dates_to_archive, team_selection, team_lines, spread_no, spread_lines, score_away, score_home):
         archive_tip_team_lists = []
         
@@ -721,6 +728,23 @@ class TipArchive(webapp.RequestHandler):
                                 ]
                 ):
                     spread_mod = bet_odds[1]
+                else:
+                    #TODO: further evaluate
+                    decimal_odds = round(tipanalysis.convert_to_decimal_odds(bet_odds[0]),3)
+                    if (decimal_odds < 2.0 and decimal_odds >= 1.9):
+                        new_row_values[self.TYPE_INDEX] += ' 1.9-1.99'
+                    elif (decimal_odds < 1.9 and decimal_odds >= 1.75):
+                        new_row_values[self.TYPE_INDEX] += ' 1.75-1.89'
+                    elif (decimal_odds < 1.75 and decimal_odds >= 1.6):
+                        new_row_values[self.TYPE_INDEX] += ' 1.6-1.749'
+                    elif decimal_odds < 1.6:
+                        new_row_values[self.TYPE_INDEX] += ' <1.6'
+                    elif (decimal_odds >= 2.0 and decimal_odds < 2.2):
+                        new_row_values[self.TYPE_INDEX] += ' 2.0-2.19'
+                    elif (decimal_odds >= 2.2 and decimal_odds < 2.5):
+                        new_row_values[self.TYPE_INDEX] += ' 2.2-2.49'
+                    elif decimal_odds >= 2.5:
+                        new_row_values[self.TYPE_INDEX] += ' >=2.5'
                 
                 # get bet result
                 # away team bet

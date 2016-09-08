@@ -362,13 +362,17 @@ class PinnacleScraper(BookieScraper):
                     # also skip grand salami cases
                     elif participant_name_visiting.split(' ')[0].lower() == 'away' and participant_name_home.split(' ')[0].lower() == 'home':
                         continue
-                    # also skip pinnacle being stupid
-                    elif (
-                          participant_name_visiting == '2nd Half Wagering' 
-                          or participant_name_home == '2nd Half Wagering'
-                          or 'Pre-Game Wagering' in participant_name_visiting 
-                          or 'Will Be Available For' in participant_name_home
-                      ):
+                    
+                    skip_event = False
+                    for excluded_team_name in appvar_util.get_team_names_excluded_appvar():
+                        if (
+                            excluded_team_name in participant_name_visiting
+                            or excluded_team_name in participant_name_home
+                        ):
+                            skip_event = True
+                            break
+                        
+                    if skip_event is True:
                         continue
                     
                     total_points = total_over_odds = total_under_odds = None

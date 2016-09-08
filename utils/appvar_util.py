@@ -22,9 +22,10 @@ import models
 __APPVAR_SPORT_NAMES = 'sportconstants'
 __APPVAR_LEAGUE_NAMES = 'leagueconstants'
 __APPVAR_TEAM_NAMES = 'teamconstants'
-__APPVAR_SPORTS_H2H_EXCLUDE = 'sportsh2hexclude'
+__APPVAR_SPORTS_H2H_EXCLUDED = 'sportsh2hexcluded'
 __APPVAR_SPORTS_WEEKLY = 'sportsweekly'
 __APPVAR_LEAGUES_OT_INCLUDED = 'leaguesotincluded'
+__APPVAR_TEAM_NAMES_EXCLUDED = 'teamnamesexcluded'
 
 __APPVAR_USER_AGENTS = 'header_user_agents'
 
@@ -32,9 +33,10 @@ VALID_APPVAR_LIST = [
                __APPVAR_SPORT_NAMES,
                __APPVAR_LEAGUE_NAMES,
                __APPVAR_TEAM_NAMES, 
-               __APPVAR_SPORTS_H2H_EXCLUDE,
+               __APPVAR_SPORTS_H2H_EXCLUDED,
                __APPVAR_SPORTS_WEEKLY,
                __APPVAR_LEAGUES_OT_INCLUDED,
+               __APPVAR_TEAM_NAMES_EXCLUDED,
                __APPVAR_USER_AGENTS,
                ]
 
@@ -47,8 +49,11 @@ def get_league_names_appvar():
 def get_team_names_appvar():
     return get_or_set_app_var(__APPVAR_TEAM_NAMES)
 
+def get_team_names_excluded_appvar():
+    return get_or_set_app_var(__APPVAR_TEAM_NAMES_EXCLUDED)
+
 def get_h2h_excluded_sports_appvar():
-    return get_or_set_app_var(__APPVAR_SPORTS_H2H_EXCLUDE)
+    return get_or_set_app_var(__APPVAR_SPORTS_H2H_EXCLUDED)
 
 def get_weekly_sports_appvar():
     return get_or_set_app_var(__APPVAR_SPORTS_WEEKLY)

@@ -598,7 +598,7 @@ class XscoresScraper(ScoreboardScraper):
     
 class ScoresProScraper(ScoreboardScraper):
     __FEED = 'scorespro.com'
-    _timezone = pytz.timezone(constants.TIMEZONE_BACKUP)
+    _timezone = pytz.timezone(constants.TIMEZONE_SCORESPRO)
     
     def __init__(self, sport_key, league_key):
         self.sport_key = sport_key
@@ -646,20 +646,37 @@ class ScoresProScraper(ScoreboardScraper):
                                   )
             
             if soup:
+                # div#national is the container of latest results, tables that
+                # are a direct child of this div are the section labels
                 results_table = soup.find('div', {'id' : 'national'}).find('table')
+                # confirm this is the results section by checking the label (which should be the first link descendant)
+                table_label = results_table.find('a').get_text()
+                if 'results' not in table_label.lower():
+                    raise ScrapeException('Attempted to get SCORESPRO feed for %s of %s, but encountered improperly formatted page.' % (
+                                                                                                                                        self.sport_key,
+                                                                                                                                        scoreboard_date_string
+                                                                                                                                        ))
+                
+                # unfortunately all the sections and their content are on the same level,
+                # therefore need to get all the results content until we run into the next section
                 score_tables = []
                 for results_table_row in results_table.next_siblings:
                     try:
+                        # if div then part of results
                         if results_table_row.name == 'div':
                             score_tables.append(results_table_row)
+                        # if table we hit next section, should have all results we can get
                         elif results_table_row.name == 'table':
                             break
                     except AttributeError:
+                        # ignore breaks and stuff
                         pass
                 
+                # now filter out the results for the desired date
                 scores_rows = []
                 correct_date = False
                 for score_table_row in score_tables:
+                    # date div will have a li.ncet_date child
                     row_date = score_table_row.find('li', {'class' : 'ncet_date'})
                     if row_date:
                         if correct_date is False:
@@ -668,12 +685,17 @@ class ScoresProScraper(ScoreboardScraper):
                             elif len(scores_rows) > 0:
                                 break
                         else:
+                            # hit the next (i.e. earlier) date results
                             break
+                    # everything after date div until next date div is possibly results container
                     elif correct_date is True:
+                        # results container should contain a table
                         if score_table_row.find('table'):
+                            # get all the direct child tables (i.e. results) in this results container
                             scores_rows += score_table_row.find_all('table', recursive=False)
-                            correct_date = False
+#                             correct_date = False # remove?
                 
+                # should now have all the result tables for the desired date
                 for score_row in scores_rows:
                     row_status = score_row.find('td', {'class' : 'status'}).get_text().strip()
                     

@@ -11,7 +11,7 @@ import os
 import time
 import logging
 import appvar_util
-import constants
+from binkscraper import constants
 
 __MAIL_OBJECT__ = None
 __FUNCTION_TIMERS__ = {}

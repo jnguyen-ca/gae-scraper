@@ -5,13 +5,7 @@ from __future__ import unicode_literals
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp.util import run_wsgi_app
 
-import frontpage
-import tipdisplay
-import dashboard
-import settings
-import taskhandler
-import tiparchive
-import superadmin
+from binkscraper import frontpage, tipdisplay, dashboard, settings, taskhandler, tiparchive, superadmin
 
 application = webapp.WSGIApplication([
                                       ('/', frontpage.FrontPage), 

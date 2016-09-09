@@ -1,16 +1,18 @@
 application: binkscraper
-version: 4-2-3
+version: 4-3-0
 runtime: python27
 api_version: 1
 threadsafe: false
 
 handlers:
-- url: /favicon.ico
-  static_files: images/favicon.ico
-  upload: images/favicon.ico
+- url: /favicon\.ico
+  static_files: static/images/favicon.ico
+  upload: static/images/favicon\.ico
 
-- url: /javascript
-  static_dir: javascript
+- url: /(.*\.js)
+  mime_type: text/javascript
+  static_files: static/\1
+  upload: static/(.*\.js)
 
 - url: /mapreduce(/.*)?
   script: libs/GoogleAppEngineMapReduce-1.9.5.0/mapreduce/main.py

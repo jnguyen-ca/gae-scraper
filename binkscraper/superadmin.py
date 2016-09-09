@@ -13,14 +13,15 @@ class SuperAdmin(webapp.RequestHandler):
 import sys
 sys.path.append('patches')
 
-from patches import patch_4_0_1_spread_fix
+# from patches import patch_4_0_1_spread_fix
 
 class RunPatch(object):
     def __init__(self):
         pass
         
     def run_patch(self):
-        patch_4_0_1_spread_fix.patch()
+        pass
+#         patch_4_0_1_spread_fix.patch()
 
 import models
 import tipanalysis

@@ -86,7 +86,7 @@ def print_html(output, html=None):
     global __JS_FILES__
     
     if html is not None:
-        with open(html) as f:
+        with open('templates/'+html) as f:
             for line in f:
                 line = replace_template_tags(line, __TEMPLATE_TAGS__)
                 if '</head>' in line:

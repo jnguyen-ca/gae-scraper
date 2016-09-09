@@ -73,7 +73,7 @@ class TipDisplay(webapp.RequestHandler):
         self.jsheader.append(
 '''
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
-<script src="/javascript/modules/tipdisplay.js"></script>
+<script src="/js/modules/tipdisplay.js"></script>
 ''')
         
         self.styleheader.append(

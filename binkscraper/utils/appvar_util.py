@@ -6,7 +6,7 @@ APPVAR_KEY_SCOREBOARD = 'scoreboard'
 APPVAR_KEY_WETTPOINT = 'wettpoint'
 APPVAR_KEY_PINNACLE = 'pinnacle'
 
-import constants
+from binkscraper import constants
 
 class ApplicationVariableException(constants.ApplicationException):
     """Base exception for operations on app var"""
@@ -17,7 +17,7 @@ from google.appengine.ext import ndb
 
 import json
 import logging
-import models
+from binkscraper import models
 
 __APPVAR_SPORT_NAMES = 'sportconstants'
 __APPVAR_LEAGUE_NAMES = 'leagueconstants'

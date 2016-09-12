@@ -173,8 +173,8 @@ class TipData(DataHandler):
         try:
             self._update_scores()
         except requests_util.HTTP_EXCEPTION_TUPLE as request_error:
-            logging.warning('scoreboard down')
-            logging.warning(request_error)
+            mail_message = 'Unable to retrieve scores' + "\n%s" % (request_error)
+            sys_util.add_mail(constants.MAIL_TITLE_EXTERNAL_WARNING, mail_message, logging='warning')
         
         sys_util.send_all_mail()
         
@@ -470,7 +470,7 @@ class TipData(DataHandler):
                         # either game was taken off the board (for any number of reasons) - could be temporary
                         # or game is a duplicate (something changed that i didn't account for)
                         mail_message = 'Missing from bookies: '+_game_details_string(tip_instance)+"\n"
-                        sys_util.add_mail(constants.MAIL_TITLE_MISSING_EVENT, mail_message, logging='warning')
+                        sys_util.add_mail(constants.MAIL_TITLE_MISSING_EVENT, mail_message, logging='info')
                         
         return updated_tiplines
     
@@ -627,8 +627,8 @@ class WettpointData(DataHandler):
                 wettpoint_current_time = datetime.utcnow()
                 wettpoint_current_date = wettpoint_current_time.replace(tzinfo=pytz.utc).astimezone(self.wettpoint_timezone).strftime('%d.%m.%Y')
             except requests_util.HTTP_EXCEPTION_TUPLE as request_error:
-                logging.warning('wettpoint tables down')
-                logging.warning(request_error)
+                mail_message = 'Unable to retrieve Wettpoint Table for %s' % (sport_key) + "\n%s" % (request_error)
+                sys_util.add_mail(constants.MAIL_TITLE_EXTERNAL_WARNING, mail_message, logging='warning')
                 return
             
             # get the last event time so next scrape can possibly occur when all current events have expired (i.e. table completely refreshes)
@@ -800,8 +800,8 @@ class WettpointData(DataHandler):
                                         else:
                                             h2h_details = wettpointScraper.get_wettpoint_h2h(league_key, tip_instance.game_team_home, tip_instance.game_team_away)
                                     except requests_util.HTTP_EXCEPTION_TUPLE as request_error:
-                                        logging.warning('Error adding wettpoint H2H details. Skipping future [%s] fetches for this execution (1).' % (tip_instance.game_sport))
-                                        logging.warning(request_error)
+                                        mail_message = 'Error adding wettpoint H2H details. Skipping future [%s] fetches for this execution (1).' % (tip_instance.game_sport) + "\n%s" % (request_error)
+                                        sys_util.add_mail(constants.MAIL_TITLE_EXTERNAL_WARNING, mail_message, logging='warning')
                                         H2H_sport_issue = True
                                     else:
                                         if h2h_details is None:
@@ -883,8 +883,8 @@ class WettpointData(DataHandler):
                                 else:
                                     h2h_details = wettpointScraper.get_wettpoint_h2h(league_key, tip_instance.game_team_home, tip_instance.game_team_away, nolimit=nolimit)
                             except requests_util.HTTP_EXCEPTION_TUPLE as request_error:
-                                logging.warning('Error getting wettpoint H2H details. Skipping future [%s] fetches for this execution (2).' % (tip_instance.game_sport))
-                                logging.warning(request_error)
+                                mail_message = 'Error getting wettpoint H2H details. Skipping future [%s] fetches for this execution (2).' % (tip_instance.game_sport) + "\n%s" % (request_error)
+                                sys_util.add_mail(constants.MAIL_TITLE_EXTERNAL_WARNING, mail_message, logging='warning')
                                 H2H_sport_issue = True
                                 tip_instance.wettpoint_tip_stake = None
                             else:
@@ -1173,6 +1173,7 @@ class BookieData(DataHandler):
         corresponding Tip line data. Needs to be done before line update so that new Tips lines can also be updated
         on their initialization.
         '''
+        team_name_change_log_messages = ''
         for sport_key, events_by_leage in self.eventsDict.iteritems():
             if sport_key not in appvar_util.get_sport_names_appvar():
                 raise DatastoreException('Scraper did not get correct sport datastore name for %s' % (sport_key))
@@ -1201,10 +1202,10 @@ class BookieData(DataHandler):
                             missing_team_name.append(team_name)
                         else:
                             if datastore_team_name != team_name:
-                                logging.info('Changing pinnacle name (%s) to datastore (%s)' % (
+                                team_name_change_log_messages += 'Changing pinnacle name (%s) to datastore (%s)' % (
                                                                                                 team_name,
                                                                                                 datastore_team_name
-                                                                                                ))
+                                                                                                )+"\n"
                                 
                             if team_name == team_name_away:
                                 team_name_without_game_string_away = datastore_team_name_without_game_string
@@ -1384,6 +1385,8 @@ class BookieData(DataHandler):
                     
                     # Tips will get their lines updated so keep Tip associated with their BookieScrapeData for later use
                     self._tipkey_to_event[tip_instance_key] = event
+        
+        logging.info(team_name_change_log_messages.strip())
                     
     def _get_team_datastore_name(self, sport_key, league_key, bookie_team_name):
         # if the game is a doubleheader then we'll need both the team name with the game string and without

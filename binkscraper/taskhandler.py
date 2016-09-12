@@ -18,7 +18,7 @@ import datahandler
 TASK_SCRAPE_CRON = 'scrape'
 
 class TaskHandler(webapp.RequestHandler):
-    TASK_RETRY_LIMIT = 2
+    TASK_RETRY_LIMIT = 1
     
     def get(self):
         taskqueue.add(queue_name='scraper', url=self.request.path)
@@ -32,7 +32,7 @@ class TaskHandler(webapp.RequestHandler):
             self.scrape_and_update_tips()
             
     def scrape_and_update_tips(self):
-        urlfetch.set_default_fetch_deadline(15)
+        urlfetch.set_default_fetch_deadline(60)
         logging.getLogger('requests').setLevel(logging.WARNING) # disable requests library info and debug messages (to replace with my own)
         requests_util.reset_request_count()
         

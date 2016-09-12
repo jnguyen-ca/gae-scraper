@@ -68,20 +68,17 @@ def request(request_lib=REQUEST_LIB_REQUESTS, response_type=RESPONSE_TYPE_HTML, 
     if hits > 1:
         time.sleep(random.uniform(min_wait_time,max_wait_time))
     
+    log_string = 'Executing a %s for %s' % (request_lib, kwargs['url'])
+    if 'headers' in kwargs:
+        log_string += "\n    Headers: %s" % (str(kwargs['headers']))
+    if log_info:
+        log_string += "\n    %s" % log_info
+    logging.debug(log_string)
+    
     if request_lib == REQUEST_LIB_URLFETCH:
-        log_string = 'FETCHING (gae urlfetch) %s' % (kwargs['url'])
-        if log_info:
-            log_string += ' | %s' % log_info
-        
-        logging.info(log_string)
         result = urlfetch.fetch(**kwargs)
         result = result.content
     elif request_lib == REQUEST_LIB_REQUESTS:
-        log_string = 'REQUESTING (lib requests) %s' % (kwargs['url'])
-        if log_info:
-            log_string += ' | %s' % log_info
-        
-        logging.info(log_string)
         result = requests.get(**kwargs)
         if response_encoding:
             result.encoding = response_encoding

@@ -683,13 +683,11 @@ class ScoresProScraper(ScoreboardScraper):
                     # date div will have a li.ncet_date child
                     row_date = score_table_row.find('li', {'class' : 'ncet_date'})
                     if row_date:
-                        if correct_date is False:
-                            if row_date.get_text().strip() == scoreboard_date_string:
-                                correct_date = True
-                            elif len(scores_rows) > 0:
-                                break
-                        else:
-                            # hit the next (i.e. earlier) date results
+                        if row_date.get_text().strip() == scoreboard_date_string:
+                            correct_date = True
+                        elif len(scores_rows) > 0:
+                            # if already got rows for a date and current row_date does not
+                            # equal scoreboard_date_string that means we're on a earlier date and can stop
                             break
                     # everything after date div until next date div is possibly results container
                     elif correct_date is True:
@@ -697,7 +695,9 @@ class ScoresProScraper(ScoreboardScraper):
                         if score_table_row.find('table'):
                             # get all the direct child tables (i.e. results) in this results container
                             scores_rows += score_table_row.find_all('table', recursive=False)
-#                             correct_date = False # remove?
+                            # unfortunately results are not grouped all together by date
+                            # i.e. a single date's games could be split into multiple sets
+                            correct_date = False
                 
                 # should now have all the result tables for the desired date
                 for score_row in scores_rows:

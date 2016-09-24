@@ -41,12 +41,10 @@ from datetime import datetime, timedelta
 from utils import sys_util, memcache_util, appvar_util, requests_util
 
 import re
-import json
 import pytz
 import scraper
 import teamconstants
 import models
-import modelhandler
 
 _WETTPOINT_DATETIME_FORMAT = '%d.%m.%Y %H:%M'
 
@@ -225,14 +223,12 @@ class TipData(DataHandler):
                     
                     # retrieve the corresponding TipLine object
                     self.datastore_reads += 1
-                    tipline_instance = models.TipLine.gql('WHERE ANCESTOR IS :1', tip_instance.key).get()
+                    tipline_instance = models.TipLine.from_tip_instance_key(tip_instance.key)
                     if tipline_instance is None:
                         self.datastore_writes += 1
                         tipline_instance = models.TipLine(parent=tip_instance.key)
                     else:
                         self.datastore_reads += 1
-                    
-                    tipline_data = modelhandler.TipLineData(tipline_instance)
                     
                     # if tip does not have corresponding event in any of the bookies then it may have been ppd
                     event_is_missing = True
@@ -260,7 +256,6 @@ class TipData(DataHandler):
                             line_date += timedelta(minutes=1)
                         line_date = line_date.strftime(models.TIP_HASH_DATETIME_FORMAT)
                         
-                        # TODO: add support for multiple bookie lines
                         ############# TOTALS (O/U) UPDATE #############
                         event_total_over_points = eventData.total_over[eventData.LINE_KEY_POINTS]
                         event_total_over_odds = eventData.total_over[eventData.LINE_KEY_ODDS]
@@ -274,45 +269,21 @@ class TipData(DataHandler):
                             and event_total_under_odds is not None  
                         ):
                             # add total entries to tipline
-                            tipline_data.insert_total_over_entry(
-                                                                 bookie         = bookie_key, 
-                                                                 line_date      = line_date, 
-                                                                 total_points   = event_total_over_points, 
-                                                                 total_odds     = event_total_over_odds
+                            tipline_instance.insert_property_entry(
+                                                                 entry_property  = 'total_over',
+                                                                 bookie_key      = bookie_key, 
+                                                                 line_date       = line_date, 
+                                                                 points_values   = event_total_over_points, 
+                                                                 odds_values     = event_total_over_odds
                                                                  )
                             
-                            tipline_data.insert_total_under_entry(
-                                                                 bookie         = bookie_key, 
-                                                                 line_date      = line_date, 
-                                                                 total_points   = event_total_under_points, 
-                                                                 total_odds     = event_total_under_odds
+                            tipline_instance.insert_property_entry(
+                                                                 entry_property  = 'total_under',
+                                                                 bookie_key      = bookie_key, 
+                                                                 line_date       = line_date, 
+                                                                 points_values   = event_total_under_points, 
+                                                                 odds_values     = event_total_under_odds
                                                                  )
-                        
-                        # get the correct total dict (i.e. either the over or the under)
-                        if tip_instance.wettpoint_tip_total == models.TIP_SELECTION_TOTAL_OVER:
-                            event_total = eventData.total_over
-                        else:
-                            event_total = eventData.total_under
-                        
-                        # add newest total points number
-                        if event_total[eventData.LINE_KEY_POINTS] is not None:
-                            if tip_instance.total_no:
-                                hash1 = json.loads(tip_instance.total_no)
-                            else:
-                                hash1 = {}
-                                
-                            hash1[line_date] = event_total[eventData.LINE_KEY_POINTS]
-                            tip_instance.total_no = json.dumps(hash1)
-                        
-                        # add newest total odds number
-                        if event_total[eventData.LINE_KEY_ODDS] is not None:
-                            if tip_instance.total_lines:
-                                hash1 = json.loads(tip_instance.total_lines)
-                            else:
-                                hash1 = {}
-                                
-                            hash1[line_date] = event_total[eventData.LINE_KEY_ODDS]
-                            tip_instance.total_lines = json.dumps(hash1)
                         
                         ############# MONEYLINE (1X2) UPDATE #############
                         if (
@@ -321,76 +292,26 @@ class TipData(DataHandler):
                             or eventData.moneyline_draw is not None
                         ):
                             # add moneyline entries to tipline
-                            tipline_data.insert_money_away_entry(
-                                                                 bookie     = bookie_key, 
-                                                                 line_date  = line_date, 
-                                                                 odds       = eventData.moneyline_away
+                            tipline_instance.insert_property_entry(
+                                                                 entry_property  = 'money_away',
+                                                                 bookie_key      = bookie_key, 
+                                                                 line_date       = line_date, 
+                                                                 odds_values     = eventData.moneyline_away
                                                                  )
                             
-                            tipline_data.insert_money_home_entry(
-                                                                 bookie     = bookie_key, 
-                                                                 line_date  = line_date, 
-                                                                 odds       = eventData.moneyline_home
+                            tipline_instance.insert_property_entry(
+                                                                 entry_property  = 'money_home',
+                                                                 bookie_key      = bookie_key, 
+                                                                 line_date       = line_date, 
+                                                                 odds_values     = eventData.moneyline_home
                                                                  )
                             
-                            tipline_data.insert_money_draw_entry(
-                                                                 bookie     = bookie_key, 
-                                                                 line_date  = line_date, 
-                                                                 odds       = eventData.moneyline_draw
+                            tipline_instance.insert_property_entry(
+                                                                 entry_property  = 'money_draw',
+                                                                 bookie_key      = bookie_key, 
+                                                                 line_date       = line_date, 
+                                                                 odds_values     = eventData.moneyline_draw
                                                                  )
-                        
-                            if tip_instance.team_lines:
-                                hash1 = json.loads(tip_instance.team_lines)
-                            else:
-                                hash1 = {}
-                            
-                            # if a team has been specified by wettpoint, store that team's odds
-                            # otherwise store the favourite's odds (which can then be used or thrown away depending on
-                            # what the wettpoint team actually ends up being)
-                            if tip_instance.wettpoint_tip_team is not None:
-                                moneyline = ''
-                                try:
-                                    # go through the 1X2 string to get all the specified odds
-                                    for i in tip_instance.wettpoint_tip_team:
-                                        if i == models.TIP_SELECTION_TEAM_HOME:
-                                            moneyline += eventData.moneyline_home + models.TIP_SELECTION_LINE_SEPARATOR
-                                        elif i == models.TIP_SELECTION_TEAM_DRAW:
-                                            moneyline += eventData.moneyline_draw + models.TIP_SELECTION_LINE_SEPARATOR
-                                        elif i == models.TIP_SELECTION_TEAM_AWAY:
-                                            moneyline += eventData.moneyline_away + models.TIP_SELECTION_LINE_SEPARATOR
-                                except TypeError:
-                                    raise DatastoreException('Type error occured when creating moneyline string (most likely a NoneType) for '+_game_details_string(tip_instance))
-                                
-                                # if sport has draws and draw odds are not specified in wettpoint team, attach the draw odds to the end
-                                if (
-                                    eventData.moneyline_draw 
-                                    and len(tip_instance.wettpoint_tip_team) < 2
-                                ):
-                                    # in the rare case that the draw was the wettpoint team, add the home team odds
-                                    if tip_instance.wettpoint_tip_team == models.TIP_SELECTION_TEAM_DRAW:
-                                        moneyline += eventData.moneyline_home
-                                    else:
-                                        moneyline += eventData.moneyline_draw
-                                
-                                # strip the line separator at the end of the string
-                                moneyline = moneyline.rstrip(models.TIP_SELECTION_LINE_SEPARATOR)
-                                hash1[line_date] = moneyline
-                            else:
-                                moneyline = ''
-                                # determine whether home or away is the favourite (in case of pick'em tie, home team)
-                                if float(eventData.moneyline_away) < float(eventData.moneyline_home):
-                                    tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_AWAY
-                                    moneyline = eventData.moneyline_away
-                                else:
-                                    tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_HOME
-                                    moneyline = eventData.moneyline_home
-                                    
-                                if eventData.moneyline_draw:
-                                    moneyline += models.TIP_SELECTION_LINE_SEPARATOR+eventData.moneyline_draw
-                                    
-                                hash1[line_date] = moneyline
-                                    
-                            tip_instance.team_lines = json.dumps(hash1)
                             
                         ############# SPREAD UPDATE #############
                         event_spread_home_points = eventData.spread_home[eventData.LINE_KEY_POINTS]
@@ -405,66 +326,24 @@ class TipData(DataHandler):
                             and event_spread_away_odds is not None  
                         ):
                             # add spread entries to tipline
-                            tipline_data.insert_spread_home_entry(
-                                                                 bookie         = bookie_key, 
+                            tipline_instance.insert_property_entry(
+                                                                 entry_property = 'spread_home',
+                                                                 bookie_key     = bookie_key, 
                                                                  line_date      = line_date, 
-                                                                 spread_points  = event_spread_home_points, 
-                                                                 spread_odds    = event_spread_home_odds
+                                                                 points_values  = event_spread_home_points, 
+                                                                 odds_values    = event_spread_home_odds
                                                                  )
                             
-                            tipline_data.insert_spread_away_entry(
-                                                                 bookie         = bookie_key, 
+                            tipline_instance.insert_property_entry(
+                                                                 entry_property = 'spread_away',
+                                                                 bookie_key     = bookie_key, 
                                                                  line_date      = line_date, 
-                                                                 spread_points  = event_spread_away_points, 
-                                                                 spread_odds    = event_spread_away_odds
+                                                                 points_values  = event_spread_away_points, 
+                                                                 odds_values    = event_spread_away_odds
                                                                  )
                             
-                            if tip_instance.spread_no:
-                                hash1 = json.loads(tip_instance.spread_no)
-                            else:
-                                hash1 = {}
-                                
-                            if tip_instance.spread_lines:
-                                hash2 = json.loads(tip_instance.spread_lines)
-                            else:
-                                hash2 = {}
-                                
-                            if tip_instance.wettpoint_tip_team is not None:
-                                # if team has home (1) or is draw use home spread
-                                if tip_instance.wettpoint_tip_team.find(models.TIP_SELECTION_TEAM_HOME) != -1 or tip_instance.wettpoint_tip_team == models.TIP_SELECTION_TEAM_DRAW:
-                                    hash1[line_date] = event_spread_home_points
-                                    hash2[line_date] = event_spread_home_odds
-                                elif tip_instance.wettpoint_tip_team.find(models.TIP_SELECTION_TEAM_AWAY) != -1:
-                                    hash1[line_date] = event_spread_away_points
-                                    hash2[line_date] = event_spread_away_odds
-                            else:
-                                # get the favourite by comparing spread points (if pick'em use odds with home being default)
-                                if (
-                                    float(event_spread_away_points) < float(event_spread_home_points) 
-                                    or (
-                                        float(event_spread_away_points) == float(event_spread_home_points) 
-                                        and float(event_spread_away_odds) < float(event_spread_home_odds)
-                                    )
-                                ):
-                                    tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_AWAY
-                                    hash1[line_date] = event_spread_away_points
-                                    hash2[line_date] = event_spread_away_odds
-                                elif (
-                                      float(event_spread_away_points) > float(event_spread_home_points) 
-                                      or (
-                                          float(event_spread_away_points) == float(event_spread_home_points) 
-                                          and float(event_spread_away_odds) >= float(event_spread_home_odds)
-                                      )
-                                ):
-                                    tip_instance.wettpoint_tip_team = models.TIP_SELECTION_TEAM_HOME
-                                    hash1[line_date] = event_spread_home_points
-                                    hash2[line_date] = event_spread_home_odds
-                                
-                            tip_instance.spread_no = json.dumps(hash1)
-                            tip_instance.spread_lines = json.dumps(hash2)
-                    
                     if event_is_missing is not True:
-                        updated_tiplines.append(tipline_data.tipline_instance)
+                        updated_tiplines.append(tipline_instance)
                         self.not_previously_elapsed_tips[sport_key][league_key][tip_instance_index] = tip_instance
                     elif bookies_are_down is not True:
                         # either game was taken off the board (for any number of reasons) - could be temporary
@@ -681,10 +560,6 @@ class WettpointData(DataHandler):
                     # determine if the data for the teams have likely been updated (i.e. this is the next game and current games are finished)
                     matchup_finalized = self._matchup_data_finalized(tip_instance.game_sport, [tip_away_team, tip_home_team], tip_instance.date, possible_earlier_games)
                     
-                    # has the wettpoint tip been changed
-                    tip_change_created = False
-                    tip_change_object = None
-                    
                     # empty table (either failed to retrieve or no tips listed)
                     if not sport_wettpoint_table:
                         if tip_instance.wettpoint_tip_stake is None:
@@ -731,13 +606,16 @@ class WettpointData(DataHandler):
                                 tip_stake = tip_row.tip_stake
                                 tip_stake = float(tip_stake[0:tip_stake.find('/')])
                                 
+                                tip_instance_date_string = (tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p')
+                                mail_message = tip_instance_date_string+' '+tip_instance.game_team_away+' @ '+tip_instance.game_team_home+"\n"
+                                
                                 # team tip changed
                                 if (
                                     tip_instance.wettpoint_tip_team is not None 
                                     and tip_instance.wettpoint_tip_team != tip_team
                                 ):
-                                    self._create_tip_change_object(tip_instance, tip_change_object, 'team', 'team_general', not tip_change_created, new_team_selection=tip_team)
-                                    tip_change_created = True
+                                    mail_message += 'Team tip changed to '+str(tip_team)
+                                    sys_util.add_mail('Tip Change Notice', mail_message)
                                 
                                 tip_instance.wettpoint_tip_team = tip_team
     
@@ -745,11 +623,11 @@ class WettpointData(DataHandler):
                                 if tip_total.lower().find('over') != -1:
                                     # total tip changed
                                     if (
-                                        tip_instance.total_lines is not None 
+                                        tip_instance.wettpoint_tip_total is not None 
                                         and tip_instance.wettpoint_tip_total != models.TIP_SELECTION_TOTAL_OVER
                                     ):
-                                        self._create_tip_change_object(tip_instance, tip_change_object, 'total', 'total_over', not tip_change_created, new_total_selection=models.TIP_SELECTION_TOTAL_OVER)
-                                        tip_change_created = True
+                                        mail_message += 'Total tip changed to '+str(models.TIP_SELECTION_TOTAL_OVER)
+                                        sys_util.add_mail('Tip Change Notice', mail_message)
                                     
                                     tip_instance.wettpoint_tip_total = models.TIP_SELECTION_TOTAL_OVER
                                 # tip is under
@@ -759,8 +637,8 @@ class WettpointData(DataHandler):
                                         tip_instance.wettpoint_tip_total is not None 
                                         and tip_instance.wettpoint_tip_total != models.TIP_SELECTION_TOTAL_UNDER
                                     ):
-                                        self._create_tip_change_object(tip_instance, tip_change_object, 'total', 'total_under', not tip_change_created, new_total_selection=models.TIP_SELECTION_TOTAL_UNDER)
-                                        tip_change_created = True
+                                        mail_message += 'Total tip changed to '+str(models.TIP_SELECTION_TOTAL_UNDER)
+                                        sys_util.add_mail('Tip Change Notice', mail_message)
                                     
                                     tip_instance.wettpoint_tip_total = models.TIP_SELECTION_TOTAL_UNDER
                                 
@@ -778,8 +656,8 @@ class WettpointData(DataHandler):
                                     and tip_instance.wettpoint_tip_stake != tip_stake 
                                     and int(tip_instance.wettpoint_tip_stake) != int(round(tip_stake))
                                 ):
-                                    self._create_tip_change_object(tip_instance, tip_change_object, 'stake', 'stake_chart', not tip_change_created)
-                                    tip_change_created = True
+                                    mail_message += 'Tip stake changed from '+str(tip_instance.wettpoint_tip_stake)+' to '+str(tip_stake)
+                                    sys_util.add_mail('Tip Change Notice', mail_message)
                                     
                                     tip_stake_changed = True
                                     tip_instance.wettpoint_tip_stake = tip_stake
@@ -840,8 +718,8 @@ class WettpointData(DataHandler):
                                 if minutes_until_start <= (abs(_TIME_ERROR_MARGIN_MINUTES_BEFORE) + self._WETTPOINT_TABLE_MINUTES_BEFORE_EVENT_EXPIRE):
                                     # tip has already been filled out and table updated past tip time, move on to next to avoid resetting tip to 0
                                     break
-                                self._create_tip_change_object(tip_instance, tip_change_object, 'stake', 'stake_all', not tip_change_created)
-                                tip_change_created = True
+                                mail_message += 'Tip stake changed from '+str(tip_instance.wettpoint_tip_stake)+' to '+str(tip_stake)
+                                sys_util.add_mail('Tip Change Notice', mail_message)
                             
                             if tip_instance.wettpoint_tip_stake is None or tip_instance.wettpoint_tip_stake >= 1.0:
                                 tip_stake_changed = True
@@ -896,22 +774,9 @@ class WettpointData(DataHandler):
                                     h2h_risk = h2h_details['risk']
                                 
                             if h2h_total is not False:
-                                if (
-                                    tip_instance.wettpoint_tip_total is not None 
-                                    and tip_instance.wettpoint_tip_total != h2h_total
-                                    ):
-                                    tip_instance.total_no = None
-                                    tip_instance.total_lines = None
                                 tip_instance.wettpoint_tip_total = h2h_total
                                 
                             if h2h_team is not False:
-                                if (
-                                    tip_instance.wettpoint_tip_team is not None 
-                                    and tip_instance.wettpoint_tip_team != h2h_team
-                                    ):
-                                    tip_instance.team_lines = None
-                                    tip_instance.spread_no = None
-                                    tip_instance.spread_lines = None
                                 tip_instance.wettpoint_tip_team = h2h_team
                            
                             if h2h_risk is not False:
@@ -925,12 +790,6 @@ class WettpointData(DataHandler):
                             elif self.wettpoint_tables_memcache[sport_key]['h2h_limit_reached'] is True and tip_instance.wettpoint_tip_stake == 0.0:
                                 tip_instance.wettpoint_tip_stake = None
                             
-                    # change object created, put in datastore
-                    if tip_change_object is not None:
-                        self.datastore_writes += 1
-                        tip_change_object.put()
-                        tip_change_object = None
-                    
                     minutes_for_next_check = minutes_until_start / 3
                     if minutes_for_next_check < self.wettpoint_tables_memcache[sport_key]['minutes_between_checks']:
                         if minutes_for_next_check < 120:
@@ -1016,116 +875,6 @@ class WettpointData(DataHandler):
             
         new_wettpoint_stake += h2h_stake
         tip_instance.wettpoint_tip_stake = new_wettpoint_stake
-    
-    #TODO: remove in TipLine update
-    def _create_tip_change_object(self, tip_instance, tip_change_object, ctype, line, create_mail, new_team_selection=None, new_total_selection=None):
-        if create_mail is True:
-            mail_message = "\n"+(tip_instance.date.replace(tzinfo=pytz.utc).astimezone(pytz.timezone(constants.TIMEZONE_LOCAL))).strftime('%B-%d %I:%M%p') + " " + tip_instance.game_team_away + " @ " + tip_instance.game_team_home + "\n"
-            mail_message += str(tip_instance.wettpoint_tip_stake) + " " + str(tip_instance.wettpoint_tip_team) + " " + str(tip_instance.wettpoint_tip_total) + "\n"
-            mail_message += ctype + " (" + line + ")\n"
-            sys_util.add_mail('Tip Change Notice', mail_message)
-        else:
-            mail_message = ctype + " (" + line + ")\n"
-            sys_util.add_mail('Tip Change Notice', mail_message)
-        
-        key_string = unicode(tip_instance.key.urlsafe())
-        
-        self.datastore_reads += 1
-        query = models.TipChange.gql('WHERE tip_key = :1', key_string)
-        query_count = query.count(limit=1)
-        
-        if query_count == 0 and not tip_change_object:
-            self.datastore_writes += 1
-            tip_change_object = models.TipChange()
-            tip_change_object.changes = 1
-            tip_change_object.type = ctype
-        else:
-            if query_count != 0:
-                self.datastore_reads += 2
-                tip_change_object = query.get()
-            tip_change_object.changes += 1
-            tip_change_object.type = tip_change_object.type + ctype
-            
-        tip_change_object.date = datetime.utcnow()
-        tip_change_object.tip_key = key_string
-            
-        tip_change_object.wettpoint_tip_stake = tip_instance.wettpoint_tip_stake
-        
-        if ctype == 'team':
-            if (
-                tip_instance.wettpoint_tip_stake is not None 
-                and tip_instance.wettpoint_tip_stake >= 1.0 
-            ):
-                tip_instance.wettpoint_tip_stake = float(int(tip_instance.wettpoint_tip_stake))
-            
-            if (
-                new_team_selection is not None 
-                and tip_change_object.wettpoint_tip_team == new_team_selection
-            ):
-                logging.info('Transferring team lines from existing TipChange object to Tip for %s @ %s' % (tip_instance.game_team_away, tip_instance.game_team_home))
-                original_lines = tip_change_object.team_lines
-            else:
-                original_lines = None
-                
-            tip_change_object.team_lines = tip_instance.team_lines
-            tip_instance.team_lines = original_lines
-            
-            if (
-                new_team_selection is not None 
-                and tip_change_object.wettpoint_tip_team == new_team_selection
-            ):
-                original_lines = tip_change_object.spread_no
-            else:
-                original_lines = None
-            
-            tip_change_object.spread_no = tip_instance.spread_no
-            tip_instance.spread_no = original_lines
-            
-            if (
-                new_team_selection is not None 
-                and tip_change_object.wettpoint_tip_team == new_team_selection
-            ):
-                original_lines = tip_change_object.spread_lines
-            else:
-                original_lines = None
-            
-            tip_change_object.spread_lines = tip_instance.spread_lines
-            tip_instance.spread_lines = original_lines
-            
-            tip_change_object.wettpoint_tip_team = tip_instance.wettpoint_tip_team
-            tip_instance.wettpoint_tip_team = None
-        elif ctype == 'total':
-            if (
-                tip_instance.wettpoint_tip_stake is not None 
-                and tip_instance.wettpoint_tip_stake >= 1.0 
-            ):
-                tip_instance.wettpoint_tip_stake = float(int(tip_instance.wettpoint_tip_stake))
-            
-            if (
-                new_total_selection is not None 
-                and tip_change_object.wettpoint_tip_total == new_total_selection
-            ):
-                logging.info('Transferring total lines from existing TipChange object to Tip for %s @ %s' % (tip_instance.game_team_away, tip_instance.game_team_home))
-                original_lines = tip_change_object.total_no
-            else:
-                original_lines = None
-            
-            tip_change_object.total_no = tip_instance.total_no
-            tip_instance.total_no = original_lines
-            
-            if (
-                new_total_selection is not None 
-                and tip_change_object.wettpoint_tip_total == new_total_selection
-            ):
-                original_lines = tip_change_object.total_lines
-            else:
-                original_lines = None
-            
-            tip_change_object.total_lines = tip_instance.total_lines
-            tip_instance.total_lines = original_lines
-            
-            tip_change_object.wettpoint_tip_total = tip_instance.wettpoint_tip_total
-            tip_instance.wettpoint_tip_total = None
 
 class BookieData(DataHandler):
     STATUS_INITIALIZED = 'initialized'

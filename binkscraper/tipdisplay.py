@@ -364,8 +364,19 @@ class TipDisplay(webapp.RequestHandler):
         for tip_instance in archived_tips:
             game_count += 1
             
-            spread_no = tipanalysis.get_line(tip_instance.spread_no)[0]
-            total_no = tipanalysis.get_line(tip_instance.total_no)[0]
+            self.DATASTORE_READS += 2
+            tipline_instance = models.TipLine.from_tip_instance_key(tip_instance.key)
+            
+            spread_entry = total_entry = None
+            if isinstance(tipline_instance, models.TipLine):
+                spread_entry = models.TipLine.get_line_date(tipline_instance.get_spread_entries(tip_instance.wettpoint_tip_team))[0]
+                total_entry = models.TipLine.get_line_date(tipline_instance.get_total_entries(tip_instance.wettpoint_tip_total))[0]
+            
+            spread_no = total_no = None
+            if spread_entry is not None:
+                spread_no = spread_entry[models.TIPLINE_KEY_POINTS]
+            if total_entry is not None:
+                total_no = total_entry[models.TIPLINE_KEY_POINTS]
             
             moneyline_result = self._get_tip_tipanalysis_result(
                                                                 analysis_type='moneyline', 
@@ -646,9 +657,24 @@ class TipDisplay(webapp.RequestHandler):
         game_row_html += '<span class="tip-stake">%s</span>' % (display_wettpoint_tip_stake)
         game_row_html += '<span class="tip-team">%s</span>' % (display_wettpoint_tip_team)    
         
-        latest_moneyline, latest_moneyline_datetime = tipanalysis.get_line(tip_instance.team_lines)
-        latest_spread_no, latest_spread_datetime = tipanalysis.get_line(tip_instance.spread_no)
-        latest_total_no, latest_total_datetime = tipanalysis.get_line(tip_instance.total_no)
+        self.DATASTORE_READS += 2
+        tipline_instance = models.TipLine.from_tip_instance_key(tip_instance.key)
+        
+        money_entries = spread_entries = total_entries = None
+        if isinstance(tipline_instance, models.TipLine):
+            money_entries = tipline_instance.get_money_entries(tip_instance.wettpoint_tip_team)
+            spread_entries = tipline_instance.get_spread_entries(tip_instance.wettpoint_tip_team)
+            total_entries = tipline_instance.get_total_entries(tip_instance.wettpoint_tip_total)
+            
+        latest_moneyline, latest_moneyline_datetime = models.TipLine.get_line_date(money_entries)
+        latest_spread_entry, latest_spread_datetime = models.TipLine.get_line_date(spread_entries)
+        latest_total_entry, latest_total_datetime = models.TipLine.get_line_date(total_entries)
+        
+        latest_spread_no = latest_total_no = None
+        if latest_spread_entry is not None:
+            latest_spread_no = latest_spread_entry[models.TIPLINE_KEY_POINTS]
+        if latest_total_entry is not None:
+            latest_total_no = latest_total_entry[models.TIPLINE_KEY_POINTS]
         
         latest_odds_datetime = None
         if latest_moneyline is not None:

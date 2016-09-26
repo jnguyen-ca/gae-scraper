@@ -3,6 +3,11 @@
 from __future__ import unicode_literals
 
 from google.appengine.ext import ndb
+from datetime import datetime
+
+APPVAR_KEY_SCOREBOARD = 'scoreboard'
+APPVAR_KEY_WETTPOINT = 'wettpoint'
+APPVAR_KEY_PINNACLE = 'pinnacle'
 
 TIP_SELECTION_TEAM_AWAY = '2'
 TIP_SELECTION_TEAM_HOME = '1'
@@ -85,6 +90,39 @@ class TipLine(ndb.Model):
 #     consensus_money_home = ndb.JsonProperty(indexed=False,compressed=True)
 #     consensus_total_under = ndb.JsonProperty(indexed=False,compressed=True)
 
+    @staticmethod
+    def get_line_date(line_entries, bookie=APPVAR_KEY_PINNACLE, desired_date='latest'):
+        if line_entries is None or len(line_entries) < 1:
+            return None, None
+        
+        if bookie in line_entries:
+            line_dates = line_entries[bookie]
+        else:
+            return None, None
+        
+        if isinstance(desired_date, datetime):
+            # if a date was specified then find the line closest to that date
+            specified_date = desired_date.replace(tzinfo=None)
+            
+            date_string = min(line_dates, key=lambda x: abs(specified_date - datetime.strptime(x, TIP_HASH_DATETIME_FORMAT)))
+        elif desired_date == 'earliest':
+            sorted_line_dates = sorted(line_dates, key=lambda x: datetime.strptime(x, TIP_HASH_DATETIME_FORMAT))
+            date_string = sorted_line_dates[0]
+        elif desired_date == 'latest':
+            sorted_line_dates = sorted(line_dates, key=lambda x: datetime.strptime(x, TIP_HASH_DATETIME_FORMAT))
+            date_string = sorted_line_dates[-1]
+        else:
+            raise ValueError('Invalid desired date given: '+str(desired_date))
+            
+        line_date = datetime.strptime(date_string, TIP_HASH_DATETIME_FORMAT)
+        line = line_dates[date_string]
+        
+        return line, line_date
+
+    @classmethod
+    def from_tip_instance_key(cls, tip_instance_key):
+        return cls.gql('WHERE ANCESTOR IS :1', tip_instance_key).get()
+
     def _create_property_entry(self, tipline_property, bookie_key, date_key, entry_value):
         '''General function for inserting an entry to any of TipLine's propertys
         '''
@@ -118,6 +156,11 @@ class TipLine(ndb.Model):
         setattr(self, entry_property, property_value)
     
     def get_money_entries(self, team_selection):
+        if team_selection is None:
+            team_selection = self.get_opening_favourite()
+            if team_selection is None:
+                return None
+            
         if team_selection == TIP_SELECTION_TEAM_HOME:
             return self.money_home
         elif team_selection == TIP_SELECTION_TEAM_AWAY:
@@ -127,6 +170,11 @@ class TipLine(ndb.Model):
         raise ValueError('Invalid tip team selection given.')
     
     def get_spread_entries(self, team_selection):
+        if team_selection is None:
+            team_selection = self.get_opening_favourite()
+            if team_selection is None:
+                return None
+        
         if team_selection == TIP_SELECTION_TEAM_HOME:
             return self.spread_home
         elif team_selection == TIP_SELECTION_TEAM_AWAY:
@@ -134,15 +182,53 @@ class TipLine(ndb.Model):
         raise ValueError('Invalid tip team selection given.')
     
     def get_total_entries(self, total_selection):
+        if total_selection is None:
+            total_selection = TIP_SELECTION_TOTAL_UNDER
+        
         if total_selection == TIP_SELECTION_TOTAL_OVER:
             return self.total_over
         elif total_selection == TIP_SELECTION_TOTAL_UNDER:
             return self.total_under
         raise ValueError('Invalid tip total selection given.')
     
-    @classmethod
-    def from_tip_instance_key(cls, tip_instance_key):
-        return cls.gql('WHERE ANCESTOR IS :1', tip_instance_key).get()
+    def get_opening_favourite(self, bookie=APPVAR_KEY_PINNACLE, allow_draw=False):
+        if allow_draw is True:
+            earliest_opening_draw = TipLine.get_line_date(self.money_draw, bookie=bookie, desired_date='earliest')[0]
+            if earliest_opening_draw is None:
+                allow_draw = False
+        
+        # check the spread first since it's the easiest way to determine a favourite
+        # unless draw is allowed then can't use spread
+        earliest_opening_spread = TipLine.get_line_date(self.spread_home, bookie=bookie, desired_date='earliest')[0]
+        if earliest_opening_spread is not None and allow_draw is False:
+            if earliest_opening_spread < 0:
+                return TIP_SELECTION_TEAM_HOME
+            elif earliest_opening_spread > 0:
+                return TIP_SELECTION_TEAM_AWAY
+        
+        earliest_opening_money_home = TipLine.get_line_date(self.money_home, bookie=bookie, desired_date='earliest')[0]
+        earliest_opening_money_away = TipLine.get_line_date(self.money_away, bookie=bookie, desired_date='earliest')[0]
+        if earliest_opening_money_home is not None and earliest_opening_money_away is not None:
+            if allow_draw is False:
+                # default to home team, so if they're equal return home selection
+                if earliest_opening_money_home <= earliest_opening_money_away:
+                    return TIP_SELECTION_TEAM_HOME
+                elif earliest_opening_money_home > earliest_opening_money_away:
+                    return TIP_SELECTION_TEAM_AWAY
+                raise Exception("Shouldn't be able to get here")
+            else:
+                if earliest_opening_money_home <= earliest_opening_money_away:
+                    if earliest_opening_money_home <= earliest_opening_draw:
+                        return TIP_SELECTION_TEAM_HOME
+                    return TIP_SELECTION_TEAM_DRAW
+                elif earliest_opening_money_home > earliest_opening_money_away:
+                    if earliest_opening_money_away < earliest_opening_draw:
+                        return TIP_SELECTION_TEAM_AWAY
+                    return TIP_SELECTION_TEAM_DRAW
+                raise Exception("Shouldn't be able to get here")
+        
+        # no lines for this game has been gathered
+        return None
 
 class TipChange(ndb.Model):
     date = ndb.DateTimeProperty()

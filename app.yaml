@@ -1,5 +1,5 @@
 application: binkscraper
-version: 4-3-1
+version: 5-0-0
 runtime: python27
 api_version: 1
 threadsafe: false

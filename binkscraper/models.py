@@ -119,15 +119,18 @@ class TipLine(ndb.Model):
             tip_instance_key = ndb.Key(urlsafe=tip_instance_key)
         return cls.gql('WHERE ANCESTOR IS :1', tip_instance_key).get()
 
-    def _create_property_entry(self, tipline_property, bookie_key, date_key, entry_value):
+    def _modify_property_value(self, tipline_property, bookie_key, date_key, entry_value):
         '''General function for inserting an entry to any of TipLine's propertys
         '''
         if not entry_value:
-            return
+            return tipline_property
         if not isinstance(bookie_key, basestring):
             raise ValueError('Entry bookie_key is not a string')
         if not isinstance(date_key, basestring):
             raise ValueError('Entry date_key is not a string')
+        
+        if not isinstance(entry_value, dict) and not isinstance(entry_value, basestring):
+            raise ValueError('Entry value is neither a dict or a string')
         
         if not tipline_property:
             tipline_property = {}
@@ -148,8 +151,9 @@ class TipLine(ndb.Model):
         if points_values is not None:
             entry_value = self._create_points_odds_entry(points_values, odds_values)
         
-        property_value = self._create_property_entry(tipline_property_value, bookie_key, line_date, entry_value)
-        setattr(self, entry_property, property_value)
+        property_value = self._modify_property_value(tipline_property_value, bookie_key, line_date, entry_value)
+        if property_value:
+            setattr(self, entry_property, property_value)
     
     def get_money_entries(self, team_selection):
         if team_selection is None:

@@ -58,14 +58,6 @@ class Tip(ndb.Model):
     
     wettpoint_tip_stake = ndb.FloatProperty()
     
-    team_lines = ndb.TextProperty()
-    
-    total_no = ndb.TextProperty()
-    total_lines = ndb.TextProperty()
-    
-    spread_no = ndb.TextProperty()
-    spread_lines = ndb.TextProperty()
-    
     score_away = ndb.StringProperty()
     score_home = ndb.StringProperty()
     
@@ -75,6 +67,8 @@ class Tip(ndb.Model):
 class TipLine(ndb.Model):
     '''Line information for a Tip stored as json properties.
     Each TipLine should have a single parent Tip (one-to-one relation, not enforced)
+    
+    It should be noted that not all Tips will have a TipLine. If an event has no odds
     '''
     spread_away = ndb.JsonProperty(indexed=False,compressed=True)
     spread_home = ndb.JsonProperty(indexed=False,compressed=True)
@@ -121,6 +115,8 @@ class TipLine(ndb.Model):
 
     @classmethod
     def from_tip_instance_key(cls, tip_instance_key):
+        if not isinstance(tip_instance_key, ndb.Key):
+            tip_instance_key = ndb.Key(urlsafe=tip_instance_key)
         return cls.gql('WHERE ANCESTOR IS :1', tip_instance_key).get()
 
     def _create_property_entry(self, tipline_property, bookie_key, date_key, entry_value):

@@ -13,6 +13,11 @@ handlers:
   mime_type: text/javascript
   static_files: static/\1
   upload: static/(.*\.js)
+  
+- url: /(.*\.css)
+  mime_type: text/css
+  static_files: static/\1
+  upload: static/(.*\.css)
 
 - url: /mapreduce(/.*)?
   script: libs/GoogleAppEngineMapReduce-1.9.5.0/mapreduce/main.py

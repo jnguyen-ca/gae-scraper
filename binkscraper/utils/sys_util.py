@@ -5,11 +5,13 @@ from __future__ import unicode_literals
 from google.appengine.api import mail
 
 from functools import wraps
+from datetime import datetime
 
 import random
 import os
 import time
 import logging
+import collections
 import appvar_util
 from binkscraper import constants
 
@@ -168,3 +170,29 @@ def del_in_dict(dataDict, mapList):
     '''Delete a element in a dictionary entry via a list of keys
     '''
     get_from_dict(dataDict, mapList[:-1]).pop(mapList[-1], None)
+    
+def sorted_datetime_dict(d, datetime_format):
+    '''Recursive sort of (nested) dictionaries where keys are a datetime string formatted in datetime_format
+    Returns a collections.OrderedDict
+    '''
+    sorted_d = collections.OrderedDict()
+    if not d:
+        return sorted_d
+    
+    key = d.iterkeys().next()
+    try:
+        datetime.strptime(key, datetime_format)
+        sorted_d_keys = sorted(d, key=lambda x: datetime.strptime(x, datetime_format))
+        for key in sorted_d_keys:
+            value = d[key]
+            if isinstance(value, dict):
+                value = sorted_datetime_dict(value, datetime_format)
+            sorted_d[key] = value
+    except ValueError:
+        sorted_d = {}
+        for key, value in d.iteritems():
+            if isinstance(value, dict):
+                value = sorted_datetime_dict(value, datetime_format)
+            sorted_d[key] = value
+    
+    return sorted_d

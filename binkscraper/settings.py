@@ -157,11 +157,11 @@ class AppSettings(webapp.RequestHandler):
         variable's object
         '''
         if isinstance(app_var_value, dict):
-            entries_html = self.display_dict_level(app_var_value)
+            entries_html = html_util.display_dict(app_var_value)
         elif isinstance(app_var_value, list):
-            entries_html = self.display_list(app_var_value)
+            entries_html = html_util.display_list(app_var_value)
         elif isinstance(app_var_value, basestring):
-            entries_html = self.display_string(app_var_value)
+            entries_html = html_util.display_string(app_var_value)
         else:
             entries_html = ''
             
@@ -172,94 +172,3 @@ class AppSettings(webapp.RequestHandler):
                )
         
         return html
-    
-    def display_dict_level(self, dictonary, level=0):
-        '''Create a HTML representation of a dictionary. This is a recursive function for nested dicts.
-        '''
-        entries_html = '<div class="dict-entries dict-level-%d">' % (level)
-        entries_html += '<input class="dict-level" type="hidden" val="%d">' % (level)
-        entries_html += '''
-        <div class="dict-level-controls">
-            <input type="button" class="styleless-button add-entry" value="Add Entry">
-            <input type="button" class="styleless-button minimize-dict-level" value="Minimize">
-        </div>
-        '''
-        for key, value in dictonary.iteritems():
-            entries_html += self.display_dict_entry(key, value, level)
-        
-        entries_html += '</div>'
-        
-        return entries_html
-    
-    def display_dict_entry(self, key, value, level=0):
-        if isinstance(value, dict):
-            value_html = '<span class="dict-value">'+self.display_dict_level(value, level+1)+'</span>'
-        else:
-            value_html = '''
-            %s
-            <span class="dict-entry-controls">
-                <input type="button" class="styleless-button edit-entry" value="Edit">
-                <input type="button" class="styleless-button delete-entry" value="Delete">
-            </span>
-            ''' % (self.display_dict_value(value))
-            
-        entry_html = '''
-        <div class="dict-entry">
-            <span class="dict-key">%s</span>
-            %s
-        </div>
-        ''' % (
-               key,
-               value_html
-               )
-        
-        return entry_html
-    
-    def display_dict_value(self, value):
-        '''Create a HTML representation of a dict entry's value.
-        '''
-        # value must either be a list or a string, if it was a dict it shouldn't have got here
-        if isinstance(value, list):
-            value_display = self.display_list(value)
-            # convert list to json string for output
-            value = json.dumps(value, ensure_ascii=False)
-        else:
-            value_display = self.display_string(value)
-        
-        value_html = '''
-        <span class="dict-value">
-            <input type="hidden" class="source" value="%s">
-            <span class="value-entry">
-                %s
-            </span>
-        </span>
-        ''' % (
-               cgi.escape(value, True),
-               value_display
-               )
-        
-        return value_html
-    
-    def display_list(self, dataList):
-        insert_breaks = False
-        
-        list_display = ''
-        for x in dataList:
-            list_display += '<span class="list-entry">'+x+'</span>'
-            
-            if len(x) >= 50:
-                insert_breaks = True
-            
-        value_display = '''
-        <span class="list-entries%s">
-            %s
-        </span>
-        ''' % (
-               ' list-bullets-format' if insert_breaks is True else '',
-               list_display
-               )
-            
-        return value_display
-    
-    def display_string(self, dataString):
-        return '<span class="string-entry">'+dataString+'</span>'

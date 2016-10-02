@@ -1,6 +1,8 @@
 #usr/bin/python
 # -*- coding: utf-8 -*-
 
+from google.appengine.ext import ndb
+
 import logging
 import json
 from binkscraper import models
@@ -12,7 +14,7 @@ class Patch_5_0_0():
     compatibility in preparation but before that the only odds information was stored in Tip. Therefore only 
     a portion of Tips in the datastore have a corresponding TipLine.
     '''
-    def __init__(self):
+    def __init__(self, datetime_start, datetime_end):
         self._count_tips = 0
         self._count_tips_empty = 0
         self._count_tiplines_created = 0
@@ -23,6 +25,10 @@ class Patch_5_0_0():
         self._count_tipchange_spread_lines_copied = 0
         self._count_tip_total_lines_copied = 0
         self._count_tipchange_total_lines_copied = 0
+        
+        self.datetime_start = datetime_start
+        self.datetime_end = datetime_end
+        logging.info('Date range between %s and %s' % (datetime_start.strptime('%b-%d-%Y'),datetime_end.strptime('%b-%d-%Y')))
     
     def patch_populate(self):
         '''
@@ -31,8 +37,11 @@ class Patch_5_0_0():
         correctly. Will fill in newly created Tips with odds info from their corresponding Tip and TipChange.
         Afterwards, it should be safe to run patch_delete()
         '''
+        tiplines_to_put = []
+        
         self.bookie_key = models.APPVAR_KEY_PINNACLE
-        for tip_instance in models.Tip.query():
+        for tip_instance in models.Tip.query(models.Tip.date >= self.datetime_start, models.Tip.date <= self.datetime_end):
+            updated = False
             self._count_tips += 1
             tipchange_instance = models.TipChange.query(models.TipChange.tip_key == unicode(tip_instance.key.urlsafe())).get()
             if (tip_instance.team_lines is None
@@ -54,43 +63,64 @@ class Patch_5_0_0():
                     
             tipline_instance = models.TipLine.query(ancestor=tip_instance.key).get()
             if tipline_instance is None:
+                updated = True
                 self._count_tiplines_created += 1
                 tipline_instance = models.TipLine(parent=tip_instance.key)
             self._count_tiplines += 1
             
             if tip_instance.team_lines:
                 self._count_tip_team_lines_copied += 1
-                tipline_instance = Patch_5_0_0._populate_money_lines(tip_instance, tipline_instance, self.bookie_key)
+                updated = Patch_5_0_0._populate_money_lines(tip_instance, tipline_instance, self.bookie_key)
             if (tipchange_instance.wettpoint_tip_team != tip_instance.wettpoint_tip_team
                 and tipchange_instance.team_lines
             ):
                 self._count_tipchange_team_lines_copied += 1
-                tipline_instance = Patch_5_0_0._populate_money_lines(tipchange_instance, tipline_instance, self.bookie_key)
+                updated = Patch_5_0_0._populate_money_lines(tipchange_instance, tipline_instance, self.bookie_key)
     
             if tip_instance.spread_lines and tip_instance.spread_no:
                 self._count_tip_spread_lines_copied += 1
-                tipline_instance = Patch_5_0_0._populate_spread_lines(tip_instance, tipline_instance, self.bookie_key)
+                updated = Patch_5_0_0._populate_spread_lines(tip_instance, tipline_instance, self.bookie_key)
             if (tipchange_instance.wettpoint_tip_team != tip_instance.wettpoint_tip_team
                 and tipchange_instance.spread_lines and tipchange_instance.spread_no
             ):
                 self._count_tipchange_spread_lines_copied += 1
-                tipline_instance = Patch_5_0_0._populate_spread_lines(tipchange_instance, tipline_instance, self.bookie_key)
+                updated = Patch_5_0_0._populate_spread_lines(tipchange_instance, tipline_instance, self.bookie_key)
                 
             if tip_instance.total_lines and tip_instance.total_no:
                 self._count_tip_total_lines_copied += 1
-                tipline_instance = Patch_5_0_0._populate_total_lines(tip_instance, tipline_instance, self.bookie_key)
+                updated = Patch_5_0_0._populate_total_lines(tip_instance, tipline_instance, self.bookie_key)
             if (tipchange_instance.wettpoint_tip_total != tip_instance.wettpoint_tip_total
                 and tipchange_instance.total_lines and tipchange_instance.total_no
             ):
                 self._count_tipchange_total_lines_copied += 1
-                tipline_instance = Patch_5_0_0._populate_total_lines(tipchange_instance, tipline_instance, self.bookie_key)
+                updated = Patch_5_0_0._populate_total_lines(tipchange_instance, tipline_instance, self.bookie_key)
     
+            if updated is True:
+                tiplines_to_put.append(tipline_instance)
+                
+        logging.info('%d Tips in datastore' % (self._count_tips))
+        logging.info('%d Tips have no line information' % (self._count_tips_empty))
+        logging.info('%d TipLines were created' % (self._count_tiplines_created))
+        logging.info('%d TipLines (new+existing) in datastore' % (self._count_tiplines))
+        logging.info('Tip properties extracted: team_lines (%d), spread_lines/spread_no (%d), total_lines/total_no (%d)' % (
+                                                                                                                         self._count_tip_team_lines_copied,
+                                                                                                                         self._count_tip_spread_lines_copied,
+                                                                                                                         self._count_tip_total_lines_copied
+                                                                                                                         ))
+        logging.info('TipChange properties extracted: team_lines (%d), spread_lines/spread_no (%d), total_lines/total_no (%d)' % (
+                                                                                                                         self._count_tipchange_team_lines_copied,
+                                                                                                                         self._count_tipchange_spread_lines_copied,
+                                                                                                                         self._count_tipchange_total_lines_copied
+                                                                                                                         ))
+        logging.info('%d TipLines to be put' % (len(tiplines_to_put)))
+        ndb.put_multi(tiplines_to_put)
+            
     @staticmethod
     def _populate_money_lines(cls, tipline_instance, bookie_key):
         '''Transfers team_lines to corresponding TipLine money properties
         cls is a class instance that has the properties team_lines and wettpoint_tip_team
-        Returns the modified tipline_instance
         '''
+        updated = False
         cls_team_lines = json.loads(cls.team_lines)
         
         # get the properties that are going to be modified based on the object's wettpoint_tip_team
@@ -129,19 +159,19 @@ class Patch_5_0_0():
                     continue
                 except KeyError:
                     pass
+                updated = True
                 tipline_instance.insert_property_entry(entry_property=money_property, 
                                                        bookie_key=bookie_key, 
                                                        line_date=line_date, 
                                                        odds_values=entry_lines[index]
                                                        )
             
-        return tipline_instance
+        return updated
     
     @staticmethod
     def _populate_spread_lines(cls, tipline_instance, bookie_key):
         '''Transfer spread_no and spread_lines to TipLine spread_away and spread_home properties
         cls is object with properties spread_no, spread_lines, wettpoint_tip_team
-        Returns modified tipline_instance
         '''
         cls_spread_no = cls.spread_no
         cls_spread_lines = cls.spread_lines
@@ -167,7 +197,6 @@ class Patch_5_0_0():
     def _populate_total_lines(cls, tipline_instance, bookie_key):
         '''Transfer total_no and total_lines to TipLine total_under and total_over properties
         cls is object with properties total_no, total_lines, wettpoint_tip_total
-        Returns modified tipline_instance
         '''
         cls_total_no = cls.total_no
         cls_total_lines = cls.total_lines
@@ -189,6 +218,7 @@ class Patch_5_0_0():
     def __populate_point_odd_lines(cls_urlsafe_key, cls_nos, cls_lines, tipline_instance, entry_property, bookie_key):
         '''Sub-method for _populate_spread_lines and _populate_total_lines
         '''
+        updated = False
         for line_date, cls_no in cls_nos:
             if line_date not in cls_lines:
                 raise KeyError('line_date in spread_no but not in spread_line : '+str(cls_urlsafe_key))
@@ -205,6 +235,7 @@ class Patch_5_0_0():
                 continue
             except KeyError:
                 pass
+            updated = True
             tipline_instance.insert_property_entry(entry_property=entry_property, 
                                                    bookie_key=bookie_key, 
                                                    line_date=line_date, 
@@ -212,11 +243,30 @@ class Patch_5_0_0():
                                                    odds_values=cls_line
                                                    )
         
-        return tipline_instance
-            
-    def patch_delete(self):
-        '''
-        Deletes existing odds properties from Tips and sets wettpoint_tip_team to None if it was a 0 tip. 
+        return updated
+    
+    #TODO: need to reset wettpoint_tip_team for old/existing Tips where the favourite would get set if it was a 0 tip
+    def patch_modify(self):
+        '''Before TipLine was implemented, Tip was only able to store a single side's lines. Therefore, if there was
+        no wettpoint_tip_team it needed to be decided that Tip would simply store the favourite side's lines. This would
+        be done by setting wettpoint_tip_team to the favourite side and treating it as if it was an actual tip. However,
+        now that TipLine is available, both sides' lines are stored regardless of the wettpoint_tip_team, so there's no 
+        reason to keep wettpoint_tip_team as a "fake" value.
         Should only be run after patch_populate()
         '''
-        pass
+        tips_to_put = []
+    
+    def patch_delete(self):
+        '''
+        Deletes existing odds properties from Tips 
+        Should only be run after patch_populate()
+        '''
+        tips_to_put = []
+        for tip_instance in models.Tip.query():
+            delattr(tip_instance, 'team_lines')
+            delattr(tip_instance, 'spread_lines')
+            delattr(tip_instance, 'total_lines')
+            delattr(tip_instance, 'spread_no')
+            delattr(tip_instance, 'total_no')
+            tips_to_put.append(tip_instance)
+        ndb.put_multi(tips_to_put)

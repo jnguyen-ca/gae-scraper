@@ -796,23 +796,23 @@ class TipDisplay(webapp.RequestHandler):
         if isinstance(tipline_instance, models.TipLine):
             odds_html += self._create_odds_column('Money',
                                                  'Away',
-                                                 sys_util.sorted_datetime_dict(tipline_instance.money_away, models.TIP_HASH_DATETIME_FORMAT),
+                                                 sys_util.sorted_datetime_dict(tipline_instance.money_away, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
                                                  'Draw',
-                                                 sys_util.sorted_datetime_dict(tipline_instance.money_draw, models.TIP_HASH_DATETIME_FORMAT),
+                                                 sys_util.sorted_datetime_dict(tipline_instance.money_draw, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
                                                  'Home',
-                                                 sys_util.sorted_datetime_dict(tipline_instance.money_home, models.TIP_HASH_DATETIME_FORMAT),
+                                                 sys_util.sorted_datetime_dict(tipline_instance.money_home, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
                                                 )
             odds_html += self._create_odds_column('Spread',
                                                  'Away',
-                                                 sys_util.sorted_datetime_dict(tipline_instance.spread_away, models.TIP_HASH_DATETIME_FORMAT),
+                                                 sys_util.sorted_datetime_dict(tipline_instance.spread_away, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
                                                  'Home',
-                                                 sys_util.sorted_datetime_dict(tipline_instance.spread_home, models.TIP_HASH_DATETIME_FORMAT),
+                                                 sys_util.sorted_datetime_dict(tipline_instance.spread_home, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
                                                 )
             odds_html += self._create_odds_column('Total',
                                                  'Over',
-                                                 sys_util.sorted_datetime_dict(tipline_instance.total_over, models.TIP_HASH_DATETIME_FORMAT),
+                                                 sys_util.sorted_datetime_dict(tipline_instance.total_over, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
                                                  'Under',
-                                                 sys_util.sorted_datetime_dict(tipline_instance.total_under, models.TIP_HASH_DATETIME_FORMAT),
+                                                 sys_util.sorted_datetime_dict(tipline_instance.total_under, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
                                                 )
         
         odds_html += '</div>'

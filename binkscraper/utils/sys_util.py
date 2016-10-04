@@ -6,6 +6,7 @@ from google.appengine.api import mail
 
 from functools import wraps
 from datetime import datetime
+import pytz
 
 import random
 import os
@@ -171,7 +172,7 @@ def del_in_dict(dataDict, mapList):
     '''
     get_from_dict(dataDict, mapList[:-1]).pop(mapList[-1], None)
     
-def sorted_datetime_dict(d, datetime_format):
+def sorted_datetime_dict(d, datetime_format, output_timezone=None):
     '''Recursive sort of (nested) dictionaries where keys are a datetime string formatted in datetime_format
     Returns a collections.OrderedDict
     '''
@@ -179,20 +180,27 @@ def sorted_datetime_dict(d, datetime_format):
     if not d:
         return sorted_d
     
+    # get first key to test if keys are datetime formatted
     key = d.iterkeys().next()
     try:
         datetime.strptime(key, datetime_format)
+        # sort the datetime formatted keys
         sorted_d_keys = sorted(d, key=lambda x: datetime.strptime(x, datetime_format))
         for key in sorted_d_keys:
+            # values for this level could be nested dicts which need to be sorted
             value = d[key]
             if isinstance(value, dict):
-                value = sorted_datetime_dict(value, datetime_format)
+                value = sorted_datetime_dict(value, datetime_format, output_timezone)
+            if output_timezone is not None:
+                key = datetime.strptime(key, datetime_format).replace(tzinfo=pytz.utc).astimezone(pytz.timezone(output_timezone)).strftime(datetime_format)
             sorted_d[key] = value
     except ValueError:
+        # this level of keys are not datetime formatted strings
+        # go to the next level if there are nested dicts
         sorted_d = {}
         for key, value in d.iteritems():
             if isinstance(value, dict):
-                value = sorted_datetime_dict(value, datetime_format)
+                value = sorted_datetime_dict(value, datetime_format, output_timezone)
             sorted_d[key] = value
     
     return sorted_d

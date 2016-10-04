@@ -28,15 +28,21 @@ jQuery(document).ready(function($) {
 					type	 : 'POST',
 					data	 : $this.serialize(),
 					success  : function(data, text, jqXHR) {
-						if (data) {
-							// updated game row from server, attach scripts to it then insert into html
-							var $data = $(data)
-							gameRowControlsScripts($data)
-							$data.insertAfter($game_row)
-							$('.updated-highlight').removeClass('updated-highlight')
-							$data.addClass('updated-highlight')
+						if (request_type == 'expand-odds') {
+							$(data).appendTo($game_row)
+							$tempForm.remove()
 						}
-						$game_row.remove()
+						else {
+							if (data) {
+								// updated game row from server, attach scripts to it then insert into html
+								var $data = $(data)
+								gameRowControlsScripts($data)
+								$data.insertAfter($game_row)
+								$('.updated-highlight').removeClass('updated-highlight')
+								$data.addClass('updated-highlight')
+							}
+							$game_row.remove()
+						}
 					},
 					error: function(jqXHR, text, data) {
 //						console.log(jqXHR.responseText)
@@ -136,6 +142,17 @@ jQuery(document).ready(function($) {
 				}
 				else {
 					$tempForm.remove()
+				}
+			}
+			else if (request_type == 'expand-odds') {
+				$('.expanded-odds').hide()
+				if ($game_row.children('.expanded-odds').length) {
+					$game_row.children('.expanded-odds').show()
+					$tempForm.remove()
+				}
+				else
+				{
+					$tempForm.submit()
 				}
 			}
 			else if (request_type == 'edit-tip') {

@@ -1,0 +1,135 @@
+.updated-highlight {
+	background: #FFFFBC;
+}
+
+.error-highlight {
+	outline: 2px inset red; 
+	background: #FFF9F9;
+}
+
+.tip_controls-hover {
+	background: #ECECEC;
+}
+
+.styleless-button {
+	background: none; border: none;
+}
+
+.league_key {
+	margin: 0 6px 0 0;
+}
+
+.league_result_totals > span {
+	margin: 0 6px; text-decoration: underline;
+}
+
+.game_time-MST {
+	width: 12%;
+}
+
+.game_row {
+	margin: 6px 0;
+}
+
+.game_row > span {
+	display: inline-block; margin-right: 12px; min-width: 60px;
+}
+
+.game_row .participants {
+	width: 22%; text-overflow: ellipsis;
+}
+
+.game_row .scores {
+	width: 9%;
+}
+
+.game_row .tip-team {
+	text-overflow: ellipsis;
+}
+
+.game_row .tip-date {
+	width: 10%;
+}
+
+.game_row .tip-line-adjusted_win, .upcoming_game .tip-line-adjusted_loss {
+	background: lightgrey; text-align: center;
+}
+
+.game_row .tip-controls {
+	float:right;
+}
+
+.game_row .today {
+	font-weight: bold;
+}
+
+.game_row .closing {
+	color: red;
+}
+
+.game_row .pending {
+	color: green;
+}
+
+.game_row .tip-key, .game_row .rot_num, .game_row .tip-status, .game_row .tip-datetime {
+	display: none;
+}
+
+.upcoming_game .scores {
+	display: none;
+}
+
+.game_result .tip-date, .game_result .h2h-link {
+	display: none;
+}
+
+.game_row .tip-team, .game_row .tip-money_line, .game_row .tip-total {
+	width: 6%;
+}
+
+.expanded-odds .dict-level-controls, .expanded-odds .dict-entry-controls {
+	display: none;
+}
+
+.column-header, .inner-column-header {
+	text-align: center;
+}
+
+.expanded-odds .odds-column {
+	width: 33%;
+	display: inline-block;
+	vertical-align: top;
+}
+
+.expanded-odds .inner-column {
+	display: inline-block;
+	vertical-align: top;
+}
+
+.expanded-odds .dict-level-1 > .dict-entry:nth-child(2n) {
+	background: #f9e49d;
+}
+
+.expanded-odds .dict-entry {
+	margin: 3px 12px;
+}
+
+.Money-odds .inner-column {
+	width: 33%;
+}
+
+.Money-odds .dict-value {
+	text-align: right;
+}
+
+.Spread-odds {
+	background: lightblue;
+}
+
+.Spread-odds .inner-column, .Total-odds .inner-column {
+	width: 50%;
+}
+
+.Spread-odds .string-entry, .Total-odds .string-entry {
+	float: right;
+}

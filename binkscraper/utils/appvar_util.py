@@ -2,10 +2,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-APPVAR_KEY_SCOREBOARD = 'scoreboard'
-APPVAR_KEY_WETTPOINT = 'wettpoint'
-APPVAR_KEY_PINNACLE = 'pinnacle'
-
 from binkscraper import constants
 
 class ApplicationVariableException(constants.ApplicationException):
@@ -18,6 +14,10 @@ from google.appengine.ext import ndb
 import json
 import logging
 from binkscraper import models
+
+APPVAR_KEY_SCOREBOARD = models.APPVAR_KEY_SCOREBOARD
+APPVAR_KEY_WETTPOINT = models.APPVAR_KEY_WETTPOINT
+APPVAR_KEY_PINNACLE = models.APPVAR_KEY_PINNACLE
 
 __APPVAR_SPORT_NAMES = 'sportconstants'
 __APPVAR_LEAGUE_NAMES = 'leagueconstants'

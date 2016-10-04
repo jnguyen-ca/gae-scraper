@@ -12,9 +12,8 @@ from google.appengine.ext import webapp, ndb
 # from google.appengine.api import users, memcache
 
 from datetime import datetime, timedelta
-from utils import appvar_util, sys_util
+from utils import appvar_util, sys_util, html_util
 
-# import json
 import logging
 import teamconstants
 import pytz
@@ -37,9 +36,11 @@ class TipDisplay(webapp.RequestHandler):
     INPUT_NAME_SCORE_HOME = 'score-home'
     INPUT_NAME_STATUS_ELAPSED = 'status-elapsed'
     INPUT_NAME_STATUS_ARCHIVED = 'status-archived'
+    INPUT_NAME_ODDS_PROPERTY = 'odds-property'
     
     REQUEST_TYPE_EDIT_TIP = 'edit-tip'
     REQUEST_TYPE_DELETE_TIP = 'delete-tip'
+    REQUEST_TYPE_EXPAND_ODDS = 'expand-odds'
     
     __ERROR_SEPARATOR = ';'
     
@@ -56,6 +57,8 @@ class TipDisplay(webapp.RequestHandler):
             elif request_type == self.REQUEST_TYPE_DELETE_TIP:
                 logging.info('Deleting tip: '+self.request.get(self.INPUT_NAME_DATE)+' '+self.request.get(self.INPUT_NAME_TEAM_AWAY)+' @ '+self.request.get(self.INPUT_NAME_TEAM_HOME))
                 ndb.Key(urlsafe=self.request.get(self.INPUT_NAME_TIP_KEY)).delete()
+            elif request_type == self.REQUEST_TYPE_EXPAND_ODDS:
+                self._display_full_odds(self.request.get(self.INPUT_NAME_TIP_KEY))
             else:
                 # invalid ajax request
                 logging.warning('Invalid request made!')
@@ -68,8 +71,6 @@ class TipDisplay(webapp.RequestHandler):
         self.jsheader = []
         self.scriptheader = []
         
-        self.styleheader.append('<style>')
-        
         self.jsheader.append(
 '''
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.0/jquery.min.js"></script>
@@ -78,27 +79,7 @@ class TipDisplay(webapp.RequestHandler):
         
         self.styleheader.append(
 '''
-.updated-highlight {background: #FFFFBC;}
-.error-highlight {outline: 2px inset red; background: #FFF9F9;}
-.tip_controls-hover {background: #ECECEC;}
-.styleless-button {background: none; border: none;}
-.league_key {margin: 0 6px 0 0;}
-.league_result_totals > span {margin: 0 6px; text-decoration: underline;}
-.game_time-MST {width: 12%;}
-.game_row {margin: 6px 0;}
-.game_row > span {display: inline-block; margin-right: 12px; min-width: 60px;}
-.game_row .participants {width: 22%; text-overflow: ellipsis;}
-.game_row .scores {width: 9%;}
-.game_row .tip-team {text-overflow: ellipsis;}
-.game_row .tip-date {width: 10%;}
-.game_row .tip-line-adjusted_win, .upcoming_game .tip-line-adjusted_loss {background: lightgrey; text-align: center;}
-.game_row .tip-controls {float:right;}
-.game_row .today {font-weight: bold;}
-.game_row .closing {color: red;}
-.game_row .pending {color: green;}
-.game_row .tip-key, .game_row .rot_num, .game_row .tip-status, .game_row .tip-datetime {display: none;}
-.upcoming_game .scores {display: none;}
-.game_result .tip-date, .game_result .h2h-link {display: none;}
+<link rel='stylesheet' type='text/css' href='/css/tipdisplay.css'>
 ''')
         self.html.append('<body>')
         
@@ -127,6 +108,10 @@ class TipDisplay(webapp.RequestHandler):
                     <input type="hidden" name="%s" value="" class="tip-data editable boolean-data">
                     <input type="submit" value="Submit">
                 </form>
+                <form class="%s-form">
+                    <input type="hidden" name="%s" value="%s">
+                    <input type="hidden" name="%s" value="" class="tip-data">
+                </form>
             </div>
             ''' % (
                    self.REQUEST_TYPE_DELETE_TIP,
@@ -150,6 +135,10 @@ class TipDisplay(webapp.RequestHandler):
                    self.INPUT_NAME_SCORE_HOME,
                    self.INPUT_NAME_STATUS_ELAPSED,
                    self.INPUT_NAME_STATUS_ARCHIVED,
+                   # odds form
+                   self.REQUEST_TYPE_EXPAND_ODDS,
+                   self.INPUT_NAME_REQUEST_TYPE, self.REQUEST_TYPE_EXPAND_ODDS,
+                   self.INPUT_NAME_TIP_KEY,
             )
         )
         
@@ -322,7 +311,6 @@ class TipDisplay(webapp.RequestHandler):
                 self.html.append("</div>")
         
         self.html.append('</body></html>')    
-        self.styleheader.append('</style>')
             
         html = []
         html.append('''<html><head>''')
@@ -364,8 +352,19 @@ class TipDisplay(webapp.RequestHandler):
         for tip_instance in archived_tips:
             game_count += 1
             
-            spread_no = tipanalysis.get_line(tip_instance.spread_no)[0]
-            total_no = tipanalysis.get_line(tip_instance.total_no)[0]
+            self.DATASTORE_READS += 2
+            tipline_instance = models.TipLine.from_tip_instance_key(tip_instance.key)
+            
+            spread_entry = total_entry = None
+            if isinstance(tipline_instance, models.TipLine):
+                spread_entry = models.TipLine.get_line_date(tipline_instance.get_spread_entries(tip_instance.wettpoint_tip_team))[0]
+                total_entry = models.TipLine.get_line_date(tipline_instance.get_total_entries(tip_instance.wettpoint_tip_total))[0]
+            
+            spread_no = total_no = None
+            if spread_entry is not None:
+                spread_no = spread_entry[models.TIPLINE_KEY_POINTS]
+            if total_entry is not None:
+                total_no = total_entry[models.TIPLINE_KEY_POINTS]
             
             moneyline_result = self._get_tip_tipanalysis_result(
                                                                 analysis_type='moneyline', 
@@ -579,7 +578,7 @@ class TipDisplay(webapp.RequestHandler):
         self.response.out.write(self.display_game_row(tip_instance, int(request_tip_game_count)))
         return
     
-    def display_game_row(self, tip_instance, game_count, game_row_actions=['edit','delete']):
+    def display_game_row(self, tip_instance, game_count, game_row_actions=['edit','delete','expand']):
         scores_exist = False
         if tip_instance.score_away and tip_instance.score_home:
             scores_exist = True
@@ -646,9 +645,24 @@ class TipDisplay(webapp.RequestHandler):
         game_row_html += '<span class="tip-stake">%s</span>' % (display_wettpoint_tip_stake)
         game_row_html += '<span class="tip-team">%s</span>' % (display_wettpoint_tip_team)    
         
-        latest_moneyline, latest_moneyline_datetime = tipanalysis.get_line(tip_instance.team_lines)
-        latest_spread_no, latest_spread_datetime = tipanalysis.get_line(tip_instance.spread_no)
-        latest_total_no, latest_total_datetime = tipanalysis.get_line(tip_instance.total_no)
+        self.DATASTORE_READS += 2
+        tipline_instance = models.TipLine.from_tip_instance_key(tip_instance.key)
+        
+        money_entries = spread_entries = total_entries = None
+        if isinstance(tipline_instance, models.TipLine):
+            money_entries = tipline_instance.get_money_entries(tip_instance.wettpoint_tip_team)
+            spread_entries = tipline_instance.get_spread_entries(tip_instance.wettpoint_tip_team)
+            total_entries = tipline_instance.get_total_entries(tip_instance.wettpoint_tip_total)
+            
+        latest_moneyline, latest_moneyline_datetime = models.TipLine.get_line_date(money_entries)
+        latest_spread_entry, latest_spread_datetime = models.TipLine.get_line_date(spread_entries)
+        latest_total_entry, latest_total_datetime = models.TipLine.get_line_date(total_entries)
+        
+        latest_spread_no = latest_total_no = None
+        if latest_spread_entry is not None:
+            latest_spread_no = latest_spread_entry[models.TIPLINE_KEY_POINTS]
+        if latest_total_entry is not None:
+            latest_total_no = latest_total_entry[models.TIPLINE_KEY_POINTS]
         
         latest_odds_datetime = None
         if latest_moneyline is not None:
@@ -730,6 +744,8 @@ class TipDisplay(webapp.RequestHandler):
         
         if len(game_row_actions):
             game_row_html += '<span class="tip-controls">'
+            if 'expand' in game_row_actions:
+                game_row_html += '<input type="button" class="styleless-button" name="%s" value="Expand">' % (self.REQUEST_TYPE_EXPAND_ODDS)
             if 'edit' in game_row_actions:
                 game_row_html += '<input type="button" class="styleless-button" name="%s" value="Edit">' % (self.REQUEST_TYPE_EDIT_TIP)
             if 'delete' in game_row_actions:
@@ -772,3 +788,51 @@ class TipDisplay(webapp.RequestHandler):
                 result = tipanalysis.calculate_event_score_result(league_key, result_no, total_score)
                 
         return result
+    
+    def _display_full_odds(self, tip_instance_key):
+        tipline_instance = models.TipLine.from_tip_instance_key(tip_instance_key)
+        odds_html = '<div class="expanded-odds">'
+        
+        if isinstance(tipline_instance, models.TipLine):
+            odds_html += self._create_odds_column('Money',
+                                                 'Away',
+                                                 sys_util.sorted_datetime_dict(tipline_instance.money_away, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
+                                                 'Draw',
+                                                 sys_util.sorted_datetime_dict(tipline_instance.money_draw, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
+                                                 'Home',
+                                                 sys_util.sorted_datetime_dict(tipline_instance.money_home, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
+                                                )
+            odds_html += self._create_odds_column('Spread',
+                                                 'Away',
+                                                 sys_util.sorted_datetime_dict(tipline_instance.spread_away, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
+                                                 'Home',
+                                                 sys_util.sorted_datetime_dict(tipline_instance.spread_home, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
+                                                )
+            odds_html += self._create_odds_column('Total',
+                                                 'Over',
+                                                 sys_util.sorted_datetime_dict(tipline_instance.total_over, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
+                                                 'Under',
+                                                 sys_util.sorted_datetime_dict(tipline_instance.total_under, models.TIP_HASH_DATETIME_FORMAT, constants.TIMEZONE_LOCAL),
+                                                )
+        
+        odds_html += '</div>'
+        self.response.out.write(odds_html)
+    
+    @staticmethod
+    def _create_odds_column(odds_type, *args):
+        column_html = '<span class="odds-column %s-odds">' % (odds_type)
+        column_html += '<div class="column-header %s-header">%s</div>' % (odds_type, odds_type)
+        column_html += '<div class="column-content">'
+        for count, arg in enumerate(args):
+            if (count % 2) == 0:
+                column_html += '<span class="inner-column">'
+                column_html += '<div class="inner-column-header">%s</div>' % (arg)
+            else:
+                odds_dict_display = ''
+                if arg is not None:
+                    odds_dict_display = html_util.display_dict(arg)
+                column_html += '<div class="inner-column-content">%s</div>' % (odds_dict_display)
+                column_html += '</span>'
+        column_html += '</div>'
+        column_html += '</span>'
+        return column_html

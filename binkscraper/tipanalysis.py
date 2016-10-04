@@ -5,8 +5,7 @@ from __future__ import unicode_literals
 import sys
 sys.path.append('utils')
 
-import json
-from datetime import datetime, timedelta
+from datetime import timedelta
 from utils import appvar_util, sys_util
 
 import models
@@ -115,27 +114,6 @@ def calculate_event_unit_change(result, moneyline, **kwargs):
     
     return None
 
-def get_line(line_dates, **kwargs):
-    if line_dates is None:
-        return None, None
-    elif isinstance(line_dates, basestring):
-        line_dates = json.loads(line_dates)
-    
-    date = line = None
-    if 'date' in kwargs and isinstance(kwargs['date'], datetime):
-        specified_date = kwargs['date'].replace(tzinfo=None)
-        
-        closest_date_string = min(line_dates, key=lambda x: abs(specified_date - datetime.strptime(x, models.TIP_HASH_DATETIME_FORMAT)))
-        date = datetime.strptime(closest_date_string, models.TIP_HASH_DATETIME_FORMAT)
-        line = line_dates[closest_date_string]
-    else:
-        sorted_line_dates = sorted(line_dates, key=lambda x: datetime.strptime(x, models.TIP_HASH_DATETIME_FORMAT))
-        latest_date_string = sorted_line_dates[-1]
-        date = datetime.strptime(latest_date_string, models.TIP_HASH_DATETIME_FORMAT)
-        line = line_dates[latest_date_string]
-        
-    return line, date
-
 class TipAnalysis(object):
     '''Analysis of Tips that require querying the datastore
     '''
@@ -209,8 +187,10 @@ class TipAnalysis(object):
         else:
             if first_series_tip.wettpoint_tip_team == models.TIP_SELECTION_TEAM_AWAY:
                 series_wettpoint_tip_team += ' ('+models.TIP_SELECTION_TEAM_HOME+')'
-            else:
+            elif first_series_tip.wettpoint_tip_team == models.TIP_SELECTION_TEAM_HOME:
                 series_wettpoint_tip_team += ' ('+models.TIP_SELECTION_TEAM_AWAY+')'
+            else:
+                series_wettpoint_tip_team += ' ('+str(first_series_tip.wettpoint_tip_team)+')'
         
         for preceding_series_tip in sorted_date_series_tips:
             # series is being updated throughout

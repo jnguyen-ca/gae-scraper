@@ -578,15 +578,24 @@ class TipArchive(webapp.RequestHandler):
             series_wettpoint_tips = analysis_object.calculate_series_wettpoint_tips(tip_instance)
             self.DATASTORE_READS += analysis_object.datastore_reads
         
+        self.DATASTORE_READS += 2
+        tipline_instance = models.TipLine.from_tip_instance_key(tip_instance.key)
+        
+        team_entries = spread_entries = total_entries = None
+        if isinstance(tipline_instance, models.TipLine):
+            team_entries = tipline_instance.get_money_entries(tip_instance.wettpoint_tip_team)
+            spread_entries = tipline_instance.get_spread_entries(tip_instance.wettpoint_tip_team)
+            total_entries = tipline_instance.get_total_entries(tip_instance.wettpoint_tip_total)
+        
         # Team/Side & Spread bets
-        team_value_rows = self.get_new_archive_team_value_lists(default_row_values, dates_to_archive, tip_instance.wettpoint_tip_team, tip_instance.team_lines, tip_instance.spread_no, tip_instance.spread_lines, tip_instance.score_away, tip_instance.score_home)
+        team_value_rows = self.get_new_archive_team_value_lists(default_row_values, dates_to_archive, tip_instance.wettpoint_tip_team, team_entries, spread_entries, tip_instance.score_away, tip_instance.score_home)
         if tip_instance.game_sport in ['Baseball'] and series_wettpoint_tips:
             for team_value_row in team_value_rows:
                 team_value_row[self.SELECTION_INDEX] = series_wettpoint_tips[0]
                 team_value_row[5] = series_wettpoint_tips[2]
         new_tip_archive_row_lists += team_value_rows
         # Total bets
-        total_value_rows = self.get_new_archive_total_value_lists(default_row_values, dates_to_archive, tip_instance.wettpoint_tip_total, tip_instance.total_no, tip_instance.total_lines, tip_instance.score_away, tip_instance.score_home)
+        total_value_rows = self.get_new_archive_total_value_lists(default_row_values, dates_to_archive, tip_instance.wettpoint_tip_total, total_entries, tip_instance.score_away, tip_instance.score_home)
         if tip_instance.game_sport in ['Baseball'] and series_wettpoint_tips:
             for total_value_row in total_value_rows:
                 if series_wettpoint_tips[1] is None:
@@ -600,7 +609,7 @@ class TipArchive(webapp.RequestHandler):
     #TODO: clean up get_new_archive_team_value_lists() (and examine get_new_archive_total_value_lists())
     # split up functionality into smaller functions
     # why am i using temporary lists instead of dicts?
-    def get_new_archive_team_value_lists(self, default_row_values, dates_to_archive, team_selection, team_lines, spread_no, spread_lines, score_away, score_home):
+    def get_new_archive_team_value_lists(self, default_row_values, dates_to_archive, team_selection, team_entries, spread_entries, score_away, score_home):
         archive_tip_team_lists = []
         
         if team_selection is None:
@@ -609,94 +618,102 @@ class TipArchive(webapp.RequestHandler):
         original_league_value = default_row_values[self.LEAGUE_INDEX]
         
         # get closing line for comparison data
-        closing_line = tipanalysis.get_line(team_lines)[0]
-        closing_spread_no = tipanalysis.get_line(spread_no)[0]
-        closing_spread_line = tipanalysis.get_line(spread_lines)[0]
+        closing_money = models.TipLine.get_line_date(team_entries)[0]
+        closing_spread = models.TipLine.get_line_date(spread_entries)[0]
+        
+        closing_spread_no = closing_spread_line = None
+        if closing_spread is not None:
+            closing_spread_no = closing_spread[models.TIPLINE_KEY_POINTS]
+            closing_spread_line = closing_spread[models.TIPLINE_KEY_ODDS]
         
         new_row_values = default_row_values[:]
         for date_label, date_to_archive in dates_to_archive.iteritems():
-            archive_team_line = tipanalysis.get_line(team_lines, date=date_to_archive)[0]
-            archive_spread_no = tipanalysis.get_line(spread_no, date=date_to_archive)[0]
-            archive_spread_line = tipanalysis.get_line(spread_lines, date=date_to_archive)[0]
+            archive_team_money = models.TipLine.get_line_date(team_entries, desired_date=date_to_archive)[0]
+            archive_team_spread = models.TipLine.get_line_date(spread_entries, desired_date=date_to_archive)[0]
+            
+            archive_team_spread_no = archive_team_spread_line = None
+            if archive_team_spread is not None:
+                archive_team_spread_no = archive_team_spread[models.TIPLINE_KEY_POINTS]
+                archive_team_spread_line = archive_team_spread[models.TIPLINE_KEY_ODDS]
             
             bet_types = {}
             
             # 1X2 event
-            if archive_team_line is None or models.TIP_SELECTION_LINE_SEPARATOR in archive_team_line:
-                if archive_team_line is None:
+            if archive_team_money is None or models.TIP_SELECTION_LINE_SEPARATOR in archive_team_money:
+                if archive_team_money is None:
                     archive_split_lines = [None, None]
                     closing_split_line = [None, None]
                 else:
-                    archive_split_lines = archive_team_line.split(models.TIP_SELECTION_LINE_SEPARATOR)
-                    closing_split_line = closing_line.split(models.TIP_SELECTION_LINE_SEPARATOR)
+                    archive_split_lines = archive_team_money.split(models.TIP_SELECTION_LINE_SEPARATOR)
+                    closing_split_line = closing_money.split(models.TIP_SELECTION_LINE_SEPARATOR)
                 
                 # draw result included
                 if models.TIP_SELECTION_TEAM_DRAW in team_selection:
                     if models.TIP_SELECTION_TEAM_AWAY in team_selection:
                         bet_types[self.BET_TYPE_SIDE_DRAW] = [archive_split_lines[0], closing_split_line[0]]
                         
-                        if is_side_team_favourite(home=False,side=archive_split_lines[1],draw=archive_split_lines[0],spread_no=archive_spread_no,spread=archive_spread_line):
+                        if is_side_team_favourite(home=False,side=archive_split_lines[1],draw=archive_split_lines[0],spread_no=archive_team_spread_no,spread=archive_team_spread_line):
                             bet_types[self.BET_TYPE_SIDE_DRAW_AWAY_FAVOURITE] = [archive_split_lines[1], closing_split_line[1]]
-                            bet_types[self.BET_TYPE_SPREAD_DRAW_AWAY_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SPREAD_DRAW_AWAY_FAVOURITE] = [archive_team_spread_line, archive_team_spread_no]
                         else:
                             bet_types[self.BET_TYPE_SIDE_DRAW_AWAY_UNDERDOG] = [archive_split_lines[1], closing_split_line[1]]
-                            bet_types[self.BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SPREAD_DRAW_AWAY_UNDERDOG] = [archive_team_spread_line, archive_team_spread_no]
                     elif models.TIP_SELECTION_TEAM_HOME in team_selection:
                         bet_types[self.BET_TYPE_SIDE_DRAW] = [archive_split_lines[1], closing_split_line[1]]
                         
-                        if is_side_team_favourite(home=True,side=archive_split_lines[0],draw=archive_split_lines[1],spread_no=archive_spread_no,spread=archive_spread_line):
+                        if is_side_team_favourite(home=True,side=archive_split_lines[0],draw=archive_split_lines[1],spread_no=archive_team_spread_no,spread=archive_team_spread_line):
                             bet_types[self.BET_TYPE_SIDE_DRAW_HOME_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[self.BET_TYPE_SPREAD_DRAW_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SPREAD_DRAW_HOME_FAVOURITE] = [archive_team_spread_line, archive_team_spread_no]
                         else:
                             bet_types[self.BET_TYPE_SIDE_DRAW_HOME_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[self.BET_TYPE_SPREAD_DRAW_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SPREAD_DRAW_HOME_UNDERDOG] = [archive_team_spread_line, archive_team_spread_no]
                     else:
                         logging.error('Encountered unsupported side draw team selection')
                         raise Exception('Encountered unsupported side draw team selection')
                 # no draw result
                 else:
                     if team_selection == models.TIP_SELECTION_TEAM_AWAY:
-                        if is_side_team_favourite(home=False,side=archive_split_lines[0],spread_no=archive_spread_no,spread=archive_spread_line):
+                        if is_side_team_favourite(home=False,side=archive_split_lines[0],spread_no=archive_team_spread_no,spread=archive_team_spread_line):
                             bet_types[self.BET_TYPE_AWAY_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[self.BET_TYPE_SPREAD_AWAY_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SPREAD_AWAY_FAVOURITE] = [archive_team_spread_line, archive_team_spread_no]
                         else:
                             bet_types[self.BET_TYPE_AWAY_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[self.BET_TYPE_SPREAD_AWAY_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SPREAD_AWAY_UNDERDOG] = [archive_team_spread_line, archive_team_spread_no]
                     elif team_selection == models.TIP_SELECTION_TEAM_HOME:
-                        if is_side_team_favourite(home=True,side=archive_split_lines[0],spread_no=archive_spread_no,spread=archive_spread_line):
+                        if is_side_team_favourite(home=True,side=archive_split_lines[0],spread_no=archive_team_spread_no,spread=archive_team_spread_line):
                             bet_types[self.BET_TYPE_HOME_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[self.BET_TYPE_SPREAD_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SPREAD_HOME_FAVOURITE] = [archive_team_spread_line, archive_team_spread_no]
                         else:
                             bet_types[self.BET_TYPE_HOME_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
-                            bet_types[self.BET_TYPE_SPREAD_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SPREAD_HOME_UNDERDOG] = [archive_team_spread_line, archive_team_spread_no]
                     elif team_selection == (models.TIP_SELECTION_TEAM_HOME + models.TIP_SELECTION_TEAM_AWAY):
                         if float(archive_split_lines[0]) <= float(archive_split_lines[1]):
                             bet_types[self.BET_TYPE_SIDE_NO_DRAW_HOME_FAVOURITE] = [archive_split_lines[0], closing_split_line[0]]
                             bet_types[self.BET_TYPE_SIDE_NO_DRAW_AWAY_UNDERDOG] = [archive_split_lines[1], closing_split_line[1]]
-                            bet_types[self.BET_TYPE_SPREAD_NO_DRAW_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SPREAD_NO_DRAW_HOME_FAVOURITE] = [archive_team_spread_line, archive_team_spread_no]
                         else:
                             bet_types[self.BET_TYPE_SIDE_NO_DRAW_HOME_UNDERDOG] = [archive_split_lines[0], closing_split_line[0]]
                             bet_types[self.BET_TYPE_SIDE_NO_DRAW_AWAY_FAVOURITE] = [archive_split_lines[1], closing_split_line[1]]
-                            bet_types[self.BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                            bet_types[self.BET_TYPE_SPREAD_NO_DRAW_HOME_UNDERDOG] = [archive_team_spread_line, archive_team_spread_no]
                     else:
                         logging.error('Encountered unsupported side only team selection')
                         raise Exception('Encountered unsupported side only team selection')
             # ML event
             else:
                 if team_selection == models.TIP_SELECTION_TEAM_AWAY:
-                    if is_side_team_favourite(home=False,side=archive_team_line,spread_no=archive_spread_no,spread=archive_spread_line):
-                        bet_types[self.BET_TYPE_AWAY_FAVOURITE] = [archive_team_line, closing_line]
-                        bet_types[self.BET_TYPE_SPREAD_AWAY_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                    if is_side_team_favourite(home=False,side=archive_team_money,spread_no=archive_team_spread_no,spread=archive_team_spread_line):
+                        bet_types[self.BET_TYPE_AWAY_FAVOURITE] = [archive_team_money, closing_money]
+                        bet_types[self.BET_TYPE_SPREAD_AWAY_FAVOURITE] = [archive_team_spread_line, archive_team_spread_no]
                     else:
-                        bet_types[self.BET_TYPE_AWAY_UNDERDOG] = [archive_team_line, closing_line]
-                        bet_types[self.BET_TYPE_SPREAD_AWAY_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                        bet_types[self.BET_TYPE_AWAY_UNDERDOG] = [archive_team_money, closing_money]
+                        bet_types[self.BET_TYPE_SPREAD_AWAY_UNDERDOG] = [archive_team_spread_line, archive_team_spread_no]
                 elif team_selection == models.TIP_SELECTION_TEAM_HOME:
-                    if is_side_team_favourite(home=True,side=archive_team_line,spread_no=archive_spread_no,spread=archive_spread_line):
-                        bet_types[self.BET_TYPE_HOME_FAVOURITE] = [archive_team_line, closing_line]
-                        bet_types[self.BET_TYPE_SPREAD_HOME_FAVOURITE] = [archive_spread_line, archive_spread_no]
+                    if is_side_team_favourite(home=True,side=archive_team_money,spread_no=archive_team_spread_no,spread=archive_team_spread_line):
+                        bet_types[self.BET_TYPE_HOME_FAVOURITE] = [archive_team_money, closing_money]
+                        bet_types[self.BET_TYPE_SPREAD_HOME_FAVOURITE] = [archive_team_spread_line, archive_team_spread_no]
                     else:
-                        bet_types[self.BET_TYPE_HOME_UNDERDOG] = [archive_team_line, closing_line]
-                        bet_types[self.BET_TYPE_SPREAD_HOME_UNDERDOG] = [archive_spread_line, archive_spread_no]
+                        bet_types[self.BET_TYPE_HOME_UNDERDOG] = [archive_team_money, closing_money]
+                        bet_types[self.BET_TYPE_SPREAD_HOME_UNDERDOG] = [archive_team_spread_line, archive_team_spread_no]
                 else:
                     logging.error('Encountered unsupported single team selection')
                     raise Exception('Encountered unsupported single team selection')
@@ -808,7 +825,7 @@ class TipArchive(webapp.RequestHandler):
                 
         return archive_tip_team_lists
     
-    def get_new_archive_total_value_lists(self, default_row_values, dates_to_archive, total_selection, total_no, total_lines, score_away, score_home):
+    def get_new_archive_total_value_lists(self, default_row_values, dates_to_archive, total_selection, total_entries, score_away, score_home):
         archive_tip_total_lists = []
         
         original_league_value = default_row_values[self.LEAGUE_INDEX]
@@ -820,13 +837,21 @@ class TipArchive(webapp.RequestHandler):
         else:
             total_score = float(tipanalysis.strip_score(original_league_value, score_away)) + float(tipanalysis.strip_score(original_league_value, score_home))
         
-        closing_total_no = tipanalysis.get_line(total_no)[0]
-        closing_total_line = tipanalysis.get_line(total_lines)[0]
+        closing_total = models.TipLine.get_line_date(total_entries)[0]
+
+        closing_total_no = closing_total_line = None
+        if closing_total is not None:
+            closing_total_no = closing_total[models.TIPLINE_KEY_POINTS]
+            closing_total_line = closing_total[models.TIPLINE_KEY_ODDS]
 
         new_row_values = default_row_values[:]
         for date_label, date_to_archive in dates_to_archive.iteritems():
-            archive_total_no = tipanalysis.get_line(total_no, date=date_to_archive)[0]
-            archive_total_line = tipanalysis.get_line(total_lines, date=date_to_archive)[0]
+            archive_total = models.TipLine.get_line_date(total_entries, desired_date=date_to_archive)[0]
+            
+            archive_total_no = archive_total_line = None
+            if archive_total is not None:
+                archive_total_no = archive_total[models.TIPLINE_KEY_POINTS]
+                archive_total_line = archive_total[models.TIPLINE_KEY_ODDS]
             
             if archive_total_no is None or archive_total_line is None:
                 continue

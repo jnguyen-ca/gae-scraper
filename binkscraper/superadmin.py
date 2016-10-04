@@ -3,6 +3,7 @@
 from __future__ import unicode_literals
 
 from google.appengine.ext import webapp
+from google.appengine.api import taskqueue
 
 import logging
 from patches import patch_5_0_0_populate_tiplines
@@ -10,10 +11,19 @@ from datetime import datetime
 
 class SuperAdmin(webapp.RequestHandler):
     def get(self):
-        self.response.out.write('''
+        if self.request.get('patch_function') == 'populate':
+            taskqueue.add(url=self.request.path,
+                          params={
+                                  'patch_function' : 'populate',
+                                  'datetime-start' : self.request.get('month-start')+'-'+self.request.get('day-start')+'-'+self.request.get('year-start'),
+                                  'datetime-end' : self.request.get('month-end')+'-'+self.request.get('day-end')+'-'+self.request.get('year-end')
+                                  })
+            self.response.out.write('Adding populate task to queue')
+        else:
+            self.response.out.write('''
 <html>
 <body>
-    <form action="/superadmin" method="post" onsubmit="return confirm('Confirm Populate')">
+    <form action="/superadmin" method="get" onsubmit="return confirm('Confirm Populate')">
         <div>
             <span>Patch 5.0.0 - Populate TipLines</span>
             <input type="hidden" name="patch_function" value="populate">
@@ -27,7 +37,7 @@ class SuperAdmin(webapp.RequestHandler):
         </div>
     </form>
 <!--
-    <form action="/superadmin" method="post" onsubmit="return confirm('Confirm Delete')">
+    <form action="/superadmin" method="get" onsubmit="return confirm('Confirm Delete')">
         <span>Patch 5.0.0 - Delete TipLines</span>
         <input type="hidden" name="patch_function" value="delete">
         <input type="submit" value="Run Delete">
@@ -39,9 +49,9 @@ class SuperAdmin(webapp.RequestHandler):
         
     def post(self):
         patch_function = self.request.get('patch_function')
-        datetime_start = datetime.strptime(self.request.get('month-start')+'-'+self.request.get('day-start')+'-'+self.request.get('year-start'),
+        datetime_start = datetime.strptime(self.request.get('datetime-start'),
                                            '%m-%d-%Y')
-        datetime_end = datetime.strptime(self.request.get('month-end')+'-'+self.request.get('day-end')+'-'+self.request.get('year-end'),
+        datetime_end = datetime.strptime(self.request.get('datetime-end'),
                                            '%m-%d-%Y')
         patcher = RunPatch(patch_function, datetime_start, datetime_end)
         patcher.run_patch()

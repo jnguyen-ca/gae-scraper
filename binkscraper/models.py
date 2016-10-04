@@ -211,9 +211,9 @@ class TipLine(ndb.Model):
         # unless draw is allowed then can't use spread
         earliest_opening_spread = TipLine.get_line_date(self.spread_home, bookie=bookie, desired_date='earliest')[0]
         if earliest_opening_spread is not None and allow_draw is False:
-            if earliest_opening_spread < 0:
+            if float(earliest_opening_spread[TIPLINE_KEY_POINTS]) < 0:
                 return TIP_SELECTION_TEAM_HOME
-            elif earliest_opening_spread > 0:
+            elif float(earliest_opening_spread[TIPLINE_KEY_POINTS]) > 0:
                 return TIP_SELECTION_TEAM_AWAY
         
         earliest_opening_money_home = TipLine.get_line_date(self.money_home, bookie=bookie, desired_date='earliest')[0]
@@ -221,18 +221,18 @@ class TipLine(ndb.Model):
         if earliest_opening_money_home is not None and earliest_opening_money_away is not None:
             if allow_draw is False:
                 # default to home team, so if they're equal return home selection
-                if earliest_opening_money_home <= earliest_opening_money_away:
+                if int(earliest_opening_money_home) <= int(earliest_opening_money_away):
                     return TIP_SELECTION_TEAM_HOME
-                elif earliest_opening_money_home > earliest_opening_money_away:
+                elif int(earliest_opening_money_home) > int(earliest_opening_money_away):
                     return TIP_SELECTION_TEAM_AWAY
                 raise Exception("Shouldn't be able to get here")
             else:
-                if earliest_opening_money_home <= earliest_opening_money_away:
-                    if earliest_opening_money_home <= earliest_opening_draw:
+                if int(earliest_opening_money_home) <= int(earliest_opening_money_away):
+                    if int(earliest_opening_money_home) <= int(earliest_opening_draw):
                         return TIP_SELECTION_TEAM_HOME
                     return TIP_SELECTION_TEAM_DRAW
-                elif earliest_opening_money_home > earliest_opening_money_away:
-                    if earliest_opening_money_away < earliest_opening_draw:
+                elif int(earliest_opening_money_home) > int(earliest_opening_money_away):
+                    if int(earliest_opening_money_away) < int(earliest_opening_draw):
                         return TIP_SELECTION_TEAM_AWAY
                     return TIP_SELECTION_TEAM_DRAW
                 raise Exception("Shouldn't be able to get here")

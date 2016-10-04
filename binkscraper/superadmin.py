@@ -48,6 +48,9 @@ class SuperAdmin(webapp.RequestHandler):
         ''')
         
     def post(self):
+        if int(self.request.headers['X-AppEngine-TaskExecutionCount']) > 0:
+            return
+        
         patch_function = self.request.get('patch_function')
         datetime_start = datetime.strptime(self.request.get('datetime-start'),
                                            '%m-%d-%Y')

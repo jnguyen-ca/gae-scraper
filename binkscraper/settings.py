@@ -71,7 +71,7 @@ class AppSettings(webapp.RequestHandler):
                         request_level = int(self.request.get(self.INPUT_NAME_REQUEST_LEVEL))
                     except ValueError:
                         request_level = 0
-                    entry_html = self.display_dict_entry(entry_keys[-1], request_value, request_level)
+                    entry_html = html_util._display_dict_entry(entry_keys[-1], request_value, request_level)
                     self.response.out.write(entry_html)
                 elif request_type == self.REQUEST_TYPE_DELETE_ENTRY:
                     app_var = appvar_util.get_or_set_app_var(app_key)

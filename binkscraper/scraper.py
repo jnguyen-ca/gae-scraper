@@ -363,6 +363,13 @@ class PinnacleScraper(BookieScraper):
                     elif participant_name_visiting.split(' ')[0].lower() == 'away' and participant_name_home.split(' ')[0].lower() == 'home':
                         continue
                     
+                    # in oct 2016 pinnacle started ending some games with (n)
+                    # i am unsure what this is for, so let's remove it
+                    if participant_name_home.endswith(' (n)'):
+                        participant_name_home = participant_name_home[:-4]
+                    if participant_name_visiting.endswith(' (n)'):
+                        participant_name_visiting = participant_name_visiting[:-4]
+                    
                     skip_event = False
                     for excluded_team_name in appvar_util.get_team_names_excluded_appvar():
                         if (

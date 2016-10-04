@@ -6,6 +6,7 @@ from google.appengine.ext import ndb
 import logging
 import json
 from binkscraper import models
+from datetime import datetime
 
 class Patch_5_0_0():
     '''
@@ -235,7 +236,13 @@ class Patch_5_0_0():
         updated = False
         for line_date, cls_no in cls_nos.iteritems():
             if line_date not in cls_lines:
-                raise KeyError('line_date in spread_no but not in spread_line : '+str(cls_urlsafe_key))
+                closest_line_date = min(cls_lines, key=lambda x: abs(datetime.strptime(line_date, models.TIP_HASH_DATETIME_FORMAT) - datetime.strptime(x, models.TIP_HASH_DATETIME_FORMAT)))
+                if 3 > divmod(abs((datetime.strptime(closest_line_date, models.TIP_HASH_DATETIME_FORMAT) - datetime.strptime(line_date, models.TIP_HASH_DATETIME_FORMAT)).total_seconds()), 60)[0]:
+                    logging.warning('In populating '+entry_property+' line_date was in cls_nos but not cls_lines for: '+str(cls_urlsafe_key)+"\n"
+                                    +'Closest line_date is less than 3 minutes away, using that instead ('+line_date+' vs '+closest_line_date+')')
+                    line_date = closest_line_date
+                else:
+                    raise Exception('In populating '+entry_property+' line_date was in cls_nos but not cls_lines for: '+str(cls_urlsafe_key))
             cls_line = cls_lines[line_date]
             
             try:

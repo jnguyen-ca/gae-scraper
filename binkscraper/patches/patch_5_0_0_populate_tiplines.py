@@ -16,6 +16,7 @@ class Patch_5_0_0():
     '''
     def __init__(self, datetime_start, datetime_end):
         self._count_tips = 0
+        self._count_tips_no_properties = 0
         self._count_tips_empty = 0
         self._count_tiplines_created = 0
         self._count_tiplines = 0
@@ -28,7 +29,7 @@ class Patch_5_0_0():
         
         self.datetime_start = datetime_start
         self.datetime_end = datetime_end
-        logging.info('Date range between %s and %s' % (datetime_start.strptime('%b-%d-%Y'),datetime_end.strptime('%b-%d-%Y')))
+        logging.info('Date range between %s and %s' % (datetime_start.strftime('%b-%d-%Y'),datetime_end.strftime('%b-%d-%Y')))
     
     def patch_populate(self):
         '''
@@ -43,6 +44,15 @@ class Patch_5_0_0():
         for tip_instance in models.Tip.query(models.Tip.date >= self.datetime_start, models.Tip.date <= self.datetime_end):
             updated = False
             self._count_tips += 1
+            if (not hasattr(tip_instance, 'team_lines')
+                and not hasattr(tip_instance, 'total_no')
+                and not hasattr(tip_instance, 'total_lines')
+                and not hasattr(tip_instance, 'spread_no')
+                and not hasattr(tip_instance, 'spread_lines')
+            ):
+                # a v5.0.0 that needs no updating
+                self._count_tips_no_properties += 1
+                continue
             tipchange_instance = models.TipChange.query(models.TipChange.tip_key == unicode(tip_instance.key.urlsafe())).get()
             if (tip_instance.team_lines is None
                 and tip_instance.total_no is None
@@ -71,7 +81,8 @@ class Patch_5_0_0():
             if tip_instance.team_lines:
                 self._count_tip_team_lines_copied += 1
                 updated = Patch_5_0_0._populate_money_lines(tip_instance, tipline_instance, self.bookie_key)
-            if (tipchange_instance.wettpoint_tip_team != tip_instance.wettpoint_tip_team
+            if (tipchange_instance is not None
+                and tipchange_instance.wettpoint_tip_team != tip_instance.wettpoint_tip_team
                 and tipchange_instance.team_lines
             ):
                 self._count_tipchange_team_lines_copied += 1
@@ -80,7 +91,8 @@ class Patch_5_0_0():
             if tip_instance.spread_lines and tip_instance.spread_no:
                 self._count_tip_spread_lines_copied += 1
                 updated = Patch_5_0_0._populate_spread_lines(tip_instance, tipline_instance, self.bookie_key)
-            if (tipchange_instance.wettpoint_tip_team != tip_instance.wettpoint_tip_team
+            if (tipchange_instance is not None
+                and tipchange_instance.wettpoint_tip_team != tip_instance.wettpoint_tip_team
                 and tipchange_instance.spread_lines and tipchange_instance.spread_no
             ):
                 self._count_tipchange_spread_lines_copied += 1
@@ -89,7 +101,8 @@ class Patch_5_0_0():
             if tip_instance.total_lines and tip_instance.total_no:
                 self._count_tip_total_lines_copied += 1
                 updated = Patch_5_0_0._populate_total_lines(tip_instance, tipline_instance, self.bookie_key)
-            if (tipchange_instance.wettpoint_tip_total != tip_instance.wettpoint_tip_total
+            if (tipchange_instance is not None
+                and tipchange_instance.wettpoint_tip_total != tip_instance.wettpoint_tip_total
                 and tipchange_instance.total_lines and tipchange_instance.total_no
             ):
                 self._count_tipchange_total_lines_copied += 1
@@ -99,6 +112,7 @@ class Patch_5_0_0():
                 tiplines_to_put.append(tipline_instance)
                 
         logging.info('%d Tips in datastore' % (self._count_tips))
+        logging.info('%d v5.0.0 Tips in datastore' % (self._count_tips_no_properties))
         logging.info('%d Tips have no line information' % (self._count_tips_empty))
         logging.info('%d TipLines were created' % (self._count_tiplines_created))
         logging.info('%d TipLines (new+existing) in datastore' % (self._count_tiplines))
@@ -157,7 +171,7 @@ class Patch_5_0_0():
                         logging.warning('Existing TipLine value does not equal incoming Tip(Change) value?! ('+cls.key.urlsafe()+")\n"
                                         +'TipLine: '+str(current_entry_value)+' vs Tip(Change): '+str(entry_lines[index]))
                     continue
-                except KeyError:
+                except (KeyError, TypeError):
                     pass
                 updated = True
                 tipline_instance.insert_property_entry(entry_property=money_property, 
@@ -173,8 +187,8 @@ class Patch_5_0_0():
         '''Transfer spread_no and spread_lines to TipLine spread_away and spread_home properties
         cls is object with properties spread_no, spread_lines, wettpoint_tip_team
         '''
-        cls_spread_no = cls.spread_no
-        cls_spread_lines = cls.spread_lines
+        cls_spread_no = json.loads(cls.spread_no)
+        cls_spread_lines = json.loads(cls.spread_lines)
         
         if (models.TIP_SELECTION_TEAM_HOME in cls.wettpoint_tip_team
             or models.TIP_SELECTION_TEAM_DRAW == cls.wettpoint_tip_team
@@ -198,8 +212,8 @@ class Patch_5_0_0():
         '''Transfer total_no and total_lines to TipLine total_under and total_over properties
         cls is object with properties total_no, total_lines, wettpoint_tip_total
         '''
-        cls_total_no = cls.total_no
-        cls_total_lines = cls.total_lines
+        cls_total_no = json.loads(cls.total_no)
+        cls_total_lines = json.loads(cls.total_lines)
         
         if cls.wettpoint_tip_total == models.TIP_SELECTION_TOTAL_OVER:
             entry_property = 'total_over'
@@ -219,7 +233,7 @@ class Patch_5_0_0():
         '''Sub-method for _populate_spread_lines and _populate_total_lines
         '''
         updated = False
-        for line_date, cls_no in cls_nos:
+        for line_date, cls_no in cls_nos.iteritems():
             if line_date not in cls_lines:
                 raise KeyError('line_date in spread_no but not in spread_line : '+str(cls_urlsafe_key))
             cls_line = cls_lines[line_date]
@@ -233,7 +247,7 @@ class Patch_5_0_0():
                                     +'TipLine: '+str(current_entry_value[models.TIPLINE_KEY_POINTS])+' , '+str(current_entry_value[models.TIPLINE_KEY_ODDS])+"\n"
                                     +'cls: '+str(cls_no)+' , '+str(cls_line))
                 continue
-            except KeyError:
+            except (KeyError, TypeError):
                 pass
             updated = True
             tipline_instance.insert_property_entry(entry_property=entry_property, 

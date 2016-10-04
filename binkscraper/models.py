@@ -58,6 +58,16 @@ class Tip(ndb.Model):
     
     wettpoint_tip_stake = ndb.FloatProperty()
     
+# TODO: remove these
+    team_lines = ndb.TextProperty()
+    
+    total_no = ndb.TextProperty()
+    total_lines = ndb.TextProperty()
+    
+    spread_no = ndb.TextProperty()
+    spread_lines = ndb.TextProperty()
+# END remove
+    
     score_away = ndb.StringProperty()
     score_home = ndb.StringProperty()
     

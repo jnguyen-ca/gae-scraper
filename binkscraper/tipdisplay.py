@@ -650,8 +650,11 @@ class TipDisplay(webapp.RequestHandler):
         
         money_entries = spread_entries = total_entries = None
         if isinstance(tipline_instance, models.TipLine):
-            money_entries = tipline_instance.get_money_entries(tip_instance.wettpoint_tip_team)
-            spread_entries = tipline_instance.get_spread_entries(tip_instance.wettpoint_tip_team)
+            tip_team = tip_instance.wettpoint_tip_team
+            if tip_instance.wettpoint_tip_team is not None and len(tip_instance.wettpoint_tip_team) > 1:
+                tip_team = tip_instance.wettpoint_tip_team[0]
+            money_entries = tipline_instance.get_money_entries(tip_team)
+            spread_entries = tipline_instance.get_spread_entries(tip_team)
             total_entries = tipline_instance.get_total_entries(tip_instance.wettpoint_tip_total)
             
         latest_moneyline, latest_moneyline_datetime = models.TipLine.get_line_date(money_entries)

@@ -357,7 +357,12 @@ class TipDisplay(webapp.RequestHandler):
             
             spread_entry = total_entry = None
             if isinstance(tipline_instance, models.TipLine):
-                spread_entry = models.TipLine.get_line_date(tipline_instance.get_spread_entries(tip_instance.wettpoint_tip_team))[0]
+                tip_team = tip_instance.wettpoint_tip_team
+                if tip_instance.wettpoint_tip_team is not None and len(tip_instance.wettpoint_tip_team) > 1:
+                    tip_team = tip_instance.wettpoint_tip_team[0]
+                    if tip_team == models.TIP_SELECTION_TEAM_DRAW:
+                        tip_team = models.TIP_SELECTION_TEAM_AWAY
+                spread_entry = models.TipLine.get_line_date(tipline_instance.get_spread_entries(tip_team))[0]
                 total_entry = models.TipLine.get_line_date(tipline_instance.get_total_entries(tip_instance.wettpoint_tip_total))[0]
             
             spread_no = total_no = None
@@ -653,6 +658,8 @@ class TipDisplay(webapp.RequestHandler):
             tip_team = tip_instance.wettpoint_tip_team
             if tip_instance.wettpoint_tip_team is not None and len(tip_instance.wettpoint_tip_team) > 1:
                 tip_team = tip_instance.wettpoint_tip_team[0]
+                if tip_team == models.TIP_SELECTION_TEAM_DRAW:
+                    tip_team = models.TIP_SELECTION_TEAM_AWAY
             money_entries = tipline_instance.get_money_entries(tip_team)
             spread_entries = tipline_instance.get_spread_entries(tip_team)
             total_entries = tipline_instance.get_total_entries(tip_instance.wettpoint_tip_total)

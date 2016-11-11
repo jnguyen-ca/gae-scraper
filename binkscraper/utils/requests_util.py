@@ -12,12 +12,7 @@ RESPONSE_ENCODING_UTF8 = 'utf-8'
 
 from google.appengine.api import urlfetch
 
-import sys
-sys.path.append('libs/requests-2.3.0')
-sys.path.append('libs/BeautifulSoup-4.3.2')
-
 from httplib import HTTPException
-from requests.packages.urllib3.exceptions import ProtocolError
 
 from urlparse import urlparse
 from lxml import etree
@@ -27,7 +22,7 @@ import logging
 import time
 import random
 
-HTTP_EXCEPTION_TUPLE = (HTTPException, urlfetch.DeadlineExceededError, ProtocolError)
+HTTP_EXCEPTION_TUPLE = (HTTPException, urlfetch.DeadlineExceededError)
 
 __REQUEST_COUNT__ = {}
 

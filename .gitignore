@@ -8,3 +8,5 @@
 
 # project
 *.pem
+lib/
+credentials/

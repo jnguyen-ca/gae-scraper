@@ -31,5 +31,3 @@ TIMEZONE_SCORESPRO = 'Europe/Nicosia'
 
 DATETIME_ISO_8601_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
 DATE_ISO_8601_FORMAT = '%Y-%m-%d'
-
-LIB_DIR_PYTZ = 'pytz-2016.6.1'

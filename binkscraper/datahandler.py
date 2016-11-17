@@ -31,10 +31,6 @@ def _game_details_string(tip_instance):
                                                tip_instance.game_league,
                                              )
 
-import sys
-sys.path.append('utils')
-sys.path.append('libs/'+constants.LIB_DIR_PYTZ)
-
 from google.appengine.ext import ndb
 
 from datetime import datetime, timedelta

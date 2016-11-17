@@ -4,10 +4,6 @@ from __future__ import unicode_literals
 
 import constants
 
-import sys
-sys.path.append('libs/'+constants.LIB_DIR_PYTZ)
-sys.path.append('utils')
-
 from google.appengine.ext import webapp, ndb
 # from google.appengine.api import users, memcache
 

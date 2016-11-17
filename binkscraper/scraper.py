@@ -75,9 +75,6 @@ class WettpointRowData(EventScrapeData):
 
 from google.appengine.api import urlfetch
 
-import sys
-sys.path.append('utils')
-
 from datetime import datetime
 from utils import appvar_util, sys_util, requests_util
 
@@ -448,7 +445,6 @@ class PinnacleScraper(BookieScraper):
                     events_by_sport_league[sport_key][league_key].append(event)
         return events_by_sport_league
 
-sys.path.append('libs/'+constants.LIB_DIR_PYTZ)
 import pytz
 
 # TODO: Xscores and ScoresPro should have a common parent class below general Scraper class
